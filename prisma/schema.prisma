@@ -1,0 +1,257 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User accounts - linked to Nostr pubkeys
+model User {
+  id        String   @id @default(cuid())
+  pubkey    String   @unique // hex pubkey
+  npub      String   @unique // bech32 npub
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  nip05s       Nip05[]
+  subscription Subscription?
+  wotScore     WotScore?
+  sessions     Session[]
+  apiKeys      ApiKey[]
+  lnurlSessions LnurlSession[]
+
+  @@index([pubkey])
+}
+
+// User sessions (JWT-based)
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  token     String   @unique
+  userAgent String?
+  ipAddress String?
+  
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Auth challenges for signature verification
+model AuthChallenge {
+  id        String   @id @default(cuid())
+  challenge String   @unique
+  pubkey    String?  // Optional: lock challenge to specific pubkey
+  
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([challenge])
+  @@index([expiresAt])
+}
+
+// LNURL-auth sessions
+model LnurlSession {
+  id        String   @id @default(cuid())
+  k1        String   @unique // Challenge secret
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  linkingKey String?  // The linking pubkey from wallet
+  status    String   @default("pending") // pending, verified, expired
+  
+  expiresAt DateTime
+  verifiedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([k1])
+  @@index([status])
+}
+
+// API Keys for Business tier
+model ApiKey {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name      String
+  keyHash   String   @unique // Hashed API key
+  keyPrefix String   // First 8 chars for display (nm_xxxx...)
+  
+  permissions String[] @default(["read"]) // read, write, admin
+  rateLimit Int      @default(1000) // requests per hour
+  
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  // Usage tracking
+  usageLogs ApiKeyUsage[]
+
+  @@index([keyHash])
+  @@index([userId])
+}
+
+// API Key usage tracking
+model ApiKeyUsage {
+  id        String   @id @default(cuid())
+  apiKeyId  String
+  apiKey    ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  
+  endpoint  String
+  method    String
+  statusCode Int
+  
+  createdAt DateTime @default(now())
+
+  @@index([apiKeyId])
+  @@index([createdAt])
+}
+
+// NIP-05 identities (user@domain.com)
+model Nip05 {
+  id        String   @id @default(cuid())
+  localPart String   // "user" part of user@domain.com
+  domain    String   // Domain for the NIP-05
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([localPart, domain])
+  @@index([domain])
+  @@index([userId])
+}
+
+// Custom domains for NIP-05
+model Domain {
+  id          String   @id @default(cuid())
+  domain      String   @unique
+  verified    Boolean  @default(false)
+  verifyToken String?  // TXT record token for verification
+  ownerPubkey String   // Hex pubkey of owner
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ownerPubkey])
+}
+
+// User subscriptions
+model Subscription {
+  id        String  @id @default(cuid())
+  userId    String  @unique
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier      String  @default("FREE") // FREE, PRO, BUSINESS, LIFETIME
+  
+  // Billing
+  priceUsd     Int?      // Monthly price in cents
+  priceSats    Int?      // Monthly price in sats
+  
+  // Lifecycle
+  startsAt     DateTime  @default(now())
+  expiresAt    DateTime?
+  cancelledAt  DateTime?
+  
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  payments     Payment[]
+
+  @@index([tier])
+  @@index([expiresAt])
+}
+
+// Payment records
+model Payment {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  amountSats     Int?
+  amountUsd      Int?         // cents
+  method         String       // "lightning" or "stripe"
+
+  // Provider info (BTCPay, LNbits, etc.)
+  provider         String?
+  providerInvoiceId String?
+  providerPaymentId String?
+  
+  // Lightning specific
+  invoice        String?      // BOLT11 invoice
+  paymentHash    String?      @unique
+  lnbitsPaymentId String?     @unique
+  
+  // Stripe specific
+  stripeId       String?      @unique
+  
+  status         String       @default("pending") // pending, paid, failed, expired
+  paidAt         DateTime?
+  
+  // Receipt info
+  receiptNumber  String?      @unique
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status])
+  @@index([subscriptionId])
+  @@index([paymentHash])
+  @@index([lnbitsPaymentId])
+  @@index([provider, providerInvoiceId])
+  @@index([providerPaymentId])
+}
+
+// Web of Trust scores
+model WotScore {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Calculated scores
+  followersCount  Int      @default(0)
+  followingCount  Int      @default(0)
+  wotDepth        Int      @default(0)     // Depth from well-known accounts
+  trustScore      Float    @default(0)     // 0-100 trust score
+  
+  // Bot detection
+  isLikelyBot     Boolean  @default(false)
+  accountAgeScore Float    @default(0)
+  activityScore   Float    @default(0)
+  
+  // Discount eligibility
+  discountPercent Int      @default(0)
+  
+  lastCalculated  DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([trustScore])
+}
+
+// Admin audit log
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String
+  entityId  String?
+  actorPubkey String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

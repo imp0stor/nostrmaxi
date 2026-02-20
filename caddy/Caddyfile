@@ -1,0 +1,23 @@
+{
+  auto_https off
+}
+
+:80 {
+  encode gzip
+  root * /srv
+
+  @api path /api/* /health /.well-known/nostr.json /.well-known/lnurlp/*
+  handle @api {
+    reverse_proxy backend:3000
+  }
+
+  handle {
+    try_files {path} {path}/ /index.html
+    file_server
+  }
+
+  log {
+    output stdout
+    format console
+  }
+}

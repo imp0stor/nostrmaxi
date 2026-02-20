@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "../../../shared-ui/shared-ui.css";
+
+/* Custom styles */
+body {
+  @apply bg-nostr-darker text-white min-h-screen;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-nostr-darker;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-600;
+}
+
+/* Focus styles */
+*:focus-visible {
+  @apply outline-none ring-2 ring-nostr-purple ring-offset-2 ring-offset-nostr-darker;
+}
+
+/* Button transitions */
+button, a {
+  @apply transition-all duration-200;
+}
+
+/* Gradient text */
+.text-gradient {
+  @apply bg-gradient-to-r from-nostr-purple to-nostr-orange bg-clip-text text-transparent;
+}
+
+/* Card hover effect */
+.card-hover {
+  @apply transition-transform duration-200 hover:scale-[1.02];
+}
+
+/* Loading shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+.shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+  background: linear-gradient(90deg, #1a1a2e 0%, #2a2a4e 50%, #1a1a2e 100%);
+  background-size: 200px 100%;
+}
