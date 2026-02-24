@@ -1,0 +1,71 @@
+# npm audit report
+
+glob  10.2.0 - 10.4.5
+Severity: high
+glob CLI: Command injection via -c/--cmd executes matches with shell:true - https://github.com/advisories/GHSA-5j98-mcp5-4vw2
+fix available via `npm audit fix --force`
+Will install @nestjs/cli@11.0.16, which is a breaking change
+node_modules/glob
+  @nestjs/cli  2.0.0-rc.1 - 11.0.14
+  Depends on vulnerable versions of @angular-devkit/schematics-cli
+  Depends on vulnerable versions of glob
+  Depends on vulnerable versions of inquirer
+  Depends on vulnerable versions of webpack
+  node_modules/@nestjs/cli
+
+js-yaml  4.0.0 - 4.1.0
+Severity: moderate
+js-yaml has prototype pollution in merge (<<) - https://github.com/advisories/GHSA-mh29-5h37-fv8m
+fix available via `npm audit fix --force`
+Will install @nestjs/swagger@11.2.6, which is a breaking change
+node_modules/js-yaml
+  @nestjs/swagger  1.1.0 - 1.1.4 || 3.0.1 - 11.2.5
+  Depends on vulnerable versions of js-yaml
+  Depends on vulnerable versions of lodash
+  node_modules/@nestjs/swagger
+
+lodash  4.0.0 - 4.17.21
+Severity: moderate
+Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions - https://github.com/advisories/GHSA-xxjr-mmjv-4gpg
+fix available via `npm audit fix --force`
+Will install @nestjs/swagger@11.2.6, which is a breaking change
+node_modules/lodash
+  @nestjs/config  1.1.6 - 4.0.2
+  Depends on vulnerable versions of lodash
+  node_modules/@nestjs/config
+
+qs  6.7.0 - 6.14.1
+qs's arrayLimit bypass in comma parsing allows denial of service - https://github.com/advisories/GHSA-w7fw-mjwx-w883
+fix available via `npm audit fix`
+node_modules/qs
+
+tmp  <=0.2.3
+tmp allows arbitrary temporary file / directory write via symbolic link `dir` parameter - https://github.com/advisories/GHSA-52f5-9888-hmc6
+fix available via `npm audit fix --force`
+Will install @nestjs/cli@11.0.16, which is a breaking change
+node_modules/tmp
+  external-editor  >=1.1.1
+  Depends on vulnerable versions of tmp
+  node_modules/external-editor
+    inquirer  3.0.0 - 8.2.6 || 9.0.0 - 9.3.7
+    Depends on vulnerable versions of external-editor
+    node_modules/@angular-devkit/schematics-cli/node_modules/inquirer
+    node_modules/inquirer
+      @angular-devkit/schematics-cli  0.12.0-beta.0 - 18.1.0-rc.1
+      Depends on vulnerable versions of inquirer
+      node_modules/@angular-devkit/schematics-cli
+
+webpack  5.49.0 - 5.104.0
+webpack buildHttp: allowedUris allow-list bypass via URL userinfo (@) leading to build-time SSRF behavior - https://github.com/advisories/GHSA-8fgc-7cc6-rx7x
+webpack buildHttp HttpUriPlugin allowedUris bypass via HTTP redirects → SSRF + cache persistence - https://github.com/advisories/GHSA-38r7-794h-5758
+fix available via `npm audit fix --force`
+Will install @nestjs/cli@11.0.16, which is a breaking change
+node_modules/webpack
+
+12 vulnerabilities (6 low, 4 moderate, 2 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force

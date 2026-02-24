@@ -1,0 +1,149 @@
+version: '3.8'
+
+services:
+  # Nginx reverse proxy with SSL/TLS termination
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/dhparam.pem:/etc/nginx/dhparam.pem:ro
+      - ./nginx/rate-limit-zones:/var/cache/nginx/rate-limit-zones
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - nostrmaxi
+
+  # Backend API
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://nostrmaxi:${DB_PASSWORD}@db:5432/nostrmaxi
+      - PORT=3000
+      - BASE_URL=${BASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - NIP05_DEFAULT_DOMAIN=${DOMAIN}
+      - NIP05_DEFAULT_RELAYS=${NIP05_RELAYS}
+      - PAYMENTS_PROVIDER=${PAYMENTS_PROVIDER}
+      - BTCPAY_URL=${BTCPAY_URL}
+      - BTCPAY_API_KEY=${BTCPAY_API_KEY}
+      - BTCPAY_STORE_ID=${BTCPAY_STORE_ID}
+      - BTCPAY_WEBHOOK_SECRET=${BTCPAY_WEBHOOK_SECRET}
+      - LNBITS_URL=${LNBITS_URL}
+      - LNBITS_API_KEY=${LNBITS_API_KEY}
+      - LNBITS_WEBHOOK_SECRET=${LNBITS_WEBHOOK_SECRET}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - ADMIN_PUBKEYS=${ADMIN_PUBKEYS}
+      - CORS_ORIGINS=https://${DOMAIN}
+      - RATE_LIMIT_TTL=60
+      - RATE_LIMIT_MAX=100
+      - WOT_TRUST_ANCHORS=${WOT_TRUST_ANCHORS:-}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - nostrmaxi
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    expose:
+      - "6379"
+    restart: unless-stopped
+    networks:
+      - nostrmaxi
+
+  # PostgreSQL database
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nostrmaxi
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: nostrmaxi
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nostrmaxi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - nostrmaxi
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Database backup service
+  db-backup:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nostrmaxi
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: nostrmaxi
+      PGHOST: db
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-db.sh:/backup-db.sh:ro
+    command: sh -c "while true; do sleep 21600; /backup-db.sh; done"
+    depends_on:
+      - db
+    restart: unless-stopped
+    networks:
+      - nostrmaxi
+
+  # Watchtower for automatic updates (optional)
+  watchtower:
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 86400 --cleanup
+    restart: unless-stopped
+    profiles:
+      - auto-update
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  nostrmaxi:
+    driver: bridge

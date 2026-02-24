@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://nostrmaxi:nostrmaxi@db:5432/nostrmaxi
+      - PORT=3000
+      - NIP05_DEFAULT_DOMAIN=nostrmaxi.local
+      - NIP05_DEFAULT_RELAYS=wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol
+      - ADMIN_PUBKEYS=${ADMIN_PUBKEYS:-}
+      - CORS_ORIGINS=*
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Development mode with hot-reload
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://nostrmaxi:nostrmaxi@db:5432/nostrmaxi
+      - PORT=3000
+      - NIP05_DEFAULT_DOMAIN=nostrmaxi.local
+      - NIP05_DEFAULT_RELAYS=wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol
+      - ADMIN_PUBKEYS=${ADMIN_PUBKEYS:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+    profiles:
+      - dev
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nostrmaxi
+      POSTGRES_PASSWORD: nostrmaxi
+      POSTGRES_DB: nostrmaxi
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nostrmaxi"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
