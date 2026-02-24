@@ -112,6 +112,25 @@ class ApiClient {
     return this.request(`/auth/sessions/${sessionId}`, { method: 'DELETE' });
   }
 
+
+  async getEmailStatus(): Promise<{ email: string | null; verified: boolean; verifiedAt: string | null }> {
+    return this.request('/auth/email/status');
+  }
+
+  async requestEmailVerification(email: string): Promise<{ sent: boolean; email: string; expiresInSeconds: number; devCode?: string }> {
+    return this.request('/auth/email/request', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async verifyEmailCode(email: string, code: string): Promise<{ verified: boolean; email: string }> {
+    return this.request('/auth/email/verify', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    });
+  }
+
   // Payment endpoints
   async getTiers(): Promise<TierInfo[]> {
     return this.request('/payments/tiers');

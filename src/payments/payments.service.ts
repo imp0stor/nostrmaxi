@@ -206,6 +206,10 @@ export class PaymentsService {
       throw new NotFoundException('User not found');
     }
 
+    if (!user.emailVerifiedAt) {
+      throw new BadRequestException('Verify your email before creating a subscription invoice');
+    }
+
     let resolvedTier = tier;
     if (billingCycle === 'lifetime' && tier !== 'LIFETIME') {
       resolvedTier = 'LIFETIME';

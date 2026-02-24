@@ -32,6 +32,11 @@ export function Nip05Page() {
   const [customDomainInstructions, setCustomDomainInstructions] = useState<{ name: string; value: string } | null>(null);
   const [useCustomDomain, setUseCustomDomain] = useState(false);
 
+  const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [emailHintCode, setEmailHintCode] = useState<string | null>(null);
+
   const availableDomains = domainCatalog?.domains?.map((entry) => entry.domain) ?? ['nostrmaxi.com'];
 
   useEffect(() => {
@@ -39,6 +44,7 @@ export function Nip05Page() {
       fetchIdentities(),
       api.getSubscription().then(setSubscription),
       fetchDomainCatalog(),
+      api.getEmailStatus().then((status) => { setEmail(status.email || ''); setEmailVerified(status.verified); }),
     ]).finally(() => setIsLoading(false));
   }, []);
 
@@ -127,6 +133,27 @@ export function Nip05Page() {
     }
   };
 
+  const handleRequestEmailCode = async () => {
+    try {
+      const result = await api.requestEmailVerification(email);
+      setEmailHintCode(result.devCode || null);
+      setSuccess(`Verification code sent to ${result.email}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send verification code');
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    try {
+      await api.verifyEmailCode(email, emailCode);
+      setEmailVerified(true);
+      setEmailHintCode(null);
+      setSuccess('Email verified successfully.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to verify email code');
+    }
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLocalPart.trim()) return;
@@ -140,6 +167,10 @@ export function Nip05Page() {
     const chosenDomain = useCustomDomain ? customDomain.trim().toLowerCase() : selectedDomain;
     if (useCustomDomain && customDomainStatus !== 'verified') {
       setError('Custom domain is not verified yet. Complete verification before creating this identity.');
+      return;
+    }
+    if (useCustomDomain && !emailVerified) {
+      setError('Verify your email before creating custom-domain identities.');
       return;
     }
 
@@ -233,6 +264,33 @@ export function Nip05Page() {
           <button onClick={() => setSuccess(null)} className="ml-2 underline">Dismiss</button>
         </div>
       )}
+
+      <div className="mb-6 bg-nostr-dark rounded-xl p-4">
+        <h2 className="text-white font-semibold mb-3">Email Verification</h2>
+        <p className="text-gray-400 text-sm mb-3">Required for subscriptions and custom domains.</p>
+        <div className="flex flex-col md:flex-row gap-2 mb-2">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="flex-1 px-3 py-2 bg-black/30 border border-gray-700 rounded text-white"
+          />
+          <button onClick={handleRequestEmailCode} className="px-3 py-2 bg-nostr-purple rounded text-white">Send code</button>
+        </div>
+        <div className="flex flex-col md:flex-row gap-2">
+          <input
+            type="text"
+            value={emailCode}
+            onChange={(e) => setEmailCode(e.target.value)}
+            placeholder="6-digit code"
+            className="flex-1 px-3 py-2 bg-black/30 border border-gray-700 rounded text-white"
+          />
+          <button onClick={handleVerifyEmailCode} className="px-3 py-2 bg-green-600 rounded text-white">Verify</button>
+        </div>
+        {emailHintCode && <p className="text-xs text-yellow-300 mt-2">Staging code: {emailHintCode}</p>}
+        <p className={`text-sm mt-2 ${emailVerified ? 'text-green-400' : 'text-yellow-400'}`}>{emailVerified ? 'Email verified' : 'Email not verified yet'}</p>
+      </div>
 
       {/* Usage indicator */}
       {subscription && (

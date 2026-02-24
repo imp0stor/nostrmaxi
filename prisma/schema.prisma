@@ -13,6 +13,8 @@ model User {
   id        String   @id @default(cuid())
   pubkey    String   @unique // hex pubkey
   npub      String   @unique // bech32 npub
+  email     String?
+  emailVerifiedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -25,6 +27,7 @@ model User {
   lnurlSessions LnurlSession[]
 
   @@index([pubkey])
+  @@index([email])
 }
 
 // User sessions (JWT-based)

@@ -72,6 +72,8 @@ describe('NIP-05 Verification Endpoint', () => {
       id: 'user_test_1',
       pubkey: testKeypair.pubkey,
       npub: nip19.npubEncode(testKeypair.pubkey),
+      email: 'test@example.com',
+      emailVerifiedAt: new Date(),
       subscription: {
         id: 'sub_test_1',
         tier: 'FREE',

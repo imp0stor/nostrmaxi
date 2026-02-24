@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { resolveTxt } from 'dns/promises';
+import * as crypto from 'crypto';
 
 // Tier limits for NIP-05 identities
 const TIER_NIP05_LIMITS: Record<string, number> = {
@@ -160,6 +162,9 @@ export class Nip05Service {
       if (tier === 'FREE') {
         throw new ForbiddenException('Custom domains require a Pro or higher subscription.');
       }
+      if (!user.emailVerifiedAt) {
+        throw new ForbiddenException('Verify your email before using custom domains.');
+      }
       
       // Verify domain ownership
       const domainRecord = await this.prisma.domain.findFirst({
@@ -261,17 +266,34 @@ export class Nip05Service {
   }
 
   /**
+   * Get available domain catalog
+   */
+  getDomainCatalog() {
+    return {
+      defaultDomain: this.defaultDomain,
+      domains: [
+        { domain: this.defaultDomain, label: 'NostrMaxi Managed', category: 'managed' },
+      ],
+    };
+  }
+
+  /**
    * Verify a domain for custom NIP-05
    */
   async verifyDomain(pubkey: string, domain: string) {
+    const normalizedDomain = (domain || '').trim().toLowerCase();
+    if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(normalizedDomain)) {
+      throw new BadRequestException('Invalid domain format');
+    }
+
     // Get or create domain record
-    let domainRecord = await this.prisma.domain.findUnique({ where: { domain } });
+    let domainRecord = await this.prisma.domain.findUnique({ where: { domain: normalizedDomain } });
 
     if (!domainRecord) {
-      const verifyToken = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('hex');
+      const verifyToken = crypto.randomBytes(16).toString('hex');
       domainRecord = await this.prisma.domain.create({
         data: {
-          domain,
+          domain: normalizedDomain,
           ownerPubkey: pubkey,
           verifyToken,
         },
@@ -282,14 +304,30 @@ export class Nip05Service {
       throw new BadRequestException('Domain owned by another user');
     }
 
-    // Return verification instructions
+    const expectedValue = `nostrmaxi-verify=${domainRecord.verifyToken}`;
+    let verified = false;
+
+    try {
+      const txtRecords = await resolveTxt('_nostrmaxi.' + normalizedDomain);
+      verified = txtRecords.some((parts) => parts.join('').trim() === expectedValue);
+    } catch {
+      verified = false;
+    }
+
+    if (verified && !domainRecord.verified) {
+      domainRecord = await this.prisma.domain.update({
+        where: { domain: normalizedDomain },
+        data: { verified: true },
+      });
+    }
+
     return {
-      domain,
-      verified: domainRecord.verified,
-      instructions: domainRecord.verified ? null : {
+      domain: normalizedDomain,
+      verified,
+      instructions: verified ? null : {
         type: 'TXT',
         name: '_nostrmaxi',
-        value: `nostrmaxi-verify=${domainRecord.verifyToken}`,
+        value: expectedValue,
       },
     };
   }

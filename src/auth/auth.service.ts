@@ -165,6 +165,8 @@ export class AuthService {
         tier: user.subscription?.tier || 'FREE',
         nip05s: user.nip05s,
         wotScore: user.wotScore?.trustScore || 0,
+        email: user.email || null,
+        emailVerified: !!user.emailVerifiedAt,
       },
       expiresAt: Math.floor(expiresAt.getTime() / 1000),
     };
@@ -409,6 +411,61 @@ export class AuthService {
     }
 
     return user;
+  }
+
+
+  async getEmailVerificationStatus(pubkey: string) {
+    const user = await this.prisma.user.findUnique({ where: { pubkey } });
+    return {
+      email: user?.email || null,
+      verified: !!user?.emailVerifiedAt,
+      verifiedAt: user?.emailVerifiedAt || null,
+    };
+  }
+
+  async requestEmailVerification(pubkey: string, email: string) {
+    const normalized = (email || '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      throw new BadRequestException('Invalid email address');
+    }
+
+    const code = (Math.floor(100000 + Math.random() * 900000)).toString();
+    const key = `email-verify:${pubkey}:${normalized}`;
+    await this.cacheManager.set(key, code, 10 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { pubkey },
+      data: { email: normalized, emailVerifiedAt: null },
+    });
+
+    return {
+      sent: true,
+      email: normalized,
+      expiresInSeconds: 600,
+      devCode: code,
+    };
+  }
+
+  async verifyEmailCode(pubkey: string, email: string, code: string) {
+    const normalized = (email || '').trim().toLowerCase();
+    const submitted = (code || '').trim();
+    const key = `email-verify:${pubkey}:${normalized}`;
+    const expected = await this.cacheManager.get<string>(key);
+
+    if (!expected || expected !== submitted) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    await this.prisma.user.update({
+      where: { pubkey },
+      data: {
+        email: normalized,
+        emailVerifiedAt: new Date(),
+      },
+    });
+    await this.cacheManager.del(key);
+
+    return { verified: true, email: normalized };
   }
 
   // LNURL-auth methods

@@ -89,6 +89,8 @@ export class AuthController {
       tier: user.subscription?.tier || 'FREE',
       nip05s: user.nip05s,
       wotScore: user.wotScore?.trustScore || 0,
+      email: user.email || null,
+      emailVerified: !!user.emailVerifiedAt,
       subscription: user.subscription ? {
         tier: user.subscription.tier,
         expiresAt: user.subscription.expiresAt,
@@ -136,6 +138,44 @@ export class AuthController {
     const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const pubkey = await this.authService.verifyAuth(authHeader, 'DELETE', url);
     await this.authService.revokeSession(pubkey, sessionId);
+  }
+
+  @Get('email/status')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get email verification status' })
+  async getEmailStatus(
+    @Headers('authorization') authHeader: string,
+    @Req() req: Request,
+  ) {
+    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const pubkey = await this.authService.verifyAuth(authHeader, 'GET', url);
+    return this.authService.getEmailVerificationStatus(pubkey);
+  }
+
+  @Post('email/request')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Request email verification code' })
+  async requestEmailVerification(
+    @Headers('authorization') authHeader: string,
+    @Req() req: Request,
+    @Body() body: { email: string },
+  ) {
+    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
+    return this.authService.requestEmailVerification(pubkey, body.email);
+  }
+
+  @Post('email/verify')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Verify email code' })
+  async verifyEmailCode(
+    @Headers('authorization') authHeader: string,
+    @Req() req: Request,
+    @Body() body: { email: string; code: string },
+  ) {
+    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
+    return this.authService.verifyEmailCode(pubkey, body.email, body.code);
   }
 
   // ============ Legacy NIP-98 Auth ============

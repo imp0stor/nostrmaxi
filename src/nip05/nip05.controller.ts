@@ -87,6 +87,13 @@ export class Nip05Controller {
     return this.nip05Service.listByPubkey(pubkey);
   }
 
+
+  @Get('api/v1/nip05/domains')
+  @ApiOperation({ summary: 'Get domain catalog for NIP-05 provisioning' })
+  async getDomainCatalog() {
+    return this.nip05Service.getDomainCatalog();
+  }
+
   /**
    * Verify custom domain
    */
