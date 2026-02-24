@@ -33,8 +33,6 @@ export interface User {
   tier: SubscriptionTier;
   nip05s: Nip05[];
   wotScore: number;
-  email?: string | null;
-  emailVerified?: boolean;
   subscription?: {
     tier: SubscriptionTier;
     expiresAt: string | null;

@@ -7,6 +7,8 @@ import { HomePage } from './pages/HomePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { Nip05Page } from './pages/Nip05Page';
 import { ReceiptPage } from './pages/ReceiptPage';
+import { RoadmapPage } from './pages/Roadmap';
+import { ProfilePage } from './pages/ProfilePage';
 import { truncateNpub } from './lib/nostr';
 
 export default function App() {
@@ -25,6 +27,9 @@ export default function App() {
     setMenuOpen(false);
   }, [location.pathname]);
 
+  const navClass = (path: string) =>
+    `font-medium ${location.pathname === path ? 'text-white' : 'text-gray-300 hover:text-white'}`;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Navigation */}
@@ -41,25 +46,22 @@ export default function App() {
 
             {/* Desktop navigation */}
             <div className="hidden md:flex items-center gap-6">
-              <Link
-                to="/pricing"
-                className="text-gray-300 hover:text-white font-medium"
-              >
+              <Link to="/pricing" className={navClass('/pricing')}>
                 Pricing
+              </Link>
+              <Link to="/roadmap" className={navClass('/roadmap')}>
+                Roadmap
               </Link>
               {isAuthenticated && (
                 <>
-                  <Link
-                    to="/dashboard"
-                    className="text-gray-300 hover:text-white font-medium"
-                  >
+                  <Link to="/dashboard" className={navClass('/dashboard')}>
                     Dashboard
                   </Link>
-                  <Link
-                    to="/nip05"
-                    className="text-gray-300 hover:text-white font-medium"
-                  >
+                  <Link to="/nip05" className={navClass('/nip05')}>
                     NIP-05
+                  </Link>
+                  <Link to="/profile/me" className={navClass('/profile/me')}>
+                    Profile
                   </Link>
                 </>
               )}
@@ -145,25 +147,22 @@ export default function App() {
         {menuOpen && (
           <div className="md:hidden border-t border-gray-800 bg-nostr-dark">
             <div className="px-4 py-3 space-y-3">
-              <Link
-                to="/pricing"
-                className="block text-gray-300 hover:text-white font-medium py-2"
-              >
+              <Link to="/pricing" className={`block font-medium py-2 ${location.pathname === '/pricing' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
                 Pricing
+              </Link>
+              <Link to="/roadmap" className={`block font-medium py-2 ${location.pathname === '/roadmap' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
+                Roadmap
               </Link>
               {isAuthenticated ? (
                 <>
-                  <Link
-                    to="/dashboard"
-                    className="block text-gray-300 hover:text-white font-medium py-2"
-                  >
+                  <Link to="/dashboard" className={`block font-medium py-2 ${location.pathname === '/dashboard' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
                     Dashboard
                   </Link>
-                  <Link
-                    to="/nip05"
-                    className="block text-gray-300 hover:text-white font-medium py-2"
-                  >
+                  <Link to="/nip05" className={`block font-medium py-2 ${location.pathname === '/nip05' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
                     NIP-05
+                  </Link>
+                  <Link to="/profile/me" className={`block font-medium py-2 ${location.pathname === '/profile/me' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
+                    Profile
                   </Link>
                   <button
                     onClick={logout}
@@ -190,6 +189,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/roadmap" element={<RoadmapPage />} />
           <Route
             path="/dashboard"
             element={
@@ -209,6 +209,10 @@ export default function App() {
                 <Navigate to="/" replace />
               )
             }
+          />
+          <Route
+            path="/profile/:npub"
+            element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />}
           />
           <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
         </Routes>

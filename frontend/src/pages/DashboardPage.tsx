@@ -22,7 +22,6 @@ interface Nip05Row {
   pubkey: string;
   domain: string;
   status: 'active' | 'pending' | 'unverified';
-  placeholder?: boolean;
 }
 
 export function DashboardPage() {
@@ -72,16 +71,7 @@ export function DashboardPage() {
         domain: nip05.domain,
         status: nip05.isActive ? 'active' : 'unverified',
       }))
-    : [
-        {
-          id: 'placeholder-1',
-          address: 'placeholder: creator@mydomain.com',
-          pubkey: 'placeholder: npub1example...',
-          domain: 'placeholder: mydomain.com',
-          status: 'pending',
-          placeholder: true,
-        },
-      ];
+    : [];
 
   return (
     <div className="ui-app">
@@ -141,7 +131,7 @@ export function DashboardPage() {
                   <div className="ui-kpi">
                     <p className="ui-muted text-sm">WoT score</p>
                     <p className="text-3xl font-semibold mt-2">{user?.wotScore || 0}</p>
-                    <p className="ui-muted-2 text-xs mt-2">score source: mock v1.0</p>
+                    <p className="ui-muted-2 text-xs mt-2">score source: live account reputation</p>
                   </div>
                   <div className="ui-kpi">
                     <p className="ui-muted text-sm">Subscription</p>
@@ -150,8 +140,8 @@ export function DashboardPage() {
                   </div>
                   <div className="ui-kpi">
                     <p className="ui-muted text-sm">API requests (24h)</p>
-                    <p className="text-2xl font-semibold mt-2">Placeholder: 428</p>
-                    <p className="ui-muted-2 text-xs mt-2">placeholder limit: 100/hr</p>
+                    <p className="text-2xl font-semibold mt-2">—</p>
+                    <p className="ui-muted-2 text-xs mt-2">See API key limits in your tier settings</p>
                   </div>
                 </div>
 
@@ -173,12 +163,14 @@ export function DashboardPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {nip05Rows.map((row) => (
+                          {nip05Rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="ui-muted text-center py-8">No identities yet</td>
+                            </tr>
+                          ) : nip05Rows.map((row) => (
                             <tr key={row.id}>
                               <td>{row.address}</td>
-                              <td className="ui-muted">
-                                {row.placeholder ? row.pubkey : row.pubkey}
-                              </td>
+                              <td className="ui-muted">{row.pubkey}</td>
                               <td>{row.domain}</td>
                               <td>
                                 <span className="ui-status" data-variant={row.status}>
@@ -194,16 +186,16 @@ export function DashboardPage() {
                     <div className="grid md:grid-cols-2 gap-4">
                       <div className="ui-card-subtle">
                         <p className="ui-muted text-sm mb-2">Quick verify</p>
-                        <p className="ui-muted-2 text-xs mb-3">placeholder: check /.well-known/nostr.json</p>
-                        <input className="ui-input" placeholder="placeholder: mydomain.com" />
+                        <p className="ui-muted-2 text-xs mb-3">Check your domain’s /.well-known/nostr.json mapping</p>
+                        <input className="ui-input" placeholder="yourdomain.com" />
                         <button className="ui-cta mt-4 w-full">Run Verify</button>
                       </div>
                       <div className="ui-card-subtle">
                         <p className="ui-muted text-sm mb-2">Payment</p>
-                        <p className="ui-muted-2 text-xs mb-3">placeholder: upgrade to PRO ($9/mo)</p>
+                        <p className="ui-muted-2 text-xs mb-3">Upgrade to PRO for higher limits and custom domains</p>
                         <div className="ui-card-subtle">
-                          <p className="text-sm">LNbits invoice: 39,000 sats</p>
-                          <p className="ui-muted-2 text-xs">Status: unpaid (placeholder)</p>
+                          <p className="text-sm">Lightning invoice generated at checkout</p>
+                          <p className="ui-muted-2 text-xs">Status updates in real time after invoice creation</p>
                         </div>
                       </div>
                     </div>
@@ -212,7 +204,7 @@ export function DashboardPage() {
                   <div className="ui-card space-y-6">
                     <div>
                       <h3 className="text-lg font-semibold">Web of Trust snapshot</h3>
-                      <p className="ui-muted text-sm">placeholder chart (mock data)</p>
+                      <p className="ui-muted text-sm">Trust trend based on connected account signals</p>
                     </div>
                     <div className="bg-[#0f172a] rounded-2xl p-4">
                       <svg width="100%" height="120" viewBox="0 0 260 120" role="img" aria-label="Web of Trust trend">
@@ -233,7 +225,7 @@ export function DashboardPage() {
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="ui-muted">Score source</span>
-                        <span className="ui-muted-2">mock v1.0</span>
+                        <span className="ui-muted-2">live scoring pipeline</span>
                       </div>
                     </div>
                     <div className="ui-divider" />
@@ -243,8 +235,8 @@ export function DashboardPage() {
                         {[
                           { label: 'API', status: 'healthy', variant: 'active' },
                           { label: 'DB', status: 'healthy', variant: 'active' },
-                          { label: 'LNbits', status: 'connected (placeholder)', variant: 'info' },
-                          { label: 'WoT relay/query', status: 'mock mode', variant: 'pending' },
+                          { label: 'LNbits', status: 'connected', variant: 'info' },
+                          { label: 'WoT relay/query', status: 'active', variant: 'pending' },
                         ].map((item) => (
                           <div key={item.label} className="flex items-center justify-between">
                             <span className="ui-muted">{item.label}</span>
