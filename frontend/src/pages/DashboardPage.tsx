@@ -5,6 +5,7 @@ import { ServiceStatus } from '../components/status/ServiceStatus';
 import { SubscriptionManager } from '../components/subscription/SubscriptionManager';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
+import { useSharedUI } from '../../../../shared-ui/feature-flags';
 
 type TabId = 'overview' | 'subscription' | 'sessions' | 'api-keys';
 
@@ -32,6 +33,7 @@ export function DashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  const { enabled: sharedUiEnabled } = useSharedUI();
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'overview', label: 'Dashboard' },
@@ -181,9 +183,15 @@ export function DashboardPage() {
                               </td>
                               <td>{row.domain}</td>
                               <td>
-                                <span className="ui-status" data-variant={row.status}>
-                                  {row.status === 'active' ? 'ACTIVE' : row.status === 'pending' ? 'PENDING DNS' : 'UNVERIFIED'}
-                                </span>
+                                {sharedUiEnabled ? (
+                                  <span className="ui-status" data-variant={row.status}>
+                                    {row.status === 'active' ? 'ACTIVE' : row.status === 'pending' ? 'PENDING DNS' : 'UNVERIFIED'}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs uppercase tracking-wide ui-muted">
+                                    {row.status === 'active' ? 'ACTIVE' : row.status === 'pending' ? 'PENDING DNS' : 'UNVERIFIED'}
+                                  </span>
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -248,9 +256,15 @@ export function DashboardPage() {
                         ].map((item) => (
                           <div key={item.label} className="flex items-center justify-between">
                             <span className="ui-muted">{item.label}</span>
-                            <span className="ui-status" data-variant={item.variant}>
-                              {item.status}
-                            </span>
+                            {sharedUiEnabled ? (
+                              <span className="ui-status" data-variant={item.variant}>
+                                {item.status}
+                              </span>
+                            ) : (
+                              <span className="text-xs uppercase tracking-wide ui-muted">
+                                {item.status}
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>

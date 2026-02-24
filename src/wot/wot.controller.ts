@@ -61,14 +61,42 @@ export class WotController {
   @Post('recalculate/:pubkey')
   @ApiOperation({ summary: 'Recalculate WoT score for a pubkey' })
   @ApiParam({ name: 'pubkey', description: 'Hex pubkey or npub' })
+  @ApiQuery({ name: 'useRealRelays', required: false, description: 'Use real relay queries (slower, default: false)' })
   @ApiResponse({ status: 200, description: 'Updated WoT score' })
-  async recalculate(@Param('pubkey') pubkey: string) {
+  async recalculate(
+    @Param('pubkey') pubkey: string,
+    @Query('useRealRelays') useRealRelays?: string,
+  ) {
     let hexPubkey = pubkey;
     if (pubkey.startsWith('npub1')) {
       const { nip19 } = await import('nostr-tools');
       const decoded = nip19.decode(pubkey);
       hexPubkey = decoded.data as string;
     }
-    return this.wotService.recalculate(hexPubkey);
+    return this.wotService.recalculate(hexPubkey, useRealRelays === 'true');
+  }
+
+  @Post('recalculate-batch')
+  @ApiOperation({ summary: 'Batch recalculate WoT scores for multiple pubkeys' })
+  @ApiQuery({ name: 'pubkeys', required: true, description: 'Comma-separated hex pubkeys or npubs' })
+  @ApiQuery({ name: 'useRealRelays', required: false, description: 'Use real relay queries (slower, default: false)' })
+  @ApiResponse({ status: 200, description: 'Batch WoT score results' })
+  async recalculateBatch(
+    @Query('pubkeys') pubkeysParam: string,
+    @Query('useRealRelays') useRealRelays?: string,
+  ) {
+    const pubkeys = pubkeysParam.split(',');
+    const hexPubkeys = await Promise.all(
+      pubkeys.map(async (pk) => {
+        if (pk.startsWith('npub1')) {
+          const { nip19 } = await import('nostr-tools');
+          const decoded = nip19.decode(pk);
+          return decoded.data as string;
+        }
+        return pk;
+      }),
+    );
+    
+    return this.wotService.recalculateBatch(hexPubkeys, useRealRelays === 'true');
   }
 }

@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Tier limits for NIP-05 identities
 const TIER_NIP05_LIMITS: Record<string, number> = {
   FREE: 1,
-  PRO: 1,
+  PRO: 3,       // ✅ Fixed: PRO users get 3 identities
   BUSINESS: 10,
-  LIFETIME: 1,
+  LIFETIME: 5,  // ✅ Fixed: LIFETIME users get 5 identities
 };
 
 // ⭐ RESERVED NIP-05 NAMES
@@ -24,10 +26,22 @@ export interface Nip05Response {
   relays?: Record<string, string[]>;
 }
 
+export interface DomainCatalogEntry {
+  domain: string;
+  label?: string;
+  category?: string;
+}
+
+export interface DomainCatalogResponse {
+  defaultDomain: string;
+  domains: DomainCatalogEntry[];
+}
+
 @Injectable()
 export class Nip05Service {
   private defaultDomain: string;
   private defaultRelays: string[];
+  private domainCatalog: DomainCatalogEntry[];
 
   constructor(
     private prisma: PrismaService,
@@ -37,6 +51,80 @@ export class Nip05Service {
     this.defaultRelays = this.config.get('NIP05_DEFAULT_RELAYS', 
       'wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol'
     ).split(',');
+    this.domainCatalog = this.loadDomainCatalog();
+  }
+
+  private normalizeDomain(domain: string) {
+    return domain.trim().toLowerCase();
+  }
+
+  private isValidDomain(domain: string) {
+    return /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain);
+  }
+
+  private loadDomainCatalog(): DomainCatalogEntry[] {
+    const fallback: DomainCatalogEntry[] = [
+      { domain: this.defaultDomain, label: 'NostrMaxi', category: 'nostrmaxi' },
+    ];
+
+    const rawJson = this.config.get<string>('NIP05_DOMAIN_CATALOG_JSON');
+    const rawPath = this.config.get<string>('NIP05_DOMAIN_CATALOG_PATH');
+
+    let catalogPayload: any = null;
+
+    if (rawJson) {
+      try {
+        catalogPayload = JSON.parse(rawJson);
+      } catch (_err) {
+        return fallback;
+      }
+    } else {
+      const defaultPath = path.resolve(process.cwd(), 'config', 'nip05-domain-catalog.json');
+      const catalogPath = rawPath ? path.resolve(rawPath) : defaultPath;
+
+      try {
+        if (fs.existsSync(catalogPath)) {
+          catalogPayload = JSON.parse(fs.readFileSync(catalogPath, 'utf-8'));
+        }
+      } catch (_err) {
+        return fallback;
+      }
+    }
+
+    const domains = Array.isArray(catalogPayload?.domains) ? catalogPayload.domains : catalogPayload;
+    if (!Array.isArray(domains)) {
+      return fallback;
+    }
+
+    const cleaned: DomainCatalogEntry[] = [];
+    const seen = new Set<string>();
+
+    domains.forEach((entry: any) => {
+      const domain = typeof entry === 'string' ? entry : entry?.domain;
+      if (!domain || typeof domain !== 'string') return;
+      const normalized = this.normalizeDomain(domain);
+      if (!this.isValidDomain(normalized) || seen.has(normalized)) return;
+      seen.add(normalized);
+      cleaned.push({
+        domain: normalized,
+        label: typeof entry?.label === 'string' ? entry.label : undefined,
+        category: typeof entry?.category === 'string' ? entry.category : undefined,
+      });
+    });
+
+    const normalizedDefault = this.normalizeDomain(this.defaultDomain);
+    if (!seen.has(normalizedDefault) && this.isValidDomain(normalizedDefault)) {
+      cleaned.unshift({ domain: normalizedDefault, label: 'NostrMaxi', category: 'nostrmaxi' });
+    }
+
+    return cleaned.length ? cleaned : fallback;
+  }
+
+  getDomainCatalog(): DomainCatalogResponse {
+    return {
+      defaultDomain: this.defaultDomain,
+      domains: this.domainCatalog,
+    };
   }
 
   /**
@@ -261,17 +349,102 @@ export class Nip05Service {
   }
 
   /**
+   * Check if a NIP-05 address is available
+   */
+  async checkAvailability(localPart: string, domain?: string) {
+    const targetDomain = domain || this.defaultDomain;
+    
+    // Normalize and validate
+    const normalizedLocal = localPart
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_-]/g, '');
+    
+    // Check if it's reserved
+    if (RESERVED_NAMES.has(normalizedLocal)) {
+      return {
+        available: false,
+        reason: 'reserved',
+        message: `"${normalizedLocal}" is a reserved name and cannot be claimed.`,
+      };
+    }
+
+    // Check length
+    if (normalizedLocal.length < 2) {
+      return {
+        available: false,
+        reason: 'too-short',
+        message: 'Username must be at least 2 characters.',
+      };
+    }
+
+    if (normalizedLocal.length > 32) {
+      return {
+        available: false,
+        reason: 'too-long',
+        message: 'Username must be at most 32 characters.',
+      };
+    }
+
+    // Check format
+    if (normalizedLocal.startsWith('-') || normalizedLocal.endsWith('-')) {
+      return {
+        available: false,
+        reason: 'invalid-format',
+        message: 'Username cannot start or end with a hyphen.',
+      };
+    }
+
+    if (normalizedLocal.includes('--')) {
+      return {
+        available: false,
+        reason: 'invalid-format',
+        message: 'Username cannot contain consecutive hyphens.',
+      };
+    }
+
+    // Check if already taken
+    const existing = await this.prisma.nip05.findFirst({
+      where: {
+        localPart: normalizedLocal,
+        domain: targetDomain,
+        isActive: true,
+      },
+    });
+
+    if (existing) {
+      return {
+        available: false,
+        reason: 'taken',
+        message: `${normalizedLocal}@${targetDomain} is already taken.`,
+      };
+    }
+
+    return {
+      available: true,
+      normalizedLocal,
+      previewAddress: `${normalizedLocal}@${targetDomain}`,
+    };
+  }
+
+  /**
    * Verify a domain for custom NIP-05
    */
   async verifyDomain(pubkey: string, domain: string) {
+    const normalizedDomain = this.normalizeDomain(domain);
+    
+    if (!this.isValidDomain(normalizedDomain)) {
+      throw new BadRequestException('Invalid domain format');
+    }
+
     // Get or create domain record
-    let domainRecord = await this.prisma.domain.findUnique({ where: { domain } });
+    let domainRecord = await this.prisma.domain.findUnique({ where: { domain: normalizedDomain } });
 
     if (!domainRecord) {
       const verifyToken = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('hex');
       domainRecord = await this.prisma.domain.create({
         data: {
-          domain,
+          domain: normalizedDomain,
           ownerPubkey: pubkey,
           verifyToken,
         },
@@ -279,18 +452,80 @@ export class Nip05Service {
     }
 
     if (domainRecord.ownerPubkey !== pubkey) {
-      throw new BadRequestException('Domain owned by another user');
+      throw new BadRequestException('Domain is already claimed by another user');
+    }
+
+    // If already verified, return success
+    if (domainRecord.verified) {
+      return {
+        domain: normalizedDomain,
+        verified: true,
+        instructions: null,
+      };
+    }
+
+    // Ensure verifyToken exists
+    if (!domainRecord.verifyToken) {
+      throw new BadRequestException('Domain record is in invalid state. Please try verifying again.');
+    }
+
+    // ✅ NEW: Actually check DNS for verification
+    const isVerified = await this.checkDnsVerification(normalizedDomain, domainRecord.verifyToken);
+
+    if (isVerified) {
+      // Mark as verified
+      domainRecord = await this.prisma.domain.update({
+        where: { id: domainRecord.id },
+        data: { verified: true },
+      });
+
+      // Audit log
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'domain.verified',
+          entity: 'Domain',
+          entityId: domainRecord.id,
+          actorPubkey: pubkey,
+          details: { domain: normalizedDomain },
+        },
+      });
+
+      return {
+        domain: normalizedDomain,
+        verified: true,
+        instructions: null,
+      };
     }
 
     // Return verification instructions
     return {
-      domain,
-      verified: domainRecord.verified,
-      instructions: domainRecord.verified ? null : {
+      domain: normalizedDomain,
+      verified: false,
+      instructions: {
         type: 'TXT',
         name: '_nostrmaxi',
         value: `nostrmaxi-verify=${domainRecord.verifyToken}`,
       },
     };
+  }
+
+  /**
+   * Check DNS TXT record for domain verification
+   */
+  private async checkDnsVerification(domain: string, expectedToken: string): Promise<boolean> {
+    try {
+      const dns = await import('node:dns/promises');
+      const txtRecords = await dns.resolveTxt(`_nostrmaxi.${domain}`);
+      
+      // Flatten TXT records (they come as string[][])
+      const flatRecords = txtRecords.flat();
+      
+      // Check if any record matches our verification token
+      const expectedValue = `nostrmaxi-verify=${expectedToken}`;
+      return flatRecords.some(record => record === expectedValue);
+    } catch (error) {
+      // DNS lookup failed (domain doesn't have the record yet)
+      return false;
+    }
   }
 }

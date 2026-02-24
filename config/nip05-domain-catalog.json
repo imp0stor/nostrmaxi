@@ -1,0 +1,19 @@
+{
+  "domains": [
+    {
+      "domain": "nostrmaxi.com",
+      "label": "NostrMaxi",
+      "category": "nostrmaxi"
+    },
+    {
+      "domain": "nostrmaxi.strangesignal.ai",
+      "label": "Strange Signal (NostrMaxi)",
+      "category": "strangesignal"
+    },
+    {
+      "domain": "strangesignal.ai",
+      "label": "Strange Signal",
+      "category": "strangesignal"
+    }
+  ]
+}

@@ -23,7 +23,7 @@ export class ProvisionNip05Dto {
   })
   @IsOptional()
   @IsString()
-  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.[a-z]{2,}$/, {
+  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/, {
     message: 'Invalid domain format'
   })
   domain?: string;
@@ -53,7 +53,7 @@ export class VerifyDomainDto {
   @ApiProperty({ description: 'Domain to verify' })
   @IsString()
   @IsNotEmpty()
-  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?\.[a-z]{2,}$/, {
+  @Matches(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/, {
     message: 'Invalid domain format'
   })
   domain: string;

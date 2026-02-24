@@ -40,6 +40,19 @@ nano .env.prod
 - `LNBITS_API_KEY` - Your LNbits API key (legacy fallback)
 - `ADMIN_PUBKEYS` - Your nostr pubkey(s)
 
+### Database Connection Pooling (P1)
+To avoid exhausting Postgres connections under load, set a connection limit in `DATABASE_URL`:
+
+```bash
+DATABASE_URL=postgresql://nostrmaxi:password@db:5432/nostrmaxi?connection_limit=10&pool_timeout=30
+```
+
+If you are using PgBouncer, append:
+
+```bash
+DATABASE_URL=postgresql://nostrmaxi:password@db:5432/nostrmaxi?pgbouncer=true&connection_limit=10
+```
+
 ### 2. Set Up SSL
 
 ```bash

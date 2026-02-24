@@ -235,6 +235,10 @@ BTCPAY_API_KEY=your_btcpay_api_key
 BTCPAY_STORE_ID=your_btcpay_store_id
 BTCPAY_WEBHOOK_SECRET=<generate with: openssl rand -hex 32>
 
+# Local-test (Operator BTCPay)
+# See: LOCALTEST-BTCPAY-GREENFIELD-RUNBOOK.md
+# ./scripts/btcpay-localtest-operator.sh
+
 # LNbits Integration (legacy fallback)
 LNBITS_URL=https://your-lnbits-instance.com
 LNBITS_API_KEY=your_lnbits_admin_key

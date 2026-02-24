@@ -7,6 +7,9 @@ dist/
 # Environment
 .env.local
 .env.*.local
+.env.localtest
+.env.localtest.*
+.env.localtest.operator
 
 # IDE
 .idea/
@@ -25,10 +28,3 @@ npm-debug.log*
 # Prisma
 prisma/*.db
 prisma/*.db-journal
-.env
-.env.*
-!.env.example
-nginx/ssl/
-*.pem
-*.key
-secrets/

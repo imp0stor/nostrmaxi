@@ -1,13 +1,16 @@
-import { Controller, Get, Post, Body, Headers, Req, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Headers, Req, Param, Query, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { PaymentsService, SubscriptionTier } from './payments.service';
+import { PaymentsService } from './payments.service';
 import { AuthService } from '../auth/auth.service';
 import { Request } from 'express';
 import { PaymentProviderType } from './providers';
+import { CreateInvoiceDto } from './dto/payments.dto';
 
 @ApiTags('payments')
 @Controller('api/v1/payments')
 export class PaymentsController {
+  private readonly logger = new Logger(PaymentsController.name);
+
   constructor(
     private paymentsService: PaymentsService,
     private authService: AuthService,
@@ -29,7 +32,7 @@ export class PaymentsController {
   async createInvoice(
     @Headers('authorization') authHeader: string,
     @Req() req: Request,
-    @Body() body: { tier: SubscriptionTier; applyWotDiscount?: boolean; billingCycle?: 'monthly' | 'annual' | 'lifetime' },
+    @Body() body: CreateInvoiceDto,
   ) {
     const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
@@ -53,6 +56,8 @@ export class PaymentsController {
   @Post('webhook')
   @ApiOperation({ summary: 'Payment webhook handler (called by providers)' })
   @ApiResponse({ status: 200, description: 'Webhook processed' })
+  @ApiResponse({ status: 400, description: 'Invalid webhook payload or signature' })
+  @ApiResponse({ status: 500, description: 'Webhook processing failed' })
   async handleWebhook(
     @Body() body: any,
     @Headers('btcpay-sig') btcpaySignature?: string,
@@ -63,7 +68,37 @@ export class PaymentsController {
     const signature = btcpaySignature || lnbitsSignature;
     const providerType = (providerQuery || providerHeader) as PaymentProviderType | undefined;
 
-    return this.paymentsService.handleWebhook(body, signature, providerType);
+    try {
+      // Log webhook receipt (sanitized)
+      this.logger.log(`Webhook received`, JSON.stringify({
+        provider: providerType || 'unknown',
+        hasSignature: !!signature,
+        bodyKeys: Object.keys(body || {}),
+        timestamp: new Date().toISOString(),
+      }));
+
+      const result = await this.paymentsService.handleWebhook(body, signature, providerType);
+      
+      this.logger.log(`Webhook processed`, JSON.stringify({
+        provider: providerType,
+        result,
+      }));
+      
+      return result;
+    } catch (error) {
+      // Log error with context but don't expose sensitive details
+      this.logger.error(`Webhook processing failed`, JSON.stringify({
+        provider: providerType,
+        error: error.message,
+        stack: error.stack,
+        bodyKeys: Object.keys(body || {}),
+        hasSignature: !!signature,
+      }));
+      
+      // Return generic error to webhook caller (don't leak internals)
+      // But log detailed error for debugging
+      throw error; // NestJS will handle response
+    }
   }
 
   @Get('history')

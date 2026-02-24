@@ -52,6 +52,12 @@ describe('NIP-05 Verification Endpoint', () => {
               const config: any = {
                 NIP05_DEFAULT_DOMAIN: 'test.nostrmaxi.com',
                 NIP05_DEFAULT_RELAYS: 'wss://relay.test.com,wss://relay2.test.com',
+                NIP05_DOMAIN_CATALOG_JSON: JSON.stringify({
+                  domains: [
+                    { domain: 'test.nostrmaxi.com', label: 'Test NostrMaxi', category: 'nostrmaxi' },
+                    { domain: 'nostrmaxi.com', label: 'NostrMaxi', category: 'nostrmaxi' },
+                  ],
+                }),
                 JWT_SECRET: 'test-jwt-secret-at-least-32-characters-long',
                 BASE_URL: 'http://localhost:3000',
               };
@@ -158,6 +164,19 @@ describe('NIP-05 Verification Endpoint', () => {
     });
   });
 
+  describe('GET /api/v1/nip05/domains', () => {
+    it('should return the domain catalog', async () => {
+      const result = await controller.listDomains();
+      expect(result.defaultDomain).toBe('test.nostrmaxi.com');
+      expect(result.domains).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ domain: 'test.nostrmaxi.com' }),
+          expect.objectContaining({ domain: 'nostrmaxi.com' }),
+        ])
+      );
+    });
+  });
+
   describe('POST /api/v1/nip05/provision', () => {
     let mockRequest: any;
 
@@ -258,7 +277,7 @@ describe('NIP-05 Verification Endpoint', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('should enforce tier limits for FREE users', async () => {
+    it('should enforce tier limits for FREE users (1 identity max)', async () => {
       // Setup: User already has 1 NIP-05 (FREE limit)
       const nip05 = {
         id: 'nip05_5',
@@ -280,6 +299,73 @@ describe('NIP-05 Verification Endpoint', () => {
       await expect(
         controller.provision(authHeader, mockRequest, {
           localPart: 'second',
+          domain: 'test.nostrmaxi.com',
+        })
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should allow PRO users to create up to 3 identities', async () => {
+      // Setup: Upgrade to PRO
+      testUser.subscription.tier = 'PRO';
+      
+      // Create first two identities
+      const nip05_1 = {
+        id: 'nip05_10',
+        localPart: 'first',
+        domain: 'test.nostrmaxi.com',
+        userId: testUser.id,
+        isActive: true,
+      };
+      const nip05_2 = {
+        id: 'nip05_11',
+        localPart: 'second',
+        domain: 'test.nostrmaxi.com',
+        userId: testUser.id,
+        isActive: true,
+      };
+      prisma.nip05s.set(nip05_1.id, nip05_1);
+      prisma.nip05s.set(nip05_2.id, nip05_2);
+      testUser.nip05s = [nip05_1, nip05_2];
+
+      const authHeader = createNip98AuthHeader(
+        'POST',
+        'http://localhost:3000/api/v1/nip05/provision',
+        testKeypair.secretKey
+      );
+
+      // Act - Should succeed (3rd identity)
+      const result = await controller.provision(
+        authHeader,
+        mockRequest,
+        { localPart: 'third', domain: 'test.nostrmaxi.com' }
+      );
+
+      // Assert
+      expect(result.address).toBe('third@test.nostrmaxi.com');
+    });
+
+    it('should enforce PRO tier limit at 3 identities', async () => {
+      // Setup: Upgrade to PRO with 3 existing identities
+      testUser.subscription.tier = 'PRO';
+      
+      const identities = [
+        { id: 'nip05_12', localPart: 'first', domain: 'test.nostrmaxi.com', userId: testUser.id, isActive: true },
+        { id: 'nip05_13', localPart: 'second', domain: 'test.nostrmaxi.com', userId: testUser.id, isActive: true },
+        { id: 'nip05_14', localPart: 'third', domain: 'test.nostrmaxi.com', userId: testUser.id, isActive: true },
+      ];
+      identities.forEach((n) => prisma.nip05s.set(n.id, n));
+      testUser.nip05s = identities;
+
+      const authHeader = createNip98AuthHeader(
+        'POST',
+        'http://localhost:3000/api/v1/nip05/provision',
+        testKeypair.secretKey
+      );
+
+      // Act & Assert - Should fail (4th identity)
+      await expect(
+        controller.provision(authHeader, mockRequest, {
+          localPart: 'fourth',
           domain: 'test.nostrmaxi.com',
         })
       ).rejects.toThrow(ForbiddenException);

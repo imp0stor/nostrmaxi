@@ -24,6 +24,9 @@ module.exports = {
     '^nostr-tools$': '<rootDir>/src/__tests__/mocks/nostr-tools.ts',
     '^@noble/curves/secp256k1$': '<rootDir>/src/__tests__/mocks/nostr-tools.ts',
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@nostr-dev-kit|@scure|nostr-tools|@noble)/)',
+  ],
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
   testTimeout: 10000,
   maxWorkers: 1, // Avoid database conflicts

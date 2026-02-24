@@ -23,6 +23,11 @@ fi
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 
+IS_LOCAL_TEST=false
+if [[ "${LOCAL_TEST:-}" == "1" || "${ENV_PROFILE:-}" == "local-test" || "$ENV_FILE" == *".env.localtest" ]]; then
+  IS_LOCAL_TEST=true
+fi
+
 missing=0
 
 require_var() {
@@ -75,21 +80,23 @@ if [[ "${PAYMENTS_PROVIDER:-}" == "btcpay" ]]; then
   require_var "BTCPAY_STORE_ID"
   require_var "BTCPAY_WEBHOOK_SECRET"
 
-  if [[ "${BTCPAY_URL:-}" == *"example.com"* ]]; then
-    error "BTCPAY_URL appears to be a placeholder"
-    missing=1
-  fi
-  if [[ "${BTCPAY_API_KEY:-}" == *"CONFIGURE_AFTER_DEPLOYMENT"* ]] || [[ "${BTCPAY_API_KEY:-}" == *"your-btcpay"* ]]; then
-    error "BTCPAY_API_KEY appears to be a placeholder"
-    missing=1
-  fi
-  if [[ "${BTCPAY_STORE_ID:-}" == *"CONFIGURE_AFTER_DEPLOYMENT"* ]] || [[ "${BTCPAY_STORE_ID:-}" == *"your-btcpay"* ]]; then
-    error "BTCPAY_STORE_ID appears to be a placeholder"
-    missing=1
-  fi
-  if [[ "${BTCPAY_WEBHOOK_SECRET:-}" == *"CONFIGURE_AFTER_DEPLOYMENT"* ]] || [[ "${BTCPAY_WEBHOOK_SECRET:-}" == *"CHANGE_THIS"* ]]; then
-    error "BTCPAY_WEBHOOK_SECRET appears to be a placeholder"
-    missing=1
+  if ! $IS_LOCAL_TEST; then
+    if [[ "${BTCPAY_URL:-}" == *"example.com"* ]]; then
+      error "BTCPAY_URL appears to be a placeholder"
+      missing=1
+    fi
+    if [[ "${BTCPAY_API_KEY:-}" == *"CONFIGURE_AFTER_DEPLOYMENT"* ]] || [[ "${BTCPAY_API_KEY:-}" == *"your-btcpay"* ]]; then
+      error "BTCPAY_API_KEY appears to be a placeholder"
+      missing=1
+    fi
+    if [[ "${BTCPAY_STORE_ID:-}" == *"CONFIGURE_AFTER_DEPLOYMENT"* ]] || [[ "${BTCPAY_STORE_ID:-}" == *"your-btcpay"* ]]; then
+      error "BTCPAY_STORE_ID appears to be a placeholder"
+      missing=1
+    fi
+    if [[ "${BTCPAY_WEBHOOK_SECRET:-}" == *"CONFIGURE_AFTER_DEPLOYMENT"* ]] || [[ "${BTCPAY_WEBHOOK_SECRET:-}" == *"CHANGE_THIS"* ]]; then
+      error "BTCPAY_WEBHOOK_SECRET appears to be a placeholder"
+      missing=1
+    fi
   fi
 fi
 
