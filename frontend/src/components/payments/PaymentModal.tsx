@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import { InvoiceQrCode } from './InvoiceQrCode';
+import { PostPaymentWizard } from '../onboarding/PostPaymentWizard';
 import type { SubscriptionTier, PaymentInvoice } from '../../types';
 
 interface PaymentModalProps {
@@ -11,7 +12,7 @@ interface PaymentModalProps {
   onClose: () => void;
 }
 
-type PaymentState = 'creating' | 'pending' | 'paid' | 'expired' | 'error';
+type PaymentState = 'creating' | 'pending' | 'paid' | 'onboarding' | 'expired' | 'error';
 
 export function PaymentModal({ tier, billingCycle = 'monthly', isOpen, onClose }: PaymentModalProps) {
   const { refreshUser, isAuthenticated } = useAuth();
@@ -174,16 +175,59 @@ export function PaymentModal({ tier, billingCycle = 'monthly', isOpen, onClose }
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Payment Successful!</h2>
-            <p className="text-gray-400 mb-4">
+            <p className="text-gray-400 mb-6">
               Welcome to {newTier}! Your subscription is now active.
             </p>
-            <button
-              onClick={onClose}
-              className="px-6 py-3 bg-nostr-purple hover:bg-nostr-purple/80 text-white font-semibold rounded-lg transition-colors"
-            >
-              Continue
-            </button>
+            
+            {/* What's Next preview */}
+            <div className="bg-nostr-darker rounded-lg p-4 mb-6 text-left">
+              <h3 className="text-sm font-semibold text-white mb-3">What's Next:</h3>
+              <div className="space-y-2 text-xs text-gray-400">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-nostr-purple/20 rounded-full flex items-center justify-center">
+                    <span className="text-nostr-purple text-xs">1</span>
+                  </div>
+                  <span>Claim your NIP-05 identity</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-nostr-purple/20 rounded-full flex items-center justify-center">
+                    <span className="text-nostr-purple text-xs">2</span>
+                  </div>
+                  <span>Add it to your Nostr client</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 bg-nostr-purple/20 rounded-full flex items-center justify-center">
+                    <span className="text-nostr-purple text-xs">3</span>
+                  </div>
+                  <span>Start using your verified identity!</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setState('onboarding')}
+                className="flex-1 px-6 py-3 bg-nostr-purple hover:bg-nostr-purple/80 text-white font-semibold rounded-lg transition-colors"
+              >
+                Get Started →
+              </button>
+              <button
+                onClick={onClose}
+                className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-semibold rounded-lg transition-colors"
+              >
+                Skip
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* Onboarding wizard */}
+        {state === 'onboarding' && invoice && (
+          <PostPaymentWizard
+            tier={tier}
+            paymentId={invoice.paymentId}
+            onComplete={onClose}
+          />
         )}
 
         {/* Payment expired */}

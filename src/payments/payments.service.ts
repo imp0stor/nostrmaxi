@@ -115,7 +115,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    const lnbitsUrl = this.config.get('LNBITS_URL') || 'https://legend.lnbits.com';
+    const lnbitsUrl = this.config.get('LNBITS_URL'); // only set if explicitly configured
     const lnbitsApiKey = this.config.get('LNBITS_API_KEY') || '';
     const lnbitsWebhookSecret =
       this.config.get('LNBITS_WEBHOOK_SECRET') ||
@@ -133,7 +133,7 @@ export class PaymentsService {
 
     this.providerRegistry = new PaymentProviderRegistry();
 
-    if (lnbitsUrl) {
+    if (lnbitsUrl && lnbitsApiKey) {
       this.providerRegistry.register(
         new LnbitsProvider({
           baseUrl: lnbitsUrl,
@@ -143,16 +143,15 @@ export class PaymentsService {
       );
     }
 
-    if (btcpayBaseUrl && btcpayApiKey && btcpayStoreId) {
-      this.providerRegistry.register(
-        new BtcpayProvider({
-          baseUrl: btcpayBaseUrl,
-          apiKey: btcpayApiKey,
-          storeId: btcpayStoreId,
-          webhookSecret: btcpayWebhookSecret,
-        }),
-      );
-    }
+    // Always register BTCPay — provider uses mock mode when credentials are absent
+    this.providerRegistry.register(
+      new BtcpayProvider({
+        baseUrl: btcpayBaseUrl || 'http://localhost:49392',
+        apiKey: btcpayApiKey || '',
+        storeId: btcpayStoreId || '',
+        webhookSecret: btcpayWebhookSecret,
+      }),
+    );
 
     this.defaultProviderType =
       (this.config.get('PAYMENTS_PROVIDER') ||

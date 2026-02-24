@@ -27,6 +27,16 @@ export class Nip05Controller {
   }
 
   /**
+   * Domain catalog endpoint
+   */
+  @Get('api/v1/nip05/domains')
+  @ApiOperation({ summary: 'Get available NIP-05 domains catalog' })
+  @ApiResponse({ status: 200, description: 'Domain catalog' })
+  listDomains() {
+    return this.nip05Service.getDomainCatalog();
+  }
+
+  /**
    * API lookup endpoint
    */
   @Get('api/v1/nip05/:address')
@@ -101,5 +111,20 @@ export class Nip05Controller {
     const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
     return this.nip05Service.verifyDomain(pubkey, domain);
+  }
+
+  /**
+   * Check availability of NIP-05 address
+   */
+  @Get('api/v1/nip05/check-availability')
+  @ApiOperation({ summary: 'Check if a NIP-05 address is available' })
+  @ApiQuery({ name: 'localPart', required: true })
+  @ApiQuery({ name: 'domain', required: false })
+  @ApiResponse({ status: 200, description: 'Availability status' })
+  async checkAvailability(
+    @Query('localPart') localPart: string,
+    @Query('domain') domain?: string,
+  ) {
+    return this.nip05Service.checkAvailability(localPart, domain);
   }
 }

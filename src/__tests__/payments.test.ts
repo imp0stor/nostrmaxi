@@ -56,10 +56,13 @@ describe('Payment Webhook Handling', () => {
             get: jest.fn((key: string, defaultValue?: any) => {
               const config: any = {
                 JWT_SECRET: 'test-jwt-secret-at-least-32-characters-long',
-                LNBITS_URL: 'https://test.lnbits.com',
-                LNBITS_API_KEY: '', // Empty to use mocks
+                BTCPAY_URL: 'http://test.btcpay.com',
+                BTCPAY_API_KEY: '', // Empty to use mock mode
+                BTCPAY_STORE_ID: 'test-store-id',
+                BTCPAY_WEBHOOK_SECRET: 'test-webhook-secret',
                 BASE_URL: 'http://localhost:3000',
                 WEBHOOK_SECRET: 'test-webhook-secret',
+                PAYMENTS_PROVIDER: 'btcpay',
               };
               return config[key] ?? defaultValue;
             }),
@@ -360,14 +363,16 @@ describe('Payment Webhook Handling', () => {
 
   describe('POST /api/v1/payments/webhook', () => {
     it('should process webhook with valid signature', async () => {
-      // Setup: Create pending payment
-      const paymentHash = crypto.randomBytes(32).toString('hex');
+      // Setup: Create pending payment with BTCPay provider invoice ID
+      const btcpayInvoiceId = crypto.randomBytes(12).toString('hex');
       const payment = {
         id: 'payment_5',
         subscriptionId: testUser.subscription.id,
         amountSats: 21000,
         status: 'pending',
-        paymentHash,
+        paymentHash: crypto.randomBytes(32).toString('hex'),
+        providerInvoiceId: btcpayInvoiceId,
+        provider: 'btcpay',
         createdAt: new Date(),
       };
       prisma.payments.set(payment.id, payment);
@@ -383,43 +388,45 @@ describe('Payment Webhook Handling', () => {
         },
       });
 
-      // Generate valid signature
-      const signature = crypto
-        .createHmac('sha256', 'test-webhook-secret')
-        .update(paymentHash)
-        .digest('hex');
+      // BTCPay webhook payload
+      const webhookPayload = { invoiceId: btcpayInvoiceId, type: 'InvoiceSettled' };
+      // BTCPay signature: sha256=hmac(secret, JSON.stringify(payload))
+      const signature =
+        'sha256=' +
+        crypto
+          .createHmac('sha256', 'test-webhook-secret')
+          .update(JSON.stringify(webhookPayload))
+          .digest('hex');
 
-      // Mock provider verification (returns paid)
-      const provider = (service as any).providerRegistry.get('lnbits');
+      // Mock BTCPay provider verification (returns paid)
+      const provider = (service as any).providerRegistry.get('btcpay');
       const providerSpy = jest.spyOn(provider, 'getInvoiceStatus');
       providerSpy.mockResolvedValueOnce({
-        provider: 'lnbits',
-        providerInvoiceId: paymentHash,
+        provider: 'btcpay',
+        providerInvoiceId: btcpayInvoiceId,
         state: 'paid',
       });
 
       // Act
-      const result = await controller.handleWebhook(
-        { payment_hash: paymentHash },
-        signature
-      );
+      const result = await controller.handleWebhook(webhookPayload, signature);
 
       // Assert
       expect(result.success).toBe(true);
       expect(prisma.subscription.update).toHaveBeenCalled();
-      
+
       // Cleanup
       providerSpy.mockRestore();
     });
 
     it('should reject webhook with invalid signature', async () => {
-      // Setup
-      const paymentHash = crypto.randomBytes(32).toString('hex');
-      const invalidSignature = 'invalid-signature';
+      // Setup: BTCPay payload with invalid signature
+      const btcpayInvoiceId = crypto.randomBytes(12).toString('hex');
+      const webhookPayload = { invoiceId: btcpayInvoiceId, type: 'InvoiceSettled' };
+      const invalidSignature = 'sha256=invalidsignaturehexvalue00000000000000000000000000000000000000';
 
       // Act & Assert
       await expect(
-        controller.handleWebhook({ payment_hash: paymentHash }, invalidSignature)
+        controller.handleWebhook(webhookPayload, invalidSignature)
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -439,26 +446,31 @@ describe('Payment Webhook Handling', () => {
     });
 
     it('should ignore duplicate webhook for already-paid invoice', async () => {
-      // Setup: Already paid payment
-      const paymentHash = crypto.randomBytes(32).toString('hex');
+      // Setup: Already paid payment with BTCPay provider invoice ID
+      const btcpayInvoiceId = crypto.randomBytes(12).toString('hex');
       const payment = {
         id: 'payment_6',
         subscriptionId: testUser.subscription.id,
         amountSats: 21000,
         status: 'paid', // Already paid
-        paymentHash,
+        paymentHash: crypto.randomBytes(32).toString('hex'),
+        providerInvoiceId: btcpayInvoiceId,
+        provider: 'btcpay',
         paidAt: new Date(),
         createdAt: new Date(),
       };
       prisma.payments.set(payment.id, payment);
 
-      const signature = crypto
-        .createHmac('sha256', 'test-webhook-secret')
-        .update(paymentHash)
-        .digest('hex');
+      const webhookPayload = { invoiceId: btcpayInvoiceId, type: 'InvoiceSettled' };
+      const signature =
+        'sha256=' +
+        crypto
+          .createHmac('sha256', 'test-webhook-secret')
+          .update(JSON.stringify(webhookPayload))
+          .digest('hex');
 
       // Act
-      const result = await controller.handleWebhook({ payment_hash: paymentHash }, signature);
+      const result = await controller.handleWebhook(webhookPayload, signature);
 
       // Assert
       expect(result.success).toBe(true);

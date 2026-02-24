@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Body, Headers, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
-import { SubscriptionTier } from '../payments/payments.service';
 import { AuthService } from '../auth/auth.service';
 import { Request } from 'express';
+import { UpgradeSubscriptionDto } from './dto/subscription.dto';
 
 @ApiTags('subscriptions')
 @Controller('api/v1/subscription')
@@ -41,7 +41,7 @@ export class SubscriptionController {
   async upgrade(
     @Headers('authorization') authHeader: string,
     @Req() req: Request,
-    @Body() body: { tier: SubscriptionTier; applyWotDiscount?: boolean },
+    @Body() body: UpgradeSubscriptionDto,
   ) {
     const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);

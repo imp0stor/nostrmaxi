@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@import "../../../shared-ui/shared-ui.css";
+/* Unified Design System - Token Layer First */
+@import "../../../shared-ui/index.css";
 
 /* Custom styles */
 body {

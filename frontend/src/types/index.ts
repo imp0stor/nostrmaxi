@@ -192,3 +192,90 @@ export interface NostrProfile {
   lud16?: string;
   nip05?: string;
 }
+
+// Feed types
+export interface FeedItem {
+  id: string;
+  kind: number;
+  pubkey: string;
+  createdAt: number;
+  title?: string;
+  summary?: string;
+  content: string;
+  tags: string[][];
+  url?: string;
+  image?: string;
+  duration?: number; // For episodes
+  wotScore?: number; // Trust score of author
+  isLikelyBot?: boolean;
+}
+
+export interface FeedConfig {
+  pubkey: string;
+  contentTypes: string[]; // "episode", "show", "note", "product", "bounty", "qa"
+  filterMode: 'wot' | 'genuine' | 'firehose'; // Web of Trust, genuine (low-bot), all
+  wotDepth: number; // 1-5
+  sortBy: 'newest' | 'oldest' | 'popular' | 'trending';
+  limit: number;
+  offset: number;
+}
+
+// Content types
+export interface Show {
+  id: string;
+  title: string;
+  description?: string;
+  image?: string;
+  author: string;
+  pubkey: string;
+  createdAt: number;
+  updatedAt?: number;
+  episodes?: Episode[];
+}
+
+export interface Episode {
+  id: string;
+  showId: string;
+  title: string;
+  description?: string;
+  image?: string;
+  duration: number;
+  mediaUrl?: string;
+  author: string;
+  pubkey: string;
+  createdAt: number;
+  tags: string[][];
+}
+
+export interface ContentNote {
+  id: string;
+  title?: string;
+  content: string;
+  author: string;
+  pubkey: string;
+  createdAt: number;
+  tags: string[][];
+  image?: string;
+}
+
+export interface Product {
+  id: string;
+  title: string;
+  description?: string;
+  image?: string;
+  price: number;
+  author: string;
+  pubkey: string;
+  createdAt: number;
+  tags: string[][];
+}
+
+// WoT types
+export interface WotScoreResult {
+  pubkey: string;
+  npub: string;
+  score: number;
+  isBot: boolean;
+  trustLevel: 'high' | 'medium' | 'low' | 'unknown';
+  connectionStrength: number;
+}

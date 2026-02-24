@@ -1,6 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { redisStore } from 'cache-manager-redis-yet';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
@@ -13,6 +14,11 @@ import { SubscriptionModule } from './subscription/subscription.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AdminModule } from './admin/admin.module';
 import { SearchModule } from './search/search.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { CommerceModule } from './commerce/commerce.module';
+import { NostrModule } from './nostr/nostr.module';
+import { FeedModule } from './feed/feed.module';
+import { ContentModule } from './content/content.module';
 import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middleware/security.middleware';
 
 @Module({
@@ -33,7 +39,9 @@ import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middlewar
         }),
       }),
     }),
+    EventEmitterModule.forRoot(),
     PrismaModule,
+    NostrModule,
     HealthModule,
     MetricsModule,
     AuthModule,
@@ -44,6 +52,10 @@ import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middlewar
     ApiKeysModule,
     AdminModule,
     SearchModule,
+    AnalyticsModule,
+    CommerceModule,
+    FeedModule,
+    ContentModule,
   ],
 })
 export class AppModule implements NestModule {

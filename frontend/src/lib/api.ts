@@ -183,6 +183,130 @@ class ApiClient {
   async revokeApiKey(keyId: string): Promise<void> {
     return this.request(`/api-keys/${keyId}`, { method: 'DELETE' });
   }
+
+  // Analytics endpoints
+  async getAnalytics(endpoint: string): Promise<any> {
+    return this.request(`/analytics${endpoint}`);
+  }
+
+  async getDashboardAnalytics(): Promise<any> {
+    return this.request('/analytics/dashboard');
+  }
+
+  async getIdentityHealth(): Promise<any> {
+    return this.request('/analytics/identity-health');
+  }
+
+  async getGrowthMetrics(period?: string): Promise<any> {
+    const query = period ? `?period=${period}` : '';
+    return this.request(`/analytics/growth${query}`);
+  }
+
+  async getRevenueMetrics(): Promise<any> {
+    return this.request('/analytics/revenue');
+  }
+
+  // Feed endpoints
+  async getFeed(params?: {
+    contentTypes?: string[];
+    filter?: 'wot' | 'genuine' | 'firehose';
+    wotDepth?: number;
+    sortBy?: 'newest' | 'oldest' | 'popular' | 'trending';
+    limit?: number;
+    offset?: number;
+  }): Promise<{ items: any[]; total: number }> {
+    const searchParams = new URLSearchParams();
+    if (params?.contentTypes?.length) {
+      searchParams.set('content_types', params.contentTypes.join(','));
+    }
+    if (params?.filter) {
+      searchParams.set('filter', params.filter);
+    }
+    if (params?.wotDepth) {
+      searchParams.set('wot_depth', String(params.wotDepth));
+    }
+    if (params?.sortBy) {
+      searchParams.set('sort', params.sortBy);
+    }
+    if (params?.limit) {
+      searchParams.set('limit', String(params.limit));
+    }
+    if (params?.offset) {
+      searchParams.set('offset', String(params.offset));
+    }
+    const query = searchParams.toString();
+    return this.request(`/feed${query ? '?' + query : ''}`);
+  }
+
+  async saveFeedConfig(config: any): Promise<{ success: boolean }> {
+    return this.request('/feed/saved', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  }
+
+  async getSavedFeeds(): Promise<any[]> {
+    return this.request('/feed/saved');
+  }
+
+  // Content endpoints
+  async listShows(limit = 20, offset = 0): Promise<{ shows: any[]; total: number }> {
+    return this.request(`/content/shows?limit=${limit}&offset=${offset}`);
+  }
+
+  async getShow(id: string): Promise<any> {
+    return this.request(`/content/shows/${id}`);
+  }
+
+  async getShowEpisodes(
+    id: string,
+    limit = 20,
+    offset = 0
+  ): Promise<{ episodes: any[]; total: number }> {
+    return this.request(`/content/shows/${id}/episodes?limit=${limit}&offset=${offset}`);
+  }
+
+  async listEpisodes(limit = 20, offset = 0): Promise<{ episodes: any[]; total: number }> {
+    return this.request(`/content/episodes?limit=${limit}&offset=${offset}`);
+  }
+
+  async getEpisode(id: string): Promise<any> {
+    return this.request(`/content/episodes/${id}`);
+  }
+
+  async searchContent(query: string, limit = 20): Promise<any[]> {
+    return this.request(`/content/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+  }
+
+  // WoT (Web of Trust) endpoints
+  async getWotScore(pubkey: string): Promise<any> {
+    return this.request(`/wot/score/${pubkey}`);
+  }
+
+  async verifyWot(pubkey: string, minScore?: number): Promise<any> {
+    const query = minScore ? `?minScore=${minScore}` : '';
+    return this.request(`/wot/verify/${pubkey}${query}`);
+  }
+
+  async getWotNetwork(pubkey: string, depth?: number): Promise<any> {
+    const query = depth ? `?depth=${depth}` : '';
+    return this.request(`/wot/network/${pubkey}${query}`);
+  }
+
+  async recalculateWot(pubkey: string, useRealRelays = false): Promise<any> {
+    return this.request(`/wot/recalculate/${pubkey}?useRealRelays=${useRealRelays}`, {
+      method: 'POST',
+    });
+  }
+
+  // Health endpoints
+  async getHealth(): Promise<any> {
+    return this.request('/health');
+  }
+
+  async getServiceStatus(): Promise<any> {
+    return this.request('/status');
+  }
 }
 
 export const api = new ApiClient();

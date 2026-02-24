@@ -25,6 +25,11 @@ export function Nip05Page() {
   const [selectedDomain, setSelectedDomain] = useState('nostrmaxi.com');
   const [isCreating, setIsCreating] = useState(false);
 
+  // ✅ NEW: Availability check state
+  const [availabilityStatus, setAvailabilityStatus] = useState<'idle' | 'checking' | 'available' | 'unavailable'>('idle');
+  const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
+  const [checkTimeoutId, setCheckTimeoutId] = useState<NodeJS.Timeout | null>(null);
+
   // BYOD state
   const [customDomain, setCustomDomain] = useState('');
   const [customDomainStatus, setCustomDomainStatus] = useState<'idle' | 'verifying' | 'verified' | 'needs-verification' | 'error'>('idle');
@@ -79,6 +84,63 @@ export function Nip05Page() {
 
   const domainRegex = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
+  // ✅ NEW: Debounced availability check
+  const checkAvailability = async (localPart: string, domain: string) => {
+    if (!localPart.trim() || localPart.length < 2) {
+      setAvailabilityStatus('idle');
+      setAvailabilityMessage(null);
+      return;
+    }
+
+    setAvailabilityStatus('checking');
+
+    try {
+      const response = await fetch(
+        `/api/v1/nip05/check-availability?localPart=${encodeURIComponent(localPart)}&domain=${encodeURIComponent(domain)}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to check availability');
+      }
+
+      const data = await response.json();
+      if (data.available) {
+        setAvailabilityStatus('available');
+        setAvailabilityMessage(`✓ ${data.previewAddress} is available!`);
+      } else {
+        setAvailabilityStatus('unavailable');
+        setAvailabilityMessage(data.message || 'Not available');
+      }
+    } catch (err) {
+      setAvailabilityStatus('idle');
+      setAvailabilityMessage(null);
+    }
+  };
+
+  // ✅ NEW: Handle input change with debounced availability check
+  const handleLocalPartChange = (value: string) => {
+    const cleaned = value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    setNewLocalPart(cleaned);
+
+    // Clear previous timeout
+    if (checkTimeoutId) {
+      clearTimeout(checkTimeoutId);
+    }
+
+    // Reset status immediately
+    setAvailabilityStatus('idle');
+    setAvailabilityMessage(null);
+
+    // Set new debounced check (500ms delay)
+    if (cleaned.length >= 2) {
+      const timeoutId = setTimeout(() => {
+        const domain = useCustomDomain ? customDomain.trim().toLowerCase() : selectedDomain;
+        checkAvailability(cleaned, domain);
+      }, 500);
+      setCheckTimeoutId(timeoutId);
+    }
+  };
+
   const handleVerifyDomain = async () => {
     const trimmed = customDomain.trim().toLowerCase();
     if (!trimmed) {
@@ -112,11 +174,11 @@ export function Nip05Page() {
       const data = await response.json();
       if (data.verified) {
         setCustomDomainStatus('verified');
-        setCustomDomainMessage('Domain verified and ready to use.');
+        setCustomDomainMessage('✅ Domain verified! DNS records found and ownership confirmed.');
         setUseCustomDomain(true);
       } else {
         setCustomDomainStatus('needs-verification');
-        setCustomDomainMessage('Add the TXT record below, then click Verify again.');
+        setCustomDomainMessage('⏳ Waiting for DNS propagation. Add the TXT record below, wait 5-10 minutes, then click Verify again.');
         if (data.instructions?.name && data.instructions?.value) {
           setCustomDomainInstructions({ name: data.instructions.name, value: data.instructions.value });
         }
@@ -131,15 +193,21 @@ export function Nip05Page() {
     e.preventDefault();
     if (!newLocalPart.trim()) return;
 
-    // Check limit
+    // Check limit with better messaging
     if (subscription && identities.length >= subscription.nip05Limit) {
-      setError(`You've reached your limit of ${subscription.nip05Limit} NIP-05 identities. Upgrade to get more.`);
+      const tierName = subscription.tier;
+      const upgradeMessage = tierName === 'FREE' 
+        ? 'Upgrade to PRO (3 identities) or BUSINESS (10 identities) to get more.'
+        : tierName === 'PRO'
+        ? 'Upgrade to BUSINESS (10 identities) for more.'
+        : 'You\'ve reached the maximum for your tier.';
+      setError(`⚠️ Identity limit reached: You have ${identities.length}/${subscription.nip05Limit} identities. ${upgradeMessage}`);
       return;
     }
 
     const chosenDomain = useCustomDomain ? customDomain.trim().toLowerCase() : selectedDomain;
     if (useCustomDomain && customDomainStatus !== 'verified') {
-      setError('Custom domain is not verified yet. Complete verification before creating this identity.');
+      setError('⚠️ Custom domain not verified: Complete DNS verification before creating identities on this domain.');
       return;
     }
 
@@ -162,16 +230,29 @@ export function Nip05Page() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.message || 'Failed to create identity');
+        // Enhanced error messages
+        let errorMessage = data.message || 'Failed to create identity';
+        if (errorMessage.includes('already taken')) {
+          errorMessage = `❌ ${newLocalPart}@${chosenDomain} is already taken. Try a different username.`;
+        } else if (errorMessage.includes('limit')) {
+          errorMessage = `❌ ${errorMessage} Visit the Pricing page to upgrade.`;
+        } else if (errorMessage.includes('reserved')) {
+          errorMessage = `❌ "${newLocalPart}" is a reserved system name. Choose a different username.`;
+        } else if (errorMessage.includes('custom domain')) {
+          errorMessage = `❌ ${errorMessage} Upgrade to PRO or BUSINESS for custom domain support.`;
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
-      setSuccess(`Successfully created ${result.address}!`);
+      setSuccess(`🎉 Success! Created ${result.address}. Copy it to your Nostr profile settings.`);
       setNewLocalPart('');
+      setAvailabilityStatus('idle');
+      setAvailabilityMessage(null);
       await fetchIdentities();
       refreshUser();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create identity');
+      setError(err instanceof Error ? err.message : '❌ Failed to create identity. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -275,9 +356,13 @@ export function Nip05Page() {
                 <input
                   type="text"
                   value={newLocalPart}
-                  onChange={(e) => setNewLocalPart(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                  onChange={(e) => handleLocalPartChange(e.target.value)}
                   placeholder="yourname"
-                  className="flex-1 px-4 py-3 bg-nostr-darker border border-gray-700 rounded-l-lg text-white focus:border-nostr-purple focus:outline-none"
+                  className={`flex-1 px-4 py-3 bg-nostr-darker border rounded-l-lg text-white focus:outline-none ${
+                    availabilityStatus === 'available' ? 'border-green-500 focus:border-green-500' :
+                    availabilityStatus === 'unavailable' ? 'border-red-500 focus:border-red-500' :
+                    'border-gray-700 focus:border-nostr-purple'
+                  }`}
                   maxLength={64}
                   disabled={isCreating || Boolean(subscription && identities.length >= subscription.nip05Limit)}
                 />
@@ -285,9 +370,23 @@ export function Nip05Page() {
                   @{previewDomain}
                 </span>
               </div>
-              <p className="text-gray-500 text-xs mt-1">
-                Only lowercase letters, numbers, underscores, and hyphens
-              </p>
+              {availabilityStatus === 'checking' && (
+                <p className="text-gray-400 text-xs mt-1 flex items-center gap-1">
+                  <span className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></span>
+                  Checking availability...
+                </p>
+              )}
+              {availabilityStatus === 'available' && availabilityMessage && (
+                <p className="text-green-400 text-xs mt-1">{availabilityMessage}</p>
+              )}
+              {availabilityStatus === 'unavailable' && availabilityMessage && (
+                <p className="text-red-400 text-xs mt-1">{availabilityMessage}</p>
+              )}
+              {availabilityStatus === 'idle' && (
+                <p className="text-gray-500 text-xs mt-1">
+                  Only lowercase letters, numbers, underscores, and hyphens
+                </p>
+              )}
             </div>
           </div>
 

@@ -33,7 +33,12 @@ if npm test -- --silent --testNamePattern="(NIP-05|Authentication|Payment|Rate)"
     echo "  ✓ Payment Processing"
     echo "  ✓ Rate Limiting"
     echo ""
-    echo "Total: 71 tests passed"
+    test_summary=$(grep -E "^Tests:" /tmp/nostrmaxi-test-output.log | tail -n1 | sed 's/^Tests:[[:space:]]*//')
+    if [ -n "$test_summary" ]; then
+        echo "Total: ${test_summary}"
+    else
+        echo "Total: (see /tmp/nostrmaxi-test-output.log)"
+    fi
 
     echo ""
     echo "Building frontend (TypeScript + Vite)..."

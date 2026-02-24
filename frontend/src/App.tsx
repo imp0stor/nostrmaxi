@@ -7,6 +7,11 @@ import { HomePage } from './pages/HomePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { Nip05Page } from './pages/Nip05Page';
 import { ReceiptPage } from './pages/ReceiptPage';
+import { FeedPage } from './pages/FeedPage';
+import { EpisodePage } from './pages/EpisodePage';
+import { ShowPage } from './pages/ShowPage';
+import { NotePage } from './pages/NotePage';
+import { DiscoveryPage } from './pages/DiscoveryPage';
 import { truncateNpub } from './lib/nostr';
 
 export default function App() {
@@ -42,6 +47,12 @@ export default function App() {
             {/* Desktop navigation */}
             <div className="hidden md:flex items-center gap-6">
               <Link
+                to="/discover"
+                className="text-gray-300 hover:text-white font-medium"
+              >
+                Discover
+              </Link>
+              <Link
                 to="/pricing"
                 className="text-gray-300 hover:text-white font-medium"
               >
@@ -49,6 +60,12 @@ export default function App() {
               </Link>
               {isAuthenticated && (
                 <>
+                  <Link
+                    to="/feed"
+                    className="text-gray-300 hover:text-white font-medium"
+                  >
+                    Feed
+                  </Link>
                   <Link
                     to="/dashboard"
                     className="text-gray-300 hover:text-white font-medium"
@@ -146,6 +163,12 @@ export default function App() {
           <div className="md:hidden border-t border-gray-800 bg-nostr-dark">
             <div className="px-4 py-3 space-y-3">
               <Link
+                to="/discover"
+                className="block text-gray-300 hover:text-white font-medium py-2"
+              >
+                Discover
+              </Link>
+              <Link
                 to="/pricing"
                 className="block text-gray-300 hover:text-white font-medium py-2"
               >
@@ -153,6 +176,12 @@ export default function App() {
               </Link>
               {isAuthenticated ? (
                 <>
+                  <Link
+                    to="/feed"
+                    className="block text-gray-300 hover:text-white font-medium py-2"
+                  >
+                    Feed
+                  </Link>
                   <Link
                     to="/dashboard"
                     className="block text-gray-300 hover:text-white font-medium py-2"
@@ -190,6 +219,20 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route
+            path="/feed"
+            element={
+              isAuthenticated ? (
+                <FeedPage />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+          <Route path="/episode/:id" element={<EpisodePage />} />
+          <Route path="/show/:id" element={<ShowPage />} />
+          <Route path="/note/:id" element={<NotePage />} />
+          <Route path="/discover" element={<DiscoveryPage />} />
           <Route
             path="/dashboard"
             element={

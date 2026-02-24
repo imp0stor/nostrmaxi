@@ -240,6 +240,7 @@ model WotScore {
   updatedAt       DateTime @updatedAt
 
   @@index([trustScore])
+  @@index([userId, trustScore])
 }
 
 // Admin audit log

@@ -2,10 +2,39 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { PrismaService } from './prisma/prisma.service';
 import helmet from 'helmet';
+import { validateConfigurationOrThrow } from './config/validation';
+import { runStartupChecks, formatStartupCheckResults } from './config/startup-checks';
+import { appLogger } from './common/logger';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  appLogger.log('🚀 Starting NostrMaxi...\n');
+
+  // ============================================================================
+  // PHASE 1: Configuration Validation (Fail Fast)
+  // ============================================================================
+  appLogger.log('📋 Validating configuration...\n');
+  
+  try {
+    validateConfigurationOrThrow({
+      strict: process.env.NODE_ENV === 'production',
+      skipPaymentValidation: process.env.SKIP_PAYMENT_VALIDATION === 'true',
+    });
+    appLogger.log('✓ Configuration validation passed\n');
+  } catch (error) {
+    appLogger.error('❌ Configuration validation failed!\n');
+    appLogger.error(error.message);
+    appLogger.error('\nFix the configuration errors above and restart.');
+    process.exit(1);
+  }
+
+  // ============================================================================
+  // PHASE 2: Create Application
+  // ============================================================================
+  const app = await NestFactory.create(AppModule, {
+    logger: appLogger,
+  });
 
   // ⭐ ADD SECURITY HEADERS
   app.use(helmet({
@@ -116,9 +145,75 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
+  // ============================================================================
+  // PHASE 3: Startup Health Checks
+  // ============================================================================
+  appLogger.log('🏥 Running startup health checks...\n');
+  
+  const prismaService = app.get(PrismaService);
+  const startupCheckResult = await runStartupChecks(prismaService);
+  
+  if (!startupCheckResult.success) {
+    appLogger.error('\n❌ Startup checks failed!\n');
+    appLogger.error(formatStartupCheckResults(startupCheckResult));
+    appLogger.error('\nFix the critical issues above and restart.');
+    await app.close();
+    process.exit(1);
+  }
+  
+  appLogger.log('✓ All startup checks passed\n');
+
+  // ============================================================================
+  // PHASE 4: Start Server
+  // ============================================================================
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`🚀 NostrMaxi running on http://localhost:${port}`);
-  console.log(`📚 API docs: http://localhost:${port}/api/docs`);
+  
+  appLogger.log('╔════════════════════════════════════════════════════════════════╗');
+  appLogger.log('║                                                                ║');
+  appLogger.log(`║  🚀 NostrMaxi running on http://localhost:${port}             ║`);
+  appLogger.log(`║  📚 API docs: http://localhost:${port}/api/docs               ║`);
+  appLogger.log('║  🔒 Security: Helmet, CORS, Rate Limiting enabled             ║');
+  appLogger.log(`║  🌍 Environment: ${process.env.NODE_ENV || 'development'}                            ║`);
+  appLogger.log(`║  💳 Payment Provider: ${process.env.PAYMENTS_PROVIDER || 'btcpay'}                              ║`);
+  appLogger.log('║                                                                ║');
+  appLogger.log('╚════════════════════════════════════════════════════════════════╝');
+  appLogger.log('');
 }
-bootstrap();
+
+// ============================================================================
+// Global Error Handlers
+// ============================================================================
+
+process.on('unhandledRejection', (reason, promise) => {
+  appLogger.error('❌ Unhandled Rejection at:', promise);
+  appLogger.error('Reason:', reason);
+  // Don't exit in development, but log clearly
+  if (process.env.NODE_ENV === 'production') {
+    appLogger.error('Exiting due to unhandled rejection in production mode');
+    process.exit(1);
+  }
+});
+
+process.on('uncaughtException', (error) => {
+  appLogger.error('❌ Uncaught Exception:', error);
+  // Always exit on uncaught exception - process state is undefined
+  appLogger.error('Exiting due to uncaught exception');
+  process.exit(1);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  appLogger.log('⚠️  SIGTERM received, shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  appLogger.log('\n⚠️  SIGINT received, shutting down gracefully...');
+  process.exit(0);
+});
+
+bootstrap().catch((error) => {
+  appLogger.error('❌ Fatal error during bootstrap:', error);
+  process.exit(1);
+});

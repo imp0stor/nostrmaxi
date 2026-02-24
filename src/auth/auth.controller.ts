@@ -1,7 +1,8 @@
 import { Controller, Get, Post, Body, Headers, Req, Query, Delete, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { AuthService, NostrAuthEvent } from './auth.service';
+import { AuthService } from './auth.service';
 import { Request } from 'express';
+import { ChallengeRequestDto, VerifyChallengeDto } from './dto/auth.dto';
 
 @ApiTags('auth')
 @Controller('api/v1/auth')
@@ -13,7 +14,7 @@ export class AuthController {
   @Post('challenge')
   @ApiOperation({ summary: 'Generate authentication challenge for signing' })
   @ApiResponse({ status: 201, description: 'Challenge for signing with Nostr key' })
-  async getChallenge(@Body() body: { pubkey?: string }) {
+  async getChallenge(@Body() body: ChallengeRequestDto) {
     return this.authService.generateChallenge(body.pubkey);
   }
 
@@ -22,7 +23,7 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'JWT token and user profile' })
   @ApiResponse({ status: 401, description: 'Invalid signature or challenge' })
   async verifyChallenge(
-    @Body() body: { event: NostrAuthEvent },
+    @Body() body: VerifyChallengeDto,
     @Req() req: Request,
   ) {
     const userAgent = req.get('user-agent');

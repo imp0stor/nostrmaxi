@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { ApiKeysService } from './api-keys.service';
 import { AuthService } from '../auth/auth.service';
 import { Request } from 'express';
+import { CreateApiKeyDto } from './dto/api-keys.dto';
 
 @ApiTags('api-keys')
 @Controller('api/v1/api-keys')
@@ -20,7 +21,7 @@ export class ApiKeysController {
   async createApiKey(
     @Headers('authorization') authHeader: string,
     @Req() req: Request,
-    @Body() body: { name: string; permissions?: string[]; expiresAt?: string },
+    @Body() body: CreateApiKeyDto,
   ) {
     const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
