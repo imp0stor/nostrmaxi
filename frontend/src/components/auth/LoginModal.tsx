@@ -79,8 +79,8 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         {/* Header */}
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-white mb-2">Login to NostrMaxi</h2>
-          <p className="text-gray-400">Choose your preferred login method</p>
+          <h2 className="text-2xl font-bold text-white mb-2">Login with Nostr</h2>
+          <p className="text-gray-400">Authenticate with your npub using NIP-07 or LNURL</p>
         </div>
 
         {/* Error display */}

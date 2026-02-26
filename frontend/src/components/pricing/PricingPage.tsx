@@ -8,6 +8,58 @@ const TIER_ORDER: SubscriptionTier[] = ['FREE', 'PRO', 'BUSINESS', 'LIFETIME'];
 const ANNUAL_MULTIPLIER = 10; // 12 months - 2 months free
 const ANNUAL_MONTHS_FREE = 2;
 
+const FALLBACK_TIERS: TierInfo[] = [
+  {
+    tier: 'FREE',
+    name: 'Free',
+    description: 'Get started with one verified identity.',
+    priceUsd: 0,
+    priceSats: 0,
+    features: ['1 NIP-05 identity', 'Community support'],
+    nip05Limit: 1,
+    customDomain: false,
+    analytics: false,
+    apiAccess: false,
+  },
+  {
+    tier: 'PRO',
+    name: 'Pro',
+    description: 'For individual creators and serious users.',
+    priceUsd: 900,
+    priceSats: 30000,
+    features: ['10 NIP-05 identities', 'Priority support', 'Usage analytics'],
+    nip05Limit: 10,
+    customDomain: true,
+    analytics: true,
+    apiAccess: false,
+  },
+  {
+    tier: 'BUSINESS',
+    name: 'Business',
+    description: 'For teams and production deployments.',
+    priceUsd: 2900,
+    priceSats: 95000,
+    features: ['100 NIP-05 identities', 'Team workflows', 'API access'],
+    nip05Limit: 100,
+    customDomain: true,
+    analytics: true,
+    apiAccess: true,
+  },
+  {
+    tier: 'LIFETIME',
+    name: 'Lifetime Pro',
+    description: 'One-time payment for permanent Pro access.',
+    priceUsd: 19900,
+    priceSats: 650000,
+    features: ['All Pro features forever', 'No recurring billing'],
+    nip05Limit: 10,
+    customDomain: true,
+    analytics: true,
+    apiAccess: false,
+    isLifetime: true,
+  },
+];
+
 export function PricingPage() {
   const { user } = useAuth();
   const [tiers, setTiers] = useState<TierInfo[]>([]);
@@ -20,10 +72,14 @@ export function PricingPage() {
   useEffect(() => {
     api.getTiers()
       .then((data) => {
-        const sorted = [...data].sort(
+        const source = data?.length ? data : FALLBACK_TIERS;
+        const sorted = [...source].sort(
           (a, b) => TIER_ORDER.indexOf(a.tier) - TIER_ORDER.indexOf(b.tier)
         );
         setTiers(sorted);
+      })
+      .catch(() => {
+        setTiers(FALLBACK_TIERS);
       })
       .finally(() => setIsLoading(false));
   }, []);

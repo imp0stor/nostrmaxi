@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { LoginModal } from './components/auth/LoginModal';
 import { PricingPage } from './components/pricing/PricingPage';
@@ -7,12 +7,17 @@ import { HomePage } from './pages/HomePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { Nip05Page } from './pages/Nip05Page';
 import { ReceiptPage } from './pages/ReceiptPage';
+import { RoadmapPage } from './pages/Roadmap';
+import { ProfilePage } from './pages/ProfilePage';
 import { truncateNpub } from './lib/nostr';
+import { appConfig } from './config/appConfig';
+import { Button } from '@strangesignal/ui-primitives';
 
 export default function App() {
   const { user, isAuthenticated, isLoading, initialize, logout } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Initialize auth on mount
   useEffect(() => {
@@ -25,6 +30,23 @@ export default function App() {
     setMenuOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+
+    const isLandingRoute = location.pathname === '/' || location.pathname === '/home';
+    if (!isLandingRoute) return;
+
+    const hasExistingAccount =
+      (user.nip05s?.length ?? 0) > 0 ||
+      user.tier !== 'FREE' ||
+      Boolean(user.subscription?.isActive);
+
+    navigate(hasExistingAccount ? '/dashboard' : '/pricing', { replace: true });
+  }, [isAuthenticated, user, location.pathname, navigate]);
+
+  const navClass = (path: string) =>
+    `font-medium ${location.pathname === path ? 'text-white' : 'text-gray-300 hover:text-white'}`;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Navigation */}
@@ -35,31 +57,28 @@ export default function App() {
             <div className="flex items-center">
               <Link to="/" className="flex items-center gap-2">
                 <span className="text-2xl">⚡</span>
-                <span className="text-xl font-bold text-gradient">NostrMaxi</span>
+                <span className="text-xl font-bold text-gradient">{appConfig.appName}</span>
               </Link>
             </div>
 
             {/* Desktop navigation */}
             <div className="hidden md:flex items-center gap-6">
-              <Link
-                to="/pricing"
-                className="text-gray-300 hover:text-white font-medium"
-              >
+              <Link to="/pricing" className={navClass('/pricing')}>
                 Pricing
+              </Link>
+              <Link to="/roadmap" className={navClass('/roadmap')}>
+                Roadmap
               </Link>
               {isAuthenticated && (
                 <>
-                  <Link
-                    to="/dashboard"
-                    className="text-gray-300 hover:text-white font-medium"
-                  >
+                  <Link to="/dashboard" className={navClass('/dashboard')}>
                     Dashboard
                   </Link>
-                  <Link
-                    to="/nip05"
-                    className="text-gray-300 hover:text-white font-medium"
-                  >
+                  <Link to="/nip05" className={navClass('/nip05')}>
                     NIP-05
+                  </Link>
+                  <Link to="/profile/me" className={navClass('/profile/me')}>
+                    Profile
                   </Link>
                 </>
               )}
@@ -114,12 +133,12 @@ export default function App() {
                   )}
                 </div>
               ) : (
-                <button
+                <Button
                   onClick={() => setShowLogin(true)}
-                  className="px-4 py-2 bg-nostr-purple hover:bg-nostr-purple/80 text-white font-semibold rounded-lg"
+                  variant="primary"
                 >
-                  Login
-                </button>
+                  Login with Nostr
+                </Button>
               )}
             </div>
 
@@ -145,25 +164,22 @@ export default function App() {
         {menuOpen && (
           <div className="md:hidden border-t border-gray-800 bg-nostr-dark">
             <div className="px-4 py-3 space-y-3">
-              <Link
-                to="/pricing"
-                className="block text-gray-300 hover:text-white font-medium py-2"
-              >
+              <Link to="/pricing" className={`block font-medium py-2 ${location.pathname === '/pricing' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
                 Pricing
+              </Link>
+              <Link to="/roadmap" className={`block font-medium py-2 ${location.pathname === '/roadmap' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
+                Roadmap
               </Link>
               {isAuthenticated ? (
                 <>
-                  <Link
-                    to="/dashboard"
-                    className="block text-gray-300 hover:text-white font-medium py-2"
-                  >
+                  <Link to="/dashboard" className={`block font-medium py-2 ${location.pathname === '/dashboard' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
                     Dashboard
                   </Link>
-                  <Link
-                    to="/nip05"
-                    className="block text-gray-300 hover:text-white font-medium py-2"
-                  >
+                  <Link to="/nip05" className={`block font-medium py-2 ${location.pathname === '/nip05' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
                     NIP-05
+                  </Link>
+                  <Link to="/profile/me" className={`block font-medium py-2 ${location.pathname === '/profile/me' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
+                    Profile
                   </Link>
                   <button
                     onClick={logout}
@@ -177,7 +193,7 @@ export default function App() {
                   onClick={() => setShowLogin(true)}
                   className="w-full px-4 py-2 bg-nostr-purple hover:bg-nostr-purple/80 text-white font-semibold rounded-lg"
                 >
-                  Login
+                  Login with Nostr
                 </button>
               )}
             </div>
@@ -190,6 +206,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
           <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/roadmap" element={<RoadmapPage />} />
           <Route
             path="/dashboard"
             element={
@@ -210,6 +227,10 @@ export default function App() {
               )
             }
           />
+          <Route
+            path="/profile/:npub"
+            element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />}
+          />
           <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
         </Routes>
       </main>
@@ -220,19 +241,17 @@ export default function App() {
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-2">
               <span className="text-xl">⚡</span>
-              <span className="font-bold text-gradient">NostrMaxi</span>
+              <span className="font-bold text-gradient">{appConfig.appName}</span>
             </div>
             <div className="flex gap-6 text-gray-400 text-sm">
-              <a href="https://github.com/nostrmaxi" target="_blank" rel="noopener noreferrer" className="hover:text-white">
+              <a href={appConfig.githubUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white">
                 GitHub
               </a>
-              <a href="https://njump.me/npub1nostrmaxi" target="_blank" rel="noopener noreferrer" className="hover:text-white">
+              <a href={appConfig.nostrUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white">
                 Nostr
               </a>
             </div>
-            <p className="text-gray-500 text-sm">
-              Built with ⚡ for the Nostr community
-            </p>
+            <p className="text-gray-500 text-sm">{appConfig.footerText}</p>
           </div>
         </div>
       </footer>
