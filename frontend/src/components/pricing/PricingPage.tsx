@@ -287,19 +287,19 @@ export function PricingPage() {
             <div className="text-white font-semibold">Lifetime Pro</div>
 
             <div className="text-white font-semibold">Monthly</div>
-            <div>{proTier ? formatPrice(proTier, 'monthly') : '--'}</div>
-            <div>{businessTier ? formatPrice(businessTier, 'monthly') : '--'}</div>
-            <div className="text-gray-500">—</div>
+            <div>{proTier ? formatPrice(proTier, 'monthly') : '$9/mo'}</div>
+            <div>{businessTier ? formatPrice(businessTier, 'monthly') : '$29/mo'}</div>
+            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
 
             <div className="text-white font-semibold">Annual</div>
-            <div>{proTier ? formatPrice(proTier, 'annual') : '--'}</div>
-            <div>{businessTier ? formatPrice(businessTier, 'annual') : '--'}</div>
-            <div className="text-gray-500">—</div>
+            <div>{proTier ? formatPrice(proTier, 'annual') : '$90/yr'}</div>
+            <div>{businessTier ? formatPrice(businessTier, 'annual') : '$290/yr'}</div>
+            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
 
             <div className="text-white font-semibold">Lifetime</div>
-            <div className="text-gray-500">—</div>
-            <div className="text-gray-500">—</div>
-            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '--'}</div>
+            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
+            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
+            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
           </div>
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
             <button

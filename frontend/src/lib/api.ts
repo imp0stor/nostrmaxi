@@ -19,6 +19,57 @@ const API_BASE = '/api/v1';
 class ApiClient {
   private token: string | null = null;
 
+  private isJsonResponse(contentType: string | null): boolean {
+    if (!contentType) return false;
+    const normalized = contentType.toLowerCase();
+    return normalized.includes('application/json') || normalized.includes('+json');
+  }
+
+  private async safeReadBody(response: Response): Promise<{ json?: unknown; text?: string }> {
+    const contentType = response.headers.get('content-type');
+
+    if (this.isJsonResponse(contentType)) {
+      try {
+        return { json: await response.json() };
+      } catch {
+        // Fall through to safe text extraction for malformed JSON responses.
+      }
+    }
+
+    const text = await response.text().catch(() => '');
+
+    if (!text) {
+      return { text: '' };
+    }
+
+    try {
+      return { json: JSON.parse(text), text };
+    } catch {
+      return { text };
+    }
+  }
+
+  private formatHttpError(response: Response, payload: { json?: unknown; text?: string }): string {
+    const status = `HTTP ${response.status}`;
+
+    if (payload.json && typeof payload.json === 'object') {
+      const maybeMessage = (payload.json as { message?: unknown }).message;
+      if (typeof maybeMessage === 'string' && maybeMessage.trim()) {
+        return maybeMessage;
+      }
+    }
+
+    if (payload.text) {
+      const trimmed = payload.text.trim();
+      if (trimmed.startsWith('<')) {
+        return `${status}: Server returned HTML instead of JSON`;
+      }
+      return `${status}: ${trimmed.slice(0, 180)}`;
+    }
+
+    return status;
+  }
+
   setToken(token: string | null) {
     this.token = token;
     if (token) {
@@ -54,16 +105,21 @@ class ApiClient {
       headers,
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Request failed' }));
-      throw new Error(error.message || `HTTP ${response.status}`);
-    }
-
     if (response.status === 204) {
       return undefined as T;
     }
 
-    return response.json();
+    const payload = await this.safeReadBody(response);
+
+    if (!response.ok) {
+      throw new Error(this.formatHttpError(response, payload));
+    }
+
+    if (payload.json !== undefined) {
+      return payload.json as T;
+    }
+
+    return undefined as T;
   }
 
   // Auth endpoints

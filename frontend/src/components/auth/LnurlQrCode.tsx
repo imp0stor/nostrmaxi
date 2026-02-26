@@ -44,8 +44,10 @@ export function LnurlQrCode({ lnurl, size = 256 }: LnurlQrCodeProps) {
   return (
     <div className="flex flex-col items-center">
       {/* QR Code */}
-      <div className="bg-white p-4 rounded-xl">
-        <canvas ref={canvasRef} />
+      <div className="rounded-xl border border-gray-700 bg-nostr-darker p-3 shadow-lg shadow-black/30">
+        <div className="bg-white p-3 rounded-lg">
+          <canvas ref={canvasRef} />
+        </div>
       </div>
 
       {/* Copy button */}
