@@ -5,6 +5,10 @@ import {
   getPublicKey,
   createAuthChallengeEvent,
   signEvent,
+  mapNip07Error,
+  parseNsec,
+  derivePubkey,
+  signEventWithPrivateKey,
 } from '../lib/nostr';
 import type { User } from '../types';
 
@@ -17,6 +21,7 @@ interface AuthState {
   // Actions
   initialize: () => Promise<void>;
   loginWithExtension: () => Promise<boolean>;
+  loginWithNsec: (nsec: string) => Promise<boolean>;
   loginWithLnurl: () => Promise<{ lnurl: string; k1: string } | null>;
   pollLnurlLogin: (k1: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -51,17 +56,15 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Check for NIP-07 extension
+      // Quick pre-check (main detection + retry happens inside getPublicKey/signEvent)
       if (!hasNip07Extension()) {
-        set({ error: 'No Nostr extension found. Please install nos2x, Alby, or similar.' });
-        set({ isLoading: false });
-        return false;
+        // Let getPublicKey handle retry before failing to avoid extension-injection race conditions
       }
 
       // Get public key
       const pubkey = await getPublicKey();
       if (!pubkey) {
-        set({ error: 'Failed to get public key from extension' });
+        set({ error: 'No public key returned by extension. Please unlock/approve your Nostr extension and try again.' });
         set({ isLoading: false });
         return false;
       }
@@ -74,7 +77,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       const signedEvent = await signEvent(unsignedEvent);
 
       if (!signedEvent) {
-        set({ error: 'Failed to sign authentication event' });
+        set({ error: 'Failed to sign authentication event. Please approve the connection request and try again.' });
         set({ isLoading: false });
         return false;
       }
@@ -86,7 +89,41 @@ export const useAuth = create<AuthState>((set, get) => ({
       set({ user, isAuthenticated: true, isLoading: false });
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Login failed';
+      const message = mapNip07Error(error);
+      set({ error: message || 'Login failed', isLoading: false });
+      return false;
+    }
+  },
+
+  loginWithNsec: async (nsec: string) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      const privateKey = parseNsec(nsec.trim());
+      if (!privateKey) {
+        set({ error: 'Invalid nsec/private key format. Please paste a valid nsec or 64-char hex private key.' });
+        set({ isLoading: false });
+        return false;
+      }
+
+      const pubkey = await derivePubkey(privateKey);
+      if (!pubkey) {
+        set({ error: 'Unable to derive public key from the provided private key.' });
+        set({ isLoading: false });
+        return false;
+      }
+
+      const { challenge } = await api.getChallenge(pubkey);
+      const unsignedEvent = createAuthChallengeEvent(pubkey, challenge);
+      const signedEvent = signEventWithPrivateKey(unsignedEvent, privateKey);
+
+      const { token, user } = await api.verifyChallenge(signedEvent);
+      api.setToken(token);
+
+      set({ user, isAuthenticated: true, isLoading: false });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'nsec login failed';
       set({ error: message, isLoading: false });
       return false;
     }

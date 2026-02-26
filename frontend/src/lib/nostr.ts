@@ -1,26 +1,74 @@
-import { nip19, SimplePool } from 'nostr-tools';
+import { nip19, SimplePool, finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, NostrProfile, Nip07Nostr } from '../types';
+
+const NIP07_RETRY_ATTEMPTS = 10;
+const NIP07_RETRY_DELAY_MS = 250;
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Check if NIP-07 extension is available
 export function hasNip07Extension(): boolean {
-  return typeof window !== 'undefined' && !!window.nostr;
+  return typeof window !== 'undefined' && typeof window.nostr !== 'undefined';
+}
+
+// Wait for NIP-07 extension to become available
+export async function waitForNip07Extension(
+  attempts = NIP07_RETRY_ATTEMPTS,
+  delayMs = NIP07_RETRY_DELAY_MS
+): Promise<Nip07Nostr | null> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (window.nostr) {
+      return window.nostr;
+    }
+    await sleep(delayMs);
+  }
+
+  return null;
 }
 
 // Get NIP-07 extension
 export function getNip07(): Nip07Nostr | null {
+  if (typeof window === 'undefined') return null;
   return window.nostr || null;
+}
+
+export function mapNip07Error(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error || 'Unknown error');
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes('denied') || normalized.includes('rejected') || normalized.includes('user canceled')) {
+    return 'Please approve the connection request';
+  }
+
+  if (normalized.includes('not installed') || normalized.includes('window.nostr') || normalized.includes('undefined')) {
+    return 'Please install a Nostr extension (Alby, nos2x)';
+  }
+
+  return message;
 }
 
 // Get public key from NIP-07 extension
 export async function getPublicKey(): Promise<string | null> {
-  const nostr = getNip07();
-  if (!nostr) return null;
+  const nostr = await waitForNip07Extension();
+  if (!nostr) {
+    throw new Error('Please install a Nostr extension (Alby, nos2x)');
+  }
 
   try {
-    return await nostr.getPublicKey();
+    const pubkey = await nostr.getPublicKey();
+    if (!pubkey) {
+      throw new Error('Extension returned an empty public key. Please unlock/authorize your Nostr extension and try again.');
+    }
+    return pubkey;
   } catch (error) {
     console.error('Failed to get public key:', error);
-    return null;
+    throw new Error(mapNip07Error(error));
   }
 }
 
@@ -44,15 +92,33 @@ export function createUnsignedEvent(
 export async function signEvent(
   event: Omit<NostrEvent, 'id' | 'sig'>
 ): Promise<NostrEvent | null> {
-  const nostr = getNip07();
-  if (!nostr) return null;
+  const nostr = await waitForNip07Extension();
+  if (!nostr) {
+    throw new Error('Please install a Nostr extension (Alby, nos2x)');
+  }
 
   try {
     return await nostr.signEvent(event);
   } catch (error) {
     console.error('Failed to sign event:', error);
-    return null;
+    throw new Error(mapNip07Error(error));
   }
+}
+
+// Sign event with private key (nsec/hex)
+export function signEventWithPrivateKey(
+  event: Omit<NostrEvent, 'id' | 'sig'>,
+  privateKey: string
+): NostrEvent {
+  const privateKeyBytes = Uint8Array.from(
+    privateKey.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
+  );
+
+  if (privateKeyBytes.length !== 32) {
+    throw new Error('Invalid private key format');
+  }
+
+  return finalizeEvent(event, privateKeyBytes) as NostrEvent;
 }
 
 // Create auth challenge event (kind 22242)
