@@ -214,7 +214,10 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         {method === 'nsec' && (
           <div className="space-y-4">
-            <p className="text-sm text-yellow-300/80">Fallback login: paste your nsec or 64-char hex private key.</p>
+            <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-200">
+              Security warning: your nsec is your private key. Never paste it on shared/public machines and rotate keys if you suspect exposure.
+            </div>
+            <p className="text-sm text-yellow-300/80">Fallback login only: paste your nsec or 64-char hex private key.</p>
             <textarea value={nsecInput} onChange={(e) => setNsecInput(e.target.value)} placeholder="nsec1..." rows={3} className="w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-white text-sm" />
             <div className="flex gap-3">
               <button onClick={handleNsecLogin} disabled={isLoading || !nsecInput.trim()} className="flex-1 rounded-lg bg-yellow-500/80 hover:bg-yellow-500 text-black font-medium py-2 disabled:opacity-50">Continue with nsec</button>
