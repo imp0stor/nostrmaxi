@@ -13,6 +13,11 @@ import { SubscriptionModule } from './subscription/subscription.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AdminModule } from './admin/admin.module';
 import { SearchModule } from './search/search.module';
+import { SettingsModule } from './settings/settings.module';
+import { IdentityModule } from './identity/identity.module';
+import { UnfurlModule } from './unfurl/unfurl.module';
+import { RelayMetricsModule } from './relay-metrics/relay-metrics.module';
+import { EcosystemCatalogModule } from './ecosystem-catalog/ecosystem-catalog.module';
 import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middleware/security.middleware';
 
 @Module({
@@ -44,6 +49,11 @@ import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middlewar
     ApiKeysModule,
     AdminModule,
     SearchModule,
+    SettingsModule,
+    IdentityModule,
+    UnfurlModule,
+    RelayMetricsModule,
+    EcosystemCatalogModule,
   ],
 })
 export class AppModule implements NestModule {

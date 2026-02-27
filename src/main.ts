@@ -19,7 +19,24 @@ async function bootstrap() {
         fontSrc: ["'self'"],
         objectSrc: ["'none'"],
         mediaSrc: ["'self'"],
-        frameSrc: ["'none'"],
+        frameSrc: [
+          "'self'",
+          'https://www.youtube.com',
+          'https://youtube.com',
+          'https://player.vimeo.com',
+          'https://player.twitch.tv',
+          'https://clips.twitch.tv',
+          'https://rumble.com',
+          'https://odysee.com',
+          'https://www.instagram.com',
+          'https://www.tiktok.com',
+          'https://w.soundcloud.com',
+          'https://embed.music.apple.com',
+          'https://*.bandcamp.com',
+          'https://www.mixcloud.com',
+          'https://embed.wavlake.com',
+          'https://open.spotify.com',
+        ],
       },
     },
     hsts: {
@@ -106,6 +123,7 @@ async function bootstrap() {
     .setDescription('Identity & Subscription Platform for Nostr')
     .setVersion('1.0')
     .addTag('health', 'Health check endpoints')
+    .addTag('identity', 'Agent-friendly identity verification/profile endpoints')
     .addTag('nip05', 'NIP-05 identity management')
     .addTag('wot', 'Web of Trust endpoints')
     .addTag('subscriptions', 'Subscription management')

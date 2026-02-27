@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { verifyEvent, nip19, getPublicKey } from 'nostr-tools';
 import { bech32 } from 'bech32';
 import * as crypto from 'crypto';
+import { safeJsonParse } from '../shared/proven-json';
 
 export interface NostrAuthEvent {
   id: string;
@@ -183,7 +184,7 @@ export class AuthService {
 
     try {
       const eventJson = Buffer.from(base64Event, 'base64').toString('utf-8');
-      event = JSON.parse(eventJson);
+      event = safeJsonParse<NostrAuthEvent>(eventJson, "Invalid auth event encoding");
     } catch {
       throw new UnauthorizedException('Invalid auth event encoding');
     }

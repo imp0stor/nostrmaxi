@@ -1,16 +1,14 @@
-import { Controller, Get, Post, Delete, Body, Headers, Req, Param } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiKeysService } from './api-keys.service';
-import { AuthService } from '../auth/auth.service';
-import { Request } from 'express';
+import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @ApiTags('api-keys')
 @Controller('api/v1/api-keys')
+@UseGuards(NostrJwtAuthGuard)
 export class ApiKeysController {
-  constructor(
-    private apiKeysService: ApiKeysService,
-    private authService: AuthService,
-  ) {}
+  constructor(private apiKeysService: ApiKeysService) {}
 
   @Post()
   @ApiBearerAuth()
@@ -18,13 +16,9 @@ export class ApiKeysController {
   @ApiResponse({ status: 201, description: 'API key created - key is only shown once!' })
   @ApiResponse({ status: 403, description: 'Business tier required' })
   async createApiKey(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
+    @CurrentUser() pubkey: string,
     @Body() body: { name: string; permissions?: string[]; expiresAt?: string },
   ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
-    
     return this.apiKeysService.createApiKey(
       pubkey,
       body.name,
@@ -37,13 +31,7 @@ export class ApiKeysController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all API keys' })
   @ApiResponse({ status: 200, description: 'List of API keys' })
-  async listApiKeys(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
-  ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'GET', url);
-    
+  async listApiKeys(@CurrentUser() pubkey: string) {
     return this.apiKeysService.listApiKeys(pubkey);
   }
 
@@ -53,13 +41,9 @@ export class ApiKeysController {
   @ApiResponse({ status: 200, description: 'Usage statistics' })
   @ApiResponse({ status: 404, description: 'API key not found' })
   async getUsage(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
+    @CurrentUser() pubkey: string,
     @Param('id') keyId: string,
   ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'GET', url);
-    
     return this.apiKeysService.getApiKeyUsage(pubkey, keyId);
   }
 
@@ -69,13 +53,9 @@ export class ApiKeysController {
   @ApiResponse({ status: 200, description: 'API key revoked' })
   @ApiResponse({ status: 404, description: 'API key not found' })
   async revokeApiKey(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
+    @CurrentUser() pubkey: string,
     @Param('id') keyId: string,
   ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'DELETE', url);
-    
     await this.apiKeysService.revokeApiKey(pubkey, keyId);
     return { revoked: true };
   }

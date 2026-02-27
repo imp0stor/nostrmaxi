@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { nip19, SimplePool } from 'nostr-tools';
 
 export interface WotScoreResponse {
   pubkey: string;
@@ -17,42 +18,22 @@ export interface WotScoreResponse {
 @Injectable()
 export class WotService {
   private wellKnownPubkeys: string[];
+  private relays: string[];
 
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
   ) {
-    // Well-known Nostr accounts used as trust anchors
-    this.wellKnownPubkeys = this.config.get('WOT_TRUST_ANCHORS', 
-      // Default: fiatjaf, jb55, ODELL (example pubkeys)
-      'a5c7...,32e1...,04c9...'
-    ).split(',');
+    this.wellKnownPubkeys = this.config.get('WOT_TRUST_ANCHORS', '').split(',').map((s: string) => s.trim()).filter(Boolean);
+    this.relays = this.config.get('WOT_RELAYS', 'wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol,wss://relay.primal.net')
+      .split(',').map((s: string) => s.trim()).filter(Boolean);
   }
 
-  /**
-   * Get WoT score for a pubkey
-   */
   async getScore(pubkey: string): Promise<WotScoreResponse> {
-    const user = await this.prisma.user.findUnique({
-      where: { pubkey },
-      include: { wotScore: true },
-    });
-
+    const user = await this.prisma.user.findUnique({ where: { pubkey }, include: { wotScore: true } });
     if (!user || !user.wotScore) {
-      // Return default scores for unknown users
-      return {
-        pubkey,
-        npub: '',
-        trustScore: 0,
-        followersCount: 0,
-        followingCount: 0,
-        wotDepth: -1,
-        isLikelyBot: false,
-        discountPercent: 0,
-        lastCalculated: new Date(0),
-      };
+      return { pubkey, npub: nip19.npubEncode(pubkey), trustScore: 0, followersCount: 0, followingCount: 0, wotDepth: -1, isLikelyBot: false, discountPercent: 0, lastCalculated: new Date(0) };
     }
-
     return {
       pubkey: user.pubkey,
       npub: user.npub,
@@ -66,92 +47,88 @@ export class WotService {
     };
   }
 
-  /**
-   * Verify if a pubkey is trusted (WoT score > threshold)
-   */
   async verify(pubkey: string, minScore = 50): Promise<{ verified: boolean; score: number; reason?: string }> {
     const score = await this.getScore(pubkey);
-
-    if (score.isLikelyBot) {
-      return { verified: false, score: score.trustScore, reason: 'Account flagged as likely bot' };
-    }
-
-    if (score.trustScore < minScore) {
-      return { verified: false, score: score.trustScore, reason: `Trust score ${score.trustScore} below threshold ${minScore}` };
-    }
-
+    if (score.isLikelyBot) return { verified: false, score: score.trustScore, reason: 'Account flagged as likely bot' };
+    if (score.trustScore < minScore) return { verified: false, score: score.trustScore, reason: `Trust score ${score.trustScore} below threshold ${minScore}` };
     return { verified: true, score: score.trustScore };
   }
 
-  /**
-   * Get WoT network (followers/following) for a pubkey
-   */
   async getNetwork(pubkey: string, depth = 1): Promise<any> {
-    const user = await this.prisma.user.findUnique({
-      where: { pubkey },
-      include: { wotScore: true },
-    });
+    const user = await this.prisma.user.findUnique({ where: { pubkey } });
+    if (!user) throw new NotFoundException('User not found');
 
-    if (!user) {
-      throw new NotFoundException('User not found');
+    const pool = new SimplePool();
+    try {
+      const selfContact = await pool.get(this.relays, { kinds: [3], authors: [pubkey] });
+      const following = (selfContact?.tags || []).filter((t) => t[0] === 'p' && t[1]).map((t) => t[1]);
+      const followerEvents = await pool.querySync(this.relays, { kinds: [3], '#p': [pubkey], limit: 500 } as any);
+      const followers = [...new Set(followerEvents.map((e) => e.pubkey))];
+      return {
+        pubkey,
+        npub: user.npub,
+        depth,
+        followersCount: followers.length,
+        followingCount: following.length,
+        wotDepth: depth,
+        followers: followers.slice(0, 50),
+        following: following.slice(0, 50),
+      };
+    } finally {
+      pool.close(this.relays);
     }
-
-    // In a real implementation, this would query Nostr relays for follow lists
-    // For now, return the stored score data
-    return {
-      pubkey,
-      npub: user.npub,
-      depth,
-      followersCount: user.wotScore?.followersCount || 0,
-      followingCount: user.wotScore?.followingCount || 0,
-      wotDepth: user.wotScore?.wotDepth || -1,
-      // In production: followers: [...], following: [...]
-    };
   }
 
-  /**
-   * Recalculate WoT score for a user
-   * In production, this would query Nostr relays
-   */
-  async recalculate(pubkey: string): Promise<WotScoreResponse> {
-    let user = await this.prisma.user.findUnique({
-      where: { pubkey },
-      include: { wotScore: true },
-    });
+  private estimateDepth(pubkey: string, following: string[]): number {
+    if (this.wellKnownPubkeys.includes(pubkey)) return 0;
+    if (following.some((pk) => this.wellKnownPubkeys.includes(pk))) return 1;
+    return following.length > 0 ? 2 : 3;
+  }
 
+  async recalculate(pubkey: string): Promise<WotScoreResponse> {
+    let user = await this.prisma.user.findUnique({ where: { pubkey }, include: { wotScore: true } });
     if (!user) {
-      const { nip19 } = await import('nostr-tools');
-      user = await this.prisma.user.create({
-        data: {
-          pubkey,
-          npub: nip19.npubEncode(pubkey),
-          wotScore: { create: {} },
-        },
-        include: { wotScore: true },
-      });
+      user = await this.prisma.user.create({ data: { pubkey, npub: nip19.npubEncode(pubkey), wotScore: { create: {} } }, include: { wotScore: true } });
     }
 
-    // TODO: In production, query relays for:
-    // 1. Follower count (kind 3 events mentioning this pubkey)
-    // 2. Following count (kind 3 event from this pubkey)
-    // 3. WoT depth (hops to trust anchors)
-    // 4. Account activity (recent events)
-    // 5. Bot detection signals
+    const pool = new SimplePool();
+    let followersCount = 0;
+    let followingCount = 0;
+    let wotDepth = 3;
+    let recentNotes = 0;
 
-    // For now, use placeholder calculation
-    const mockFollowers = Math.floor(Math.random() * 1000);
-    const mockFollowing = Math.floor(Math.random() * 500);
-    const mockWotDepth = Math.floor(Math.random() * 5);
-    const trustScore = Math.min(100, (mockFollowers / 10) + (mockWotDepth < 3 ? 20 : 0));
+    try {
+      const selfContact = await pool.get(this.relays, { kinds: [3], authors: [pubkey] });
+      const following = (selfContact?.tags || []).filter((t) => t[0] === 'p' && t[1]).map((t) => t[1]);
+      followingCount = following.length;
+      wotDepth = this.estimateDepth(pubkey, following);
+
+      const followers = await pool.querySync(this.relays, { kinds: [3], '#p': [pubkey], limit: 1000 } as any);
+      followersCount = new Set(followers.map((e) => e.pubkey)).size;
+
+      const weekAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
+      const notes = await pool.querySync(this.relays, { kinds: [1], authors: [pubkey], since: weekAgo, limit: 200 });
+      recentNotes = notes.length;
+    } finally {
+      pool.close(this.relays);
+    }
+
+    const followerScore = Math.min(45, Math.log10(Math.max(1, followersCount)) * 18);
+    const followingScore = Math.min(20, Math.log10(Math.max(1, followingCount)) * 10);
+    const depthScore = Math.max(0, 20 - wotDepth * 5);
+    const activityScore = Math.min(15, recentNotes * 1.2);
+    const trustScore = Math.max(0, Math.min(100, Math.round(followerScore + followingScore + depthScore + activityScore)));
+    const isLikelyBot = recentNotes > 150 || (followingCount > 3000 && followersCount < 10);
 
     const wotScore = await this.prisma.wotScore.update({
       where: { userId: user.id },
       data: {
-        followersCount: mockFollowers,
-        followingCount: mockFollowing,
-        wotDepth: mockWotDepth,
+        followersCount,
+        followingCount,
+        wotDepth,
         trustScore,
-        discountPercent: trustScore > 80 ? 20 : trustScore > 50 ? 10 : 0,
+        isLikelyBot,
+        discountPercent: trustScore > 80 ? 20 : trustScore > 55 ? 10 : 0,
         lastCalculated: new Date(),
       },
     });
