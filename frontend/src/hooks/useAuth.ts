@@ -9,18 +9,26 @@ import {
   parseNsec,
   derivePubkey,
   signEventWithPrivateKey,
+  providerDisplayName,
+  getSignerUnavailableReason,
+  getSignerRuntimeDebugMarker,
+  type NostrProviderId,
 } from '../lib/nostr';
 import type { User } from '../types';
+import { requestIdentityRefresh } from '../lib/identityRefresh';
+
+const LAST_SIGNER_STORAGE_KEY = 'nostrmaxi_last_signer';
 
 interface AuthState {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
-  
+  signerDebugMarker: string;
+
   // Actions
   initialize: () => Promise<void>;
-  loginWithExtension: () => Promise<boolean>;
+  loginWithExtension: (provider?: NostrProviderId) => Promise<boolean>;
   loginWithNsec: (nsec: string) => Promise<boolean>;
   loginWithLnurl: () => Promise<{ lnurl: string; k1: string } | null>;
   pollLnurlLogin: (k1: string) => Promise<boolean>;
@@ -34,6 +42,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   isLoading: true,
   isAuthenticated: false,
   error: null,
+  signerDebugMarker: 'provider:none',
 
   initialize: async () => {
     const token = api.getToken();
@@ -45,6 +54,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     try {
       const user = await api.getMe();
       set({ user, isAuthenticated: true, isLoading: false });
+      requestIdentityRefresh(user.pubkey);
     } catch (error) {
       // Token is invalid
       api.setToken(null);
@@ -52,32 +62,50 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
   },
 
-  loginWithExtension: async () => {
-    set({ isLoading: true, error: null });
+  loginWithExtension: async (provider: NostrProviderId = 'alby') => {
+    set({ isLoading: true, error: null, signerDebugMarker: 'provider:none' });
 
     try {
+      const unavailableReason = getSignerUnavailableReason(provider);
+      if (unavailableReason) {
+        set({ error: unavailableReason, isLoading: false, signerDebugMarker: `provider:none:${provider}` });
+        return false;
+      }
+
       // Quick pre-check (main detection + retry happens inside getPublicKey/signEvent)
       if (!hasNip07Extension()) {
         // Let getPublicKey handle retry before failing to avoid extension-injection race conditions
       }
 
       // Get public key
-      const pubkey = await getPublicKey();
+      const pubkey = await getPublicKey(provider);
       if (!pubkey) {
-        set({ error: 'No public key returned by extension. Please unlock/approve your Nostr extension and try again.' });
+        set({
+          error: `No public key returned by ${providerDisplayName(provider)}. Please unlock/approve this signer and try again.`,
+          signerDebugMarker: getSignerRuntimeDebugMarker(),
+        });
         set({ isLoading: false });
         return false;
       }
 
       // Get challenge
-      const { challenge } = await api.getChallenge(pubkey);
+      const challengeResponse = await api.getChallenge(pubkey);
+      const challenge = challengeResponse?.challenge;
+      if (!challenge || typeof challenge !== 'string') {
+        set({ error: 'Authentication challenge was not returned by the server. Please retry in a moment.', signerDebugMarker: getSignerRuntimeDebugMarker() });
+        set({ isLoading: false });
+        return false;
+      }
 
       // Create and sign auth event
       const unsignedEvent = createAuthChallengeEvent(pubkey, challenge);
-      const signedEvent = await signEvent(unsignedEvent);
+      const signedEvent = await signEvent(unsignedEvent, provider);
 
       if (!signedEvent) {
-        set({ error: 'Failed to sign authentication event. Please approve the connection request and try again.' });
+        set({
+          error: `Failed to sign authentication event with ${providerDisplayName(provider)}. Please approve the request and try again.`,
+          signerDebugMarker: getSignerRuntimeDebugMarker(),
+        });
         set({ isLoading: false });
         return false;
       }
@@ -85,12 +113,17 @@ export const useAuth = create<AuthState>((set, get) => ({
       // Verify with backend
       const { token, user } = await api.verifyChallenge(signedEvent);
       api.setToken(token);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('nostrmaxi_nsec_hex');
+        localStorage.setItem(LAST_SIGNER_STORAGE_KEY, provider);
+      }
 
-      set({ user, isAuthenticated: true, isLoading: false });
+      set({ user, isAuthenticated: true, isLoading: false, signerDebugMarker: getSignerRuntimeDebugMarker() });
+      requestIdentityRefresh(user.pubkey);
       return true;
     } catch (error) {
       const message = mapNip07Error(error);
-      set({ error: message || 'Login failed', isLoading: false });
+      set({ error: `${providerDisplayName(provider)} login failed: ${message || 'Unknown error'}`, isLoading: false, signerDebugMarker: getSignerRuntimeDebugMarker() });
       return false;
     }
   },
@@ -113,14 +146,25 @@ export const useAuth = create<AuthState>((set, get) => ({
         return false;
       }
 
-      const { challenge } = await api.getChallenge(pubkey);
+      const challengeResponse = await api.getChallenge(pubkey);
+      const challenge = challengeResponse?.challenge;
+      if (!challenge || typeof challenge !== 'string') {
+        set({ error: 'Authentication challenge was not returned by the server. Please retry in a moment.' });
+        set({ isLoading: false });
+        return false;
+      }
+
       const unsignedEvent = createAuthChallengeEvent(pubkey, challenge);
       const signedEvent = signEventWithPrivateKey(unsignedEvent, privateKey);
 
       const { token, user } = await api.verifyChallenge(signedEvent);
       api.setToken(token);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('nostrmaxi_nsec_hex', privateKey);
+      }
 
       set({ user, isAuthenticated: true, isLoading: false });
+      requestIdentityRefresh(user.pubkey);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'nsec login failed';
@@ -150,6 +194,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       if (result.status === 'verified' && result.token && result.user) {
         api.setToken(result.token);
         set({ user: result.user, isAuthenticated: true });
+        requestIdentityRefresh(result.user.pubkey);
         return true;
       }
       
@@ -170,6 +215,10 @@ export const useAuth = create<AuthState>((set, get) => ({
     } catch {
       // Ignore logout errors
     }
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('nostrmaxi_nsec_hex');
+    }
+    requestIdentityRefresh();
     set({ user: null, isAuthenticated: false });
   },
 
@@ -179,10 +228,14 @@ export const useAuth = create<AuthState>((set, get) => ({
     try {
       const user = await api.getMe();
       set({ user });
+      requestIdentityRefresh(user.pubkey);
     } catch {
       // Token might have expired
       set({ user: null, isAuthenticated: false });
       api.setToken(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('nostrmaxi_nsec_hex');
+      }
     }
   },
 

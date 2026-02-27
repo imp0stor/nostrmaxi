@@ -1,29 +1,32 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
 import type { Subscription, DomainCatalogResponse } from '../types';
-
-interface Nip05Identity {
-  address: string;
-  localPart: string;
-  domain: string;
-  createdAt: string;
-}
+import { useIdentityStore } from '../stores/identityStore';
+import { requestIdentityRefresh } from '../lib/identityRefresh';
 
 export function Nip05Page() {
   const { refreshUser } = useAuth();
-  const [identities, setIdentities] = useState<Nip05Identity[]>([]);
+  const {
+    identities,
+    isLoadingManaged,
+    isLoadingExternal,
+    isCreating,
+    error,
+    success,
+    loadIdentities,
+    createIdentity,
+    deleteIdentity,
+    clearMessages,
+  } = useIdentityStore();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [domainCatalog, setDomainCatalog] = useState<DomainCatalogResponse | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   
   // Create form state
   const [newLocalPart, setNewLocalPart] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('nostrmaxi.com');
-  const [isCreating, setIsCreating] = useState(false);
 
   // BYOD state
   const [customDomain, setCustomDomain] = useState('');
@@ -36,27 +39,13 @@ export function Nip05Page() {
 
   useEffect(() => {
     Promise.all([
-      fetchIdentities(),
+      loadIdentities(),
       api.getSubscription().then(setSubscription),
       fetchDomainCatalog(),
-    ]).finally(() => setIsLoading(false));
-  }, []);
-
-  const fetchIdentities = async () => {
-    try {
-      const response = await fetch('/api/v1/nip05/mine', {
-        headers: {
-          'Authorization': `Bearer ${api.getToken()}`,
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setIdentities(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch identities:', err);
-    }
-  };
+    ]).finally(() => {
+      requestIdentityRefresh();
+    });
+  }, [loadIdentities]);
 
   const fetchDomainCatalog = async () => {
     try {
@@ -131,81 +120,46 @@ export function Nip05Page() {
     e.preventDefault();
     if (!newLocalPart.trim()) return;
 
+    if (!isPaidTier) {
+      return;
+    }
+
     // Check limit
-    if (subscription && identities.length >= subscription.nip05Limit) {
-      setError(`You've reached your limit of ${subscription.nip05Limit} NIP-05 identities. Upgrade to get more.`);
+    if (isAtSingleUserLimit) {
       return;
     }
 
     const chosenDomain = useCustomDomain ? customDomain.trim().toLowerCase() : selectedDomain;
     if (useCustomDomain && customDomainStatus !== 'verified') {
-      setError('Custom domain is not verified yet. Complete verification before creating this identity.');
       return;
     }
 
-    setIsCreating(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const response = await fetch('/api/v1/nip05/provision', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${api.getToken()}`,
-        },
-        body: JSON.stringify({
-          localPart: newLocalPart.toLowerCase(),
-          domain: chosenDomain,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to create identity');
-      }
-
-      const result = await response.json();
-      setSuccess(`Successfully created ${result.address}!`);
+    const created = await createIdentity(newLocalPart.toLowerCase(), chosenDomain);
+    if (created) {
       setNewLocalPart('');
-      await fetchIdentities();
       refreshUser();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create identity');
-    } finally {
-      setIsCreating(false);
     }
   };
 
   const handleDelete = async (localPart: string, domain: string) => {
     if (!confirm(`Delete ${localPart}@${domain}? This cannot be undone.`)) return;
 
-    try {
-      const response = await fetch('/api/v1/nip05', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${api.getToken()}`,
-        },
-        body: JSON.stringify({ localPart, domain }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || 'Failed to delete identity');
-      }
-
-      setSuccess(`Deleted ${localPart}@${domain}`);
-      await fetchIdentities();
+    const deleted = await deleteIdentity(localPart, domain);
+    if (deleted) {
       refreshUser();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete identity');
     }
   };
 
   const previewDomain = useCustomDomain ? (customDomain.trim().toLowerCase() || 'yourdomain.com') : selectedDomain;
+  const isPaidTier = Boolean(subscription && subscription.tier !== 'FREE' && subscription.isActive);
+  const managedIdentities = identities.filter((identity) => identity.source === 'managed');
+  const externalIdentities = identities.filter((identity) => identity.source === 'external');
+  const hasVerifiedExternal = externalIdentities.some((identity) => identity.verified);
+  const singleUserLimit = Math.max(1, Math.min(subscription?.nip05Limit ?? 1, 1));
+  const isAtSingleUserLimit = managedIdentities.length >= singleUserLimit;
+  const isInitialLoading = isLoadingManaged && isLoadingExternal && identities.length === 0;
 
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <div className="flex justify-center py-12">
         <div className="w-8 h-8 border-4 border-nostr-purple border-t-transparent rounded-full animate-spin" />
@@ -215,22 +169,38 @@ export function Nip05Page() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-3xl font-bold text-white mb-2">NIP-05 Identities</h1>
+      <h1 className="text-3xl font-bold text-white mb-2">Your NIP-05 Identity</h1>
       <p className="text-gray-400 mb-8">
-        Manage your Nostr verification identities
+        Manage one verified Nostr identity address.
       </p>
+
+      {externalIdentities.length > 0 && (
+        <div className="mb-6 p-4 rounded-xl border border-blue-500/40 bg-blue-500/10">
+          <p className="text-blue-200 font-medium">External NIP-05 detected on your profile.</p>
+          <p className="text-sm text-blue-100/90 mt-1">
+            {hasVerifiedExternal
+              ? 'Your existing external NIP-05 is active and recognized. Managed NIP-05 + Lightning is optional.'
+              : 'We found an external NIP-05. You can keep using it, or optionally upgrade for managed identity + Lightning tools.'}
+          </p>
+          <div className="mt-3">
+            <Link to="/pricing" className="inline-flex px-4 py-2 rounded-lg bg-blue-600/70 hover:bg-blue-600 text-white text-sm font-medium">
+              Get NIP-05 + Lightning Address
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Messages */}
       {error && (
         <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300">
           {error}
-          <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+          <button onClick={clearMessages} className="ml-2 underline">Dismiss</button>
         </div>
       )}
       {success && (
         <div className="mb-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-300">
           {success}
-          <button onClick={() => setSuccess(null)} className="ml-2 underline">Dismiss</button>
+          <button onClick={clearMessages} className="ml-2 underline">Dismiss</button>
         </div>
       )}
 
@@ -240,24 +210,28 @@ export function Nip05Page() {
           <div className="flex justify-between items-center mb-2">
             <span className="text-gray-400">Identity Usage</span>
             <span className="text-white font-medium">
-              {identities.length} / {subscription.nip05Limit}
+              {managedIdentities.length} / {singleUserLimit}
             </span>
           </div>
           <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full ${
-                identities.length >= subscription.nip05Limit
+                isAtSingleUserLimit
                   ? 'bg-red-500'
                   : 'bg-nostr-purple'
               }`}
-              style={{ width: `${(identities.length / subscription.nip05Limit) * 100}%` }}
+              style={{ width: `${(managedIdentities.length / singleUserLimit) * 100}%` }}
             />
           </div>
-          {identities.length >= subscription.nip05Limit && (
+          {!isPaidTier ? (
             <p className="text-yellow-400 text-sm mt-2">
-              You've reached your limit. Upgrade for more identities.
+              NIP-05 is a paid feature. Choose monthly, annual, or lifetime to claim your identity.
             </p>
-          )}
+          ) : isAtSingleUserLimit ? (
+            <p className="text-yellow-400 text-sm mt-2">
+              This checkout is focused on one managed identity per account.
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -279,7 +253,7 @@ export function Nip05Page() {
                   placeholder="yourname"
                   className="flex-1 px-4 py-3 bg-nostr-darker border border-gray-700 rounded-l-lg text-white focus:border-nostr-purple focus:outline-none"
                   maxLength={64}
-                  disabled={isCreating || Boolean(subscription && identities.length >= subscription.nip05Limit)}
+                  disabled={!isPaidTier || isCreating || isAtSingleUserLimit}
                 />
                 <span className="px-4 py-3 bg-gray-800 border border-l-0 border-gray-700 rounded-r-lg text-gray-400">
                   @{previewDomain}
@@ -419,18 +393,24 @@ export function Nip05Page() {
 
           <button
             type="submit"
-            disabled={!newLocalPart || isCreating || Boolean(subscription && identities.length >= subscription.nip05Limit) || (useCustomDomain && customDomainStatus !== 'verified')}
+            disabled={!isPaidTier || !newLocalPart || isCreating || isAtSingleUserLimit || (useCustomDomain && customDomainStatus !== 'verified')}
             className="w-full sm:w-auto px-6 py-3 bg-nostr-purple hover:bg-nostr-purple/80 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isCreating ? 'Creating...' : 'Claim Identity'}
+            {!isPaidTier ? 'Upgrade to claim NIP-05' : isAtSingleUserLimit ? 'Identity already active' : isCreating ? 'Creating...' : 'Claim Identity'}
           </button>
         </form>
       </div>
 
       {/* Existing identities */}
       <div className="bg-nostr-dark rounded-xl p-6">
-        <h2 className="text-xl font-bold text-white mb-4">Your Identities</h2>
-        
+        <h2 className="text-xl font-bold text-white mb-2">Your Identity Status</h2>
+        <p className="text-sm text-gray-400 mb-4">NostrMaxi is optimized for one managed identity. External identities from your kind:0 profile are shown read-only.</p>
+
+        <div className="mb-4 text-xs text-gray-500 flex gap-4">
+          <span>Managed: {managedIdentities.length}</span>
+          <span>External: {externalIdentities.length}</span>
+        </div>
+
         {identities.length === 0 ? (
           <div className="text-center py-8">
             <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -438,50 +418,65 @@ export function Nip05Page() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
-            <p className="text-gray-400">No identities yet. Claim your first NIP-05 above!</p>
+            <p className="text-gray-300 mb-1">No managed or external identities found.</p>
+            <p className="text-gray-500 text-sm">Add a NIP-05 above, or add one in your Nostr client profile to see it here as external.</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {identities.map((identity) => (
-              <div
-                key={identity.address}
-                className="flex items-center justify-between p-4 bg-nostr-darker rounded-lg"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-nostr-purple/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-nostr-purple" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-nostr-purple font-medium">{identity.address}</p>
-                    <p className="text-gray-500 text-sm">
-                      Created {new Date(identity.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-sm uppercase tracking-wide text-gray-400 mb-3">Managed by NostrMaxi</h3>
+              {managedIdentities.length === 0 ? (
+                <p className="text-gray-500 text-sm">No managed identities yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {managedIdentities.map((identity) => (
+                    <div key={identity.address} className="flex items-center justify-between p-4 bg-nostr-darker rounded-lg border border-purple-500/20">
+                      <div>
+                        <p className="text-nostr-purple font-medium">{identity.address}</p>
+                        <p className="text-gray-500 text-sm">{identity.verificationMessage}</p>
+                        <p className="text-xs text-gray-500">{identity.createdAt ? `Created ${new Date(identity.createdAt).toLocaleDateString()}` : 'Managed identity'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-1 rounded-full ${identity.verified ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>{identity.verified ? 'Verified' : 'Verification failed'}</span>
+                        <button onClick={() => navigator.clipboard.writeText(identity.address)} className="p-2 text-gray-400 hover:text-white" title="Copy">Copy</button>
+                        <button onClick={() => handleDelete(identity.localPart, identity.domain)} className="p-2 text-red-400 hover:text-red-300" title="Delete">Delete</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => navigator.clipboard.writeText(identity.address)}
-                    className="p-2 text-gray-400 hover:text-white"
-                    title="Copy"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => handleDelete(identity.localPart, identity.domain)}
-                    className="p-2 text-red-400 hover:text-red-300"
-                    title="Delete"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-sm uppercase tracking-wide text-gray-400 mb-3">External (from your profile)</h3>
+              {isLoadingExternal ? (
+                <p className="text-gray-500 text-sm">Loading external identity from relays…</p>
+              ) : externalIdentities.length === 0 ? (
+                <p className="text-gray-500 text-sm">No external NIP-05 found in your kind:0 metadata.</p>
+              ) : (
+                <div className="space-y-3">
+                  {externalIdentities.map((identity) => (
+                    <div key={identity.address} className="flex items-center justify-between p-4 bg-nostr-darker rounded-lg border border-blue-500/20">
+                      <div>
+                        <p className="text-blue-300 font-medium">{identity.address}</p>
+                        <p className="text-gray-500 text-sm">{identity.verificationMessage}</p>
+                        <p className="text-xs text-gray-500">Not managed here (read-only)</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-1 rounded-full ${identity.verified ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>{identity.verified ? 'Verified on domain' : 'Verification failed'}</span>
+                        <button onClick={() => navigator.clipboard.writeText(identity.address)} className="p-2 text-gray-400 hover:text-white" title="Copy">Copy</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
+          </div>
+        )}
+
+        {!isPaidTier && (
+          <div className="mt-6 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-200 text-sm">
+            Upgrade to a paid tier to add managed NIP-05 identities from NostrMaxi.
           </div>
         )}
       </div>

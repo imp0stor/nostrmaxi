@@ -7,265 +7,185 @@ import { HomePage } from './pages/HomePage';
 import { DashboardPage } from './pages/DashboardPage';
 import { Nip05Page } from './pages/Nip05Page';
 import { ReceiptPage } from './pages/ReceiptPage';
-import { RoadmapPage } from './pages/Roadmap';
 import { ProfilePage } from './pages/ProfilePage';
+import { FeedPage } from './pages/FeedPage';
+import { DiscoverPage } from './pages/DiscoverPage';
+import { OnboardingPage } from './pages/OnboardingPage';
+import { MarketplacePage } from './pages/MarketplacePage';
+import { MarketplaceListingPage } from './pages/MarketplaceListingPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { SettingsPage } from './pages/SettingsPage';
+import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
+import { ListsPage } from './pages/ListsPage';
 import { truncateNpub } from './lib/nostr';
-import { appConfig } from './config/appConfig';
-import { Button } from '@strangesignal/ui-primitives';
+import { Avatar } from './components/Avatar';
+import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
+import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
 
 export default function App() {
   const { user, isAuthenticated, isLoading, initialize, logout } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
+  const [showIdentityMenu, setShowIdentityMenu] = useState(false);
+  const [primaryIdentity, setPrimaryIdentity] = useState<string>('');
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Initialize auth on mount
   useEffect(() => {
     initialize();
   }, [initialize]);
-
-  // Close menu on navigation
-  const [menuOpen, setMenuOpen] = useState(false);
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [location.pathname]);
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
 
     const isLandingRoute = location.pathname === '/' || location.pathname === '/home';
-    if (!isLandingRoute) return;
-
-    const hasExistingAccount =
-      (user.nip05s?.length ?? 0) > 0 ||
-      user.tier !== 'FREE' ||
-      Boolean(user.subscription?.isActive);
-
-    navigate(hasExistingAccount ? '/dashboard' : '/pricing', { replace: true });
+    if (isLandingRoute) {
+      navigate('/feed', { replace: true });
+    }
   }, [isAuthenticated, user, location.pathname, navigate]);
 
-  const navClass = (path: string) =>
-    `font-medium ${location.pathname === path ? 'text-white' : 'text-gray-300 hover:text-white'}`;
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadIdentity = async (forceRefresh = false) => {
+      if (!isAuthenticated || !user) {
+        setPrimaryIdentity('');
+        return;
+      }
+
+      try {
+        const resolution = await resolvePrimaryIdentityDetailed(user, { forceRefresh });
+        if (typeof console !== 'undefined') {
+          console.info('[app] loadIdentity resolved', {
+            pubkey: user.pubkey,
+            npub: user.npub,
+            forceRefresh,
+            source: resolution.source,
+            value: resolution.value,
+            externalNip05: resolution.externalNip05 ?? null,
+            managedNip05: resolution.managedNip05 ?? null,
+          });
+        }
+        if (!cancelled) {
+          setPrimaryIdentity(resolution.value || truncateNpub(user.npub, 4));
+        }
+      } catch (error) {
+        if (typeof console !== 'undefined') {
+          console.error('[app] loadIdentity failed', {
+            pubkey: user.pubkey,
+            npub: user.npub,
+            forceRefresh,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        if (!cancelled) {
+          setPrimaryIdentity(truncateNpub(user.npub, 4));
+        }
+      }
+    };
+
+    const handleIdentityRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ pubkey?: string }>).detail;
+      if (detail?.pubkey && user && detail.pubkey !== user.pubkey) return;
+      void loadIdentity(true);
+    };
+
+    void loadIdentity(showIdentityMenu);
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener(IDENTITY_REFRESH_EVENT, handleIdentityRefresh as EventListener);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(IDENTITY_REFRESH_EVENT, handleIdentityRefresh as EventListener);
+      }
+    };
+  }, [isAuthenticated, user, showIdentityMenu]);
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Navigation */}
-      <nav className="bg-nostr-dark border-b border-gray-800 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            {/* Logo */}
-            <div className="flex items-center">
-              <Link to="/" className="flex items-center gap-2">
-                <span className="text-2xl">⚡</span>
-                <span className="text-xl font-bold text-gradient">{appConfig.appName}</span>
-              </Link>
-            </div>
-
-            {/* Desktop navigation */}
-            <div className="hidden md:flex items-center gap-6">
-              <Link to="/pricing" className={navClass('/pricing')}>
-                Pricing
-              </Link>
-              <Link to="/roadmap" className={navClass('/roadmap')}>
-                Roadmap
-              </Link>
-              {isAuthenticated && (
-                <>
-                  <Link to="/dashboard" className={navClass('/dashboard')}>
-                    Dashboard
-                  </Link>
-                  <Link to="/nip05" className={navClass('/nip05')}>
-                    NIP-05
-                  </Link>
-                  <Link to="/profile/me" className={navClass('/profile/me')}>
-                    Profile
-                  </Link>
-                </>
-              )}
-              
-              {isLoading ? (
-                <div className="w-24 h-10 shimmer rounded-lg" />
-              ) : isAuthenticated && user ? (
-                <div className="relative">
-                  <button
-                    onClick={() => setMenuOpen(!menuOpen)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-nostr-purple/20 hover:bg-nostr-purple/30"
-                  >
-                    <img
-                      src={`https://robohash.org/${user.pubkey}.png?set=set4&size=32x32`}
-                      alt="Avatar"
-                      className="w-8 h-8 rounded-full"
-                    />
-                    <span className="text-white font-medium">
-                      {truncateNpub(user.npub, 4)}
-                    </span>
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown menu */}
-                  {menuOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-nostr-dark border border-gray-700 rounded-lg shadow-lg py-1">
-                      <Link
-                        to="/dashboard"
-                        className="block px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white"
-                      >
-                        Dashboard
-                      </Link>
-                      <Link
-                        to="/dashboard?tab=subscription"
-                        className="block px-4 py-2 text-gray-300 hover:bg-gray-800 hover:text-white"
-                      >
-                        Subscription
-                      </Link>
-                      <hr className="my-1 border-gray-700" />
+    <div className="min-h-screen flex flex-col cyber-grid bg-[#0a0e27]">
+      <nav className="border-b border-cyan-900/60 bg-[#060914]/95 sticky top-0 z-40 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-2 text-cyan-300 font-bold tracking-wider"><span>⚡</span><span>NostrMaxi</span></Link>
+          <div className="flex items-center gap-4 text-sm">
+            <Link to="/feed" className="text-blue-200 hover:text-cyan-300">Feed</Link>
+            <Link to="/discover" className="text-blue-200 hover:text-cyan-300">Discover</Link>
+            {isAuthenticated && <Link to="/lists" className="text-blue-200 hover:text-cyan-300">Lists</Link>}
+            {isAuthenticated && <Link to="/marketplace" className="text-blue-200 hover:text-cyan-300">Marketplace</Link>}
+            {isAuthenticated && <Link to="/dashboard" className="text-blue-200 hover:text-cyan-300">Manage</Link>}
+            {isAuthenticated && <Link to="/analytics" className="text-blue-200 hover:text-cyan-300">Analytics</Link>}
+            {isAuthenticated && <Link to="/ecosystem" className="text-blue-200 hover:text-cyan-300">Ecosystem</Link>}
+            {isAuthenticated && <Link to="/profile/me" className="text-blue-200 hover:text-cyan-300">Profile</Link>}
+            {isAuthenticated && <Link to="/settings" className="text-blue-200 hover:text-cyan-300">Settings</Link>}
+            {isAuthenticated && <Link to="/pricing" className="text-fuchsia-200 hover:text-fuchsia-100">Get Your NIP-05</Link>}
+            {isLoading ? <span className="text-gray-500">…</span> : isAuthenticated && user ? (
+              <div className="relative">
+                <button
+                  onClick={() => setShowIdentityMenu((v) => !v)}
+                  className="cy-chip inline-flex items-center gap-2"
+                  aria-haspopup="menu"
+                  aria-expanded={showIdentityMenu}
+                >
+                  <Avatar pubkey={user.pubkey} size={30} clickable={false} />
+                  <span>{primaryIdentity || truncateNpub(user.npub, 4)}</span>
+                  <span>▼</span>
+                </button>
+                {showIdentityMenu ? (
+                  <div className="absolute right-0 mt-2 w-72 cy-card p-3 z-50" role="menu">
+                    <div className="text-xs text-gray-400">Identity</div>
+                    <div className="mt-1 text-sm text-cyan-100 break-all">{primaryIdentity || truncateNpub(user.npub, 4)}</div>
+                    <div className="mt-3 text-xs text-gray-400">npub</div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <code className="cy-mono text-xs text-cyan-200 flex-1 break-all">{user.npub}</code>
+                      <button className="cy-chip" onClick={async () => { try { await navigator.clipboard.writeText(user.npub); } catch { /* ignore */ } }}>
+                        Copy
+                      </button>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2">
+                      <Link to="/nip05" className="cy-chip text-left" onClick={() => setShowIdentityMenu(false)}>Manage Identity</Link>
                       <button
-                        onClick={() => {
-                          logout();
-                          setMenuOpen(false);
+                        className="cy-chip text-left"
+                        onClick={async () => {
+                          setShowIdentityMenu(false);
+                          await logout();
                         }}
-                        className="block w-full text-left px-4 py-2 text-red-400 hover:bg-gray-800"
                       >
                         Logout
                       </button>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <Button
-                  onClick={() => setShowLogin(true)}
-                  variant="primary"
-                >
-                  Login with Nostr
-                </Button>
-              )}
-            </div>
-
-            {/* Mobile menu button */}
-            <div className="md:hidden flex items-center">
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="text-gray-400 hover:text-white p-2"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {menuOpen ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  )}
-                </svg>
-              </button>
-            </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <button onClick={() => setShowLogin(true)} className="cy-btn">Login</button>
+            )}
           </div>
         </div>
-
-        {/* Mobile menu */}
-        {menuOpen && (
-          <div className="md:hidden border-t border-gray-800 bg-nostr-dark">
-            <div className="px-4 py-3 space-y-3">
-              <Link to="/pricing" className={`block font-medium py-2 ${location.pathname === '/pricing' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
-                Pricing
-              </Link>
-              <Link to="/roadmap" className={`block font-medium py-2 ${location.pathname === '/roadmap' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
-                Roadmap
-              </Link>
-              {isAuthenticated ? (
-                <>
-                  <Link to="/dashboard" className={`block font-medium py-2 ${location.pathname === '/dashboard' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
-                    Dashboard
-                  </Link>
-                  <Link to="/nip05" className={`block font-medium py-2 ${location.pathname === '/nip05' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
-                    NIP-05
-                  </Link>
-                  <Link to="/profile/me" className={`block font-medium py-2 ${location.pathname === '/profile/me' ? 'text-white' : 'text-gray-300 hover:text-white'}`}>
-                    Profile
-                  </Link>
-                  <button
-                    onClick={logout}
-                    className="block w-full text-left text-red-400 hover:text-red-300 font-medium py-2"
-                  >
-                    Logout
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setShowLogin(true)}
-                  className="w-full px-4 py-2 bg-nostr-purple hover:bg-nostr-purple/80 text-white font-semibold rounded-lg"
-                >
-                  Login with Nostr
-                </button>
-              )}
-            </div>
-          </div>
-        )}
       </nav>
 
-      {/* Main content */}
       <main className="flex-1">
         <Routes>
           <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
           <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/roadmap" element={<RoadmapPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              isAuthenticated ? (
-                <DashboardPage />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
-          <Route
-            path="/nip05"
-            element={
-              isAuthenticated ? (
-                <Nip05Page />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
-          <Route
-            path="/profile/:npub"
-            element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />}
-          />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" replace />} />
+          <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
+          <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
+          <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
+          <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
+          <Route path="/dashboard" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" replace />} />
+          <Route path="/analytics" element={isAuthenticated ? <AnalyticsPage /> : <Navigate to="/" replace />} />
+          <Route path="/ecosystem" element={isAuthenticated ? <EcosystemCatalogPage /> : <Navigate to="/" replace />} />
+          <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
+          <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
+          <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
           <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
         </Routes>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-nostr-dark border-t border-gray-800 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-xl">⚡</span>
-              <span className="font-bold text-gradient">{appConfig.appName}</span>
-            </div>
-            <div className="flex gap-6 text-gray-400 text-sm">
-              <a href={appConfig.githubUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white">
-                GitHub
-              </a>
-              <a href={appConfig.nostrUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white">
-                Nostr
-              </a>
-            </div>
-            <p className="text-gray-500 text-sm">{appConfig.footerText}</p>
-          </div>
-        </div>
-      </footer>
-
-      {/* Login Modal */}
+      <footer className="border-t border-cyan-900/60 py-6 text-center text-xs text-gray-500">NostrMaxi // cyber social + identity</footer>
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
-
-      {/* Click outside to close menu */}
-      {menuOpen && (
-        <div
-          className="fixed inset-0 z-30"
-          onClick={() => setMenuOpen(false)}
-        />
-      )}
     </div>
   );
 }

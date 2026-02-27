@@ -23,6 +23,9 @@ export interface Nip07Nostr {
 declare global {
   interface Window {
     nostr?: Nip07Nostr;
+    nostrKeychain?: Nip07Nostr;
+    nos2x?: { nostr?: Nip07Nostr };
+    alby?: { nostr?: Nip07Nostr };
   }
 }
 
@@ -51,6 +54,8 @@ export interface Nip05 {
 export type SubscriptionTier = 'FREE' | 'PRO' | 'BUSINESS' | 'LIFETIME';
 export type BillingCycle = 'monthly' | 'annual' | 'lifetime';
 
+export type BlossomPolicyMode = 'external-default' | 'managed-paid';
+
 export interface TierInfo {
   tier: SubscriptionTier;
   name: string;
@@ -62,6 +67,8 @@ export interface TierInfo {
   customDomain: boolean;
   analytics: boolean;
   apiAccess: boolean;
+  blossomPolicy?: BlossomPolicyMode;
+  blossomStorageMb?: number;
   isLifetime?: boolean;
 }
 

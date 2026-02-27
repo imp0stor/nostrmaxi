@@ -1,5 +1,6 @@
-import { IsString, IsNotEmpty, IsOptional, Matches, Length, IsLowercase } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, Matches, Length, IsLowercase, IsArray, ArrayMaxSize, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
 export class ProvisionNip05Dto {
   @ApiProperty({ 
@@ -27,6 +28,32 @@ export class ProvisionNip05Dto {
     message: 'Invalid domain format'
   })
   domain?: string;
+}
+
+export class RegisterNip05Dto {
+  @ApiProperty({ description: 'NIP-05 address to register', example: 'alice@nostrmaxi.com' })
+  @IsString()
+  @IsNotEmpty()
+  address: string;
+
+  @ApiProperty({ description: 'Target npub (or pubkey) for assignment' })
+  @IsString()
+  @IsNotEmpty()
+  npub: string;
+
+  @ApiPropertyOptional({ description: 'Optional callback URL for async notification' })
+  @IsOptional()
+  @IsString()
+  callbackUrl?: string;
+}
+
+export class BatchRegisterNip05Dto {
+  @ApiProperty({ type: [RegisterNip05Dto] })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => RegisterNip05Dto)
+  registrations!: RegisterNip05Dto[];
 }
 
 export class DeleteNip05Dto {

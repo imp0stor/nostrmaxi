@@ -1,20 +1,159 @@
 import { nip19, SimplePool, finalizeEvent } from 'nostr-tools';
 import type { NostrEvent, NostrProfile, Nip07Nostr } from '../types';
+import { fetchProfileCached } from './profileCache';
 
 const NIP07_RETRY_ATTEMPTS = 10;
 const NIP07_RETRY_DELAY_MS = 250;
+
+export type NostrProviderId = 'alby' | 'nostrcast' | 'nos2x' | 'window_nostr';
+
+export interface NostrProviderOption {
+  id: NostrProviderId;
+  label: string;
+  source: 'window.nostr' | 'window.nostrKeychain' | 'window.nos2x' | 'window.alby';
+  isAvailable: boolean;
+  warning?: string;
+  unavailableReason?: string;
+  provider: Nip07Nostr | null;
+}
+
+let lastProviderDebugMarker = 'provider:none';
+
+function markProviderUsage(marker: string) {
+  lastProviderDebugMarker = marker;
+}
+
+export function getSignerRuntimeDebugMarker(): string {
+  return lastProviderDebugMarker;
+}
+
+export function providerDisplayName(provider: NostrProviderId): string {
+  if (provider === 'alby') return 'Alby';
+  if (provider === 'nostrcast') return 'NostrCast Keychain';
+  if (provider === 'nos2x') return 'nos2x';
+  return 'Browser NIP-07 Signer';
+}
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Check if NIP-07 extension is available
-export function hasNip07Extension(): boolean {
-  return typeof window !== 'undefined' && typeof window.nostr !== 'undefined';
+function isFunction(value: unknown): value is (...args: unknown[]) => unknown {
+  return typeof value === 'function';
 }
 
-// Wait for NIP-07 extension to become available
+function isProviderCompatible(nostr: unknown): nostr is Nip07Nostr {
+  if (!nostr || typeof nostr !== 'object') {
+    return false;
+  }
+
+  const candidate = nostr as Nip07Nostr;
+  return isFunction(candidate.getPublicKey) && isFunction(candidate.signEvent);
+}
+
+function isLikelyAlbyWindowNostr(nostr: Nip07Nostr | null, w: Window & typeof globalThis): boolean {
+  if (!nostr) return false;
+  if ((w as any)?.alby?.nostr && nostr === (w as any).alby.nostr) return true;
+  const candidate = nostr as unknown as Record<string, unknown>;
+  return Boolean(
+    (candidate as any).isAlby ||
+      (candidate as any).providerName === 'alby' ||
+      (candidate as any).extensionName === 'alby' ||
+      (candidate as any).extension === 'alby'
+  );
+}
+
+function isLikelyNos2xWindowNostr(nostr: Nip07Nostr | null): boolean {
+  if (!nostr) return false;
+  const candidate = nostr as unknown as Record<string, unknown>;
+  const extensionName = `${candidate.extensionName ?? candidate.extension ?? candidate.providerName ?? ''}`.toLowerCase();
+  return Boolean((candidate as any).isNos2x || extensionName.includes('nos2x'));
+}
+
+function getSignerOptions(): NostrProviderOption[] {
+  if (typeof window === 'undefined') return [];
+
+  const options: NostrProviderOption[] = [];
+
+  const windowNostr = isProviderCompatible(window.nostr) ? window.nostr : null;
+  const keychain = isProviderCompatible(window.nostrKeychain) ? window.nostrKeychain : null;
+  const nos2xInjected = isProviderCompatible((window as any).nos2x?.nostr) ? ((window as any).nos2x?.nostr as Nip07Nostr) : null;
+  const albyInjected = isProviderCompatible((window as any).alby?.nostr) ? ((window as any).alby?.nostr as Nip07Nostr) : null;
+
+  const windowNostrIsAlby = isLikelyAlbyWindowNostr(windowNostr, window);
+  const windowNostrIsNos2x = isLikelyNos2xWindowNostr(windowNostr);
+
+  const albyProvider = albyInjected ?? (windowNostrIsAlby ? windowNostr : null);
+  options.push({
+    id: 'alby',
+    label: 'Alby',
+    source: albyInjected ? 'window.alby' : 'window.nostr',
+    provider: albyProvider,
+    isAvailable: Boolean(albyProvider),
+    unavailableReason: albyProvider ? undefined : 'Alby is not independently addressable on window.nostr.',
+  });
+
+  const nos2xProvider = nos2xInjected ?? (windowNostrIsNos2x ? windowNostr : null);
+  options.push({
+    id: 'nos2x',
+    label: 'nos2x',
+    source: nos2xInjected ? 'window.nos2x' : 'window.nostr',
+    provider: nos2xProvider,
+    isAvailable: Boolean(nos2xProvider),
+    unavailableReason: nos2xProvider
+      ? undefined
+      : 'nos2x is not independently addressable (window.nostr appears owned by another signer).',
+  });
+
+  const unknownWindowProvider = windowNostr && !windowNostrIsAlby && !windowNostrIsNos2x ? windowNostr : null;
+  options.push({
+    id: 'window_nostr',
+    label: 'Browser NIP-07 Signer',
+    source: 'window.nostr',
+    provider: unknownWindowProvider,
+    isAvailable: Boolean(unknownWindowProvider),
+    warning: unknownWindowProvider ? 'Unknown window.nostr signer detected. You can still try logging in with this provider.' : undefined,
+    unavailableReason: unknownWindowProvider ? undefined : 'window.nostr is controlled by another signer and cannot be selected as a generic provider.',
+  });
+
+  options.push({
+    id: 'nostrcast',
+    label: 'NostrCast Keychain',
+    source: 'window.nostrKeychain',
+    provider: keychain,
+    isAvailable: Boolean(keychain),
+    unavailableReason: keychain ? undefined : 'window.nostrKeychain not detected.',
+  });
+
+  return options;
+}
+
+export function getSignerChoices(): NostrProviderOption[] {
+  return getSignerOptions();
+}
+
+export function getAvailableNostrProviders(): NostrProviderOption[] {
+  return getSignerOptions().filter((option) => option.isAvailable);
+}
+
+export function getSignerUnavailableReason(provider: NostrProviderId): string | null {
+  const match = getSignerOptions().find((option) => option.id === provider);
+  return match?.unavailableReason ?? null;
+}
+
+// Check if NIP-07 extension is available
+export function hasNip07Extension(): boolean {
+  return getAvailableNostrProviders().length > 0;
+}
+
+export function getNostrProvider(provider: NostrProviderId): Nip07Nostr | null {
+  const option = getSignerOptions().find((opt) => opt.id === provider);
+  return option?.isAvailable ? option.provider : null;
+}
+
+// Wait for selected extension provider to become available
 export async function waitForNip07Extension(
+  provider: NostrProviderId = 'alby',
   attempts = NIP07_RETRY_ATTEMPTS,
   delayMs = NIP07_RETRY_DELAY_MS
 ): Promise<Nip07Nostr | null> {
@@ -23,8 +162,9 @@ export async function waitForNip07Extension(
   }
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (window.nostr) {
-      return window.nostr;
+    const selected = getNostrProvider(provider);
+    if (selected) {
+      return selected;
     }
     await sleep(delayMs);
   }
@@ -33,9 +173,8 @@ export async function waitForNip07Extension(
 }
 
 // Get NIP-07 extension
-export function getNip07(): Nip07Nostr | null {
-  if (typeof window === 'undefined') return null;
-  return window.nostr || null;
+export function getNip07(provider: NostrProviderId = 'alby'): Nip07Nostr | null {
+  return getNostrProvider(provider);
 }
 
 export function mapNip07Error(error: unknown): string {
@@ -53,14 +192,32 @@ export function mapNip07Error(error: unknown): string {
   return message;
 }
 
-// Get public key from NIP-07 extension
-export async function getPublicKey(): Promise<string | null> {
-  const nostr = await waitForNip07Extension();
+function missingProviderMessage(provider: NostrProviderId): string {
+  if (provider === 'nostrcast') {
+    return 'NostrCast Keychain was selected, but window.nostrKeychain is not available. Please unlock/install NostrCast Keychain or choose another signer.';
+  }
+
+  if (provider === 'nos2x') {
+    return 'nos2x was selected, but no compatible nos2x provider is available. Please unlock nos2x or choose another signer.';
+  }
+
+  if (provider === 'window_nostr') {
+    return 'Browser NIP-07 signer was selected, but window.nostr is not available. Please unlock/install a compatible signer or choose another provider.';
+  }
+
+  return 'Alby was selected, but window.nostr is not available. Please unlock/install Alby or choose another signer.';
+}
+
+// Get public key from selected NIP-07 provider
+export async function getPublicKey(provider: NostrProviderId = 'alby'): Promise<string | null> {
+  const nostr = await waitForNip07Extension(provider);
   if (!nostr) {
-    throw new Error('Please install a Nostr extension (Alby, nos2x)');
+    markProviderUsage(`getPublicKey:${provider}:provider:none`);
+    throw new Error(missingProviderMessage(provider));
   }
 
   try {
+    markProviderUsage(`getPublicKey:${provider}:provider:${provider}`);
     const pubkey = await nostr.getPublicKey();
     if (!pubkey) {
       throw new Error('Extension returned an empty public key. Please unlock/authorize your Nostr extension and try again.');
@@ -88,20 +245,53 @@ export function createUnsignedEvent(
   };
 }
 
-// Sign event with NIP-07 extension
+// Sign event with selected NIP-07 extension
 export async function signEvent(
-  event: Omit<NostrEvent, 'id' | 'sig'>
+  event: Omit<NostrEvent, 'id' | 'sig'>,
+  provider: NostrProviderId = 'alby'
 ): Promise<NostrEvent | null> {
-  const nostr = await waitForNip07Extension();
+  const nostr = await waitForNip07Extension(provider);
   if (!nostr) {
-    throw new Error('Please install a Nostr extension (Alby, nos2x)');
+    markProviderUsage(`signEvent:${provider}:provider:none`);
+    throw new Error(missingProviderMessage(provider));
   }
 
+  const normalizeSignedEvent = (raw: any): NostrEvent => ({
+    id: raw?.id,
+    pubkey: raw?.pubkey,
+    created_at: raw?.created_at ?? raw?.createdAt,
+    kind: raw?.kind,
+    tags: raw?.tags,
+    content: raw?.content ?? '',
+    sig: raw?.sig,
+  });
+
+  const isHex = (v: unknown, len: number) => typeof v === 'string' && new RegExp(`^[a-f0-9]{${len}}$`, 'i').test(v);
+
   try {
-    return await nostr.signEvent(event);
+    markProviderUsage(`signEvent:${provider}:provider:${provider}`);
+    const signed = await nostr.signEvent(event);
+    const normalized = normalizeSignedEvent(signed);
+
+    if (
+      !isHex(normalized.id, 64) ||
+      !isHex(normalized.pubkey, 64) ||
+      !isHex(normalized.sig, 128) ||
+      typeof normalized.kind !== 'number' ||
+      typeof normalized.created_at !== 'number' ||
+      !Array.isArray(normalized.tags)
+    ) {
+      throw new Error('Malformed signed event from extension');
+    }
+
+    return normalized;
   } catch (error) {
     console.error('Failed to sign event:', error);
-    throw new Error(mapNip07Error(error));
+    const mapped = mapNip07Error(error);
+    if (mapped.toLowerCase().includes('malformed signed event') || String(error).toLowerCase().includes('malformed')) {
+      throw new Error('Your selected Nostr signer returned an invalid auth signature. Try another signer and retry.');
+    }
+    throw new Error(mapped);
   }
 }
 
@@ -198,28 +388,10 @@ export async function fetchProfile(
     'wss://relay.damus.io',
     'wss://relay.nostr.band',
     'wss://nos.lol',
+    'wss://relay.primal.net',
   ]
 ): Promise<NostrProfile | null> {
-  const pool = new SimplePool();
-
-  try {
-    const event = await pool.get(relays, {
-      kinds: [0],
-      authors: [pubkey],
-    });
-
-    if (event) {
-      try {
-        return JSON.parse(event.content) as NostrProfile;
-      } catch {
-        return null;
-      }
-    }
-
-    return null;
-  } finally {
-    pool.close(relays);
-  }
+  return fetchProfileCached(pubkey, relays);
 }
 
 // Create profile event (kind 0)
