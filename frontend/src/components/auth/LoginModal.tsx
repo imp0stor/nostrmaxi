@@ -194,7 +194,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         {!method && (
           <>
-            <div className="md:hidden space-y-3">
+            <div className="lg:hidden space-y-3">
               <label htmlFor="mobile-login-method" className="block text-sm text-cyan-200">
                 Choose login method
               </label>
@@ -203,10 +203,10 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                   id="mobile-login-method"
                   value={mobileMethod}
                   onChange={(e) => handleMobileMethodChange(e.target.value as MobileLoginOption)}
-                  className="w-full min-h-[44px] rounded-lg border border-cyan-500/30 bg-slate-900 px-4 py-3 pr-10 text-white focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                  className="w-full min-h-[48px] rounded-lg border-2 border-cyan-500/50 bg-slate-900 px-4 py-3 pr-10 text-white text-base focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/30"
                 >
-                  <option value="">Choose login method...</option>
-                  <option value="nostr_connect">Connect with Signer App</option>
+                  <option value="">Select login method...</option>
+                  <option value="nostr_connect">📱 Connect with Signer App (Alby, Amber)</option>
                   <option value="alby" disabled={!isProviderAvailable('alby')}>{providerLabel.alby}{!isProviderAvailable('alby') ? ' (not detected)' : ''}</option>
                   <option value="nos2x" disabled={!isProviderAvailable('nos2x')}>{providerLabel.nos2x}{!isProviderAvailable('nos2x') ? ' (not detected)' : ''}</option>
                   <option value="nostrcast" disabled={!isProviderAvailable('nostrcast')}>{providerLabel.nostrcast}{!isProviderAvailable('nostrcast') ? ' (not detected)' : ''}</option>
@@ -218,10 +218,27 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                 </svg>
               </div>
-              <p className="text-xs text-gray-400">Signer extensions not detected on this device are disabled.</p>
+              <p className="text-xs text-gray-400 mb-4">Signer extensions not detected on this device are disabled.</p>
+              
+              {/* Quick action button for mobile */}
+              <button
+                onClick={() => void handleNostrConnectLogin()}
+                disabled={isLoading}
+                className="w-full p-4 rounded-lg border-2 border-emerald-500/60 bg-emerald-500/15 hover:bg-emerald-500/25 transition-all flex items-center gap-3"
+              >
+                <div className="w-10 h-10 bg-emerald-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="font-semibold text-white text-base">Open Signer App</div>
+                  <div className="text-sm text-emerald-200/80">Alby, Amber, or other NIP-46 signer</div>
+                </div>
+              </button>
             </div>
 
-            <div className="hidden md:block">
+            <div className="hidden lg:block">
               <div className="space-y-3">
                 <button
                   onClick={() => void handleNostrConnectLogin()}
