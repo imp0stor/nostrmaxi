@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { ownerNpubs, adminNpubs } = require('../../services/auth/nostr-auth-integration.js');
+const { ownerNpubs, adminNpubs } = require('../services/auth/nostr-auth-integration');
 
 @Injectable()
 export class NostrAdminGuard implements CanActivate {

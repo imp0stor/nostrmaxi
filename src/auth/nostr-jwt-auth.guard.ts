@@ -4,7 +4,7 @@ import { nip19 } from 'nostr-tools';
 
 // Proven middleware integration from shared package adapter
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { nostrAuthMiddleware } = require('../../services/auth/nostr-auth-integration.js');
+const { nostrAuthMiddleware } = require('../services/auth/nostr-auth-integration');
 
 @Injectable()
 export class NostrJwtAuthGuard implements CanActivate {

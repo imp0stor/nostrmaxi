@@ -11,7 +11,7 @@ describe('Nostr auth integration permissions', () => {
   });
 
   it('loads owner/admin npub lists from integration config', () => {
-    const integration = require('../../services/auth/nostr-auth-integration.js');
+    const integration = require('../services/auth/nostr-auth-integration');
     expect(integration.ownerNpubs).toContain(ownerNpub);
     expect(integration.adminNpubs).toContain(ownerNpub);
   });
