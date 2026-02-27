@@ -5,6 +5,8 @@ import type { NostrEvent } from '../types';
 const DEFAULT_RELAYS = ['wss://relay.nsec.app', 'wss://relay.damus.io'];
 const NOSTR_CONNECT_KIND = 24133;
 
+const HEX_64_REGEX = /^[a-f0-9]{64}$/i;
+
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
@@ -23,6 +25,12 @@ export interface NostrConnectInitOptions {
   metadata?: NostrConnectMetadata;
 }
 
+export interface BunkerUriConfig {
+  signerPubkey: string;
+  relays: string[];
+  secret?: string;
+}
+
 export class NostrConnectClient {
   private pool: SimplePool | null = null;
   private relays: string[] = DEFAULT_RELAYS;
@@ -32,6 +40,7 @@ export class NostrConnectClient {
   private clientSecret: Uint8Array = new Uint8Array(0);
   private clientPubkey = '';
   private signerPubkey: string | null = null;
+  private bunkerSecret: string | null = null;
 
   private connectedPromise: Promise<string> | null = null;
   private resolveConnected: ((pubkey: string) => void) | null = null;
@@ -41,36 +50,68 @@ export class NostrConnectClient {
   private subCloser: { close: (reason?: string) => void } | null = null;
 
   initialize(options?: NostrConnectInitOptions): string {
-    this.cleanup();
+    this.setupSession(options);
+    return this.getConnectionUri();
+  }
 
-    this.pool = new SimplePool();
-    this.relays = options?.relays?.length ? options.relays : DEFAULT_RELAYS;
-    this.metadata = options?.metadata ?? this.metadata;
+  initializeFromBunkerUri(uri: string, options?: Pick<NostrConnectInitOptions, 'metadata'>): BunkerUriConfig {
+    const parsed = NostrConnectClient.parseBunkerUri(uri);
 
-    this.clientSecret = generateSecretKey();
-    this.clientSecretHex = Array.from(this.clientSecret).map((b) => b.toString(16).padStart(2, '0')).join('');
-    this.clientPubkey = getPublicKey(this.clientSecret);
-
-    this.connectedPromise = new Promise<string>((resolve, reject) => {
-      this.resolveConnected = resolve;
-      this.rejectConnected = reject;
+    this.setupSession({
+      relays: parsed.relays,
+      metadata: options?.metadata ?? this.metadata,
     });
 
-    this.subCloser = this.pool.subscribeMany(
-      this.relays,
-      {
-        kinds: [NOSTR_CONNECT_KIND],
-        '#p': [this.clientPubkey],
-        since: Math.floor(Date.now() / 1000) - 15,
-      },
-      {
-        onevent: (event) => {
-          void this.handleIncomingEvent(event as NostrEvent);
-        },
-      }
-    );
+    this.signerPubkey = parsed.signerPubkey;
+    this.bunkerSecret = parsed.secret ?? null;
+    this.resolveConnected?.(parsed.signerPubkey);
 
-    return this.getConnectionUri();
+    return parsed;
+  }
+
+  static parseBunkerUri(uri: string): BunkerUriConfig {
+    const trimmed = uri.trim();
+    if (!trimmed) {
+      throw new Error('Bunker URI is required');
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      throw new Error('Invalid bunker URI format');
+    }
+
+    if (parsed.protocol !== 'bunker:') {
+      throw new Error('Bunker URI must start with bunker://');
+    }
+
+    const signerPubkey = (parsed.hostname || parsed.pathname.replace(/^\//, '')).trim();
+    if (!HEX_64_REGEX.test(signerPubkey)) {
+      throw new Error('Bunker URI signer pubkey must be a 64-character hex key');
+    }
+
+    const relays = parsed.searchParams
+      .getAll('relay')
+      .map((relay) => relay.trim())
+      .filter(Boolean);
+
+    if (relays.length === 0) {
+      throw new Error('Bunker URI must include at least one relay query param');
+    }
+
+    const invalidRelay = relays.find((relay) => !/^wss?:\/\//i.test(relay));
+    if (invalidRelay) {
+      throw new Error(`Invalid relay URL in bunker URI: ${invalidRelay}`);
+    }
+
+    const secret = parsed.searchParams.get('secret')?.trim() || undefined;
+
+    return {
+      signerPubkey,
+      relays,
+      secret,
+    };
   }
 
   getConnectionUri(): string {
@@ -104,9 +145,14 @@ export class NostrConnectClient {
 
   async getUserPubkey(timeoutMs = 45000): Promise<string> {
     await this.waitForSigner(timeoutMs);
-    const result = await this.sendRequest('get_public_key', []);
 
-    if (typeof result !== 'string' || !/^[a-f0-9]{64}$/i.test(result)) {
+    if (this.bunkerSecret) {
+      await this.sendRequest('connect', [this.clientPubkey, this.bunkerSecret], timeoutMs);
+    }
+
+    const result = await this.sendRequest('get_public_key', [], timeoutMs);
+
+    if (typeof result !== 'string' || !HEX_64_REGEX.test(result)) {
       throw new Error('Signer did not return a valid public key');
     }
 
@@ -157,9 +203,41 @@ export class NostrConnectClient {
     this.rejectConnected = null;
 
     this.signerPubkey = null;
+    this.bunkerSecret = null;
     this.clientPubkey = '';
     this.clientSecretHex = '';
     this.clientSecret = new Uint8Array(0);
+  }
+
+  private setupSession(options?: NostrConnectInitOptions): void {
+    this.cleanup();
+
+    this.pool = new SimplePool();
+    this.relays = options?.relays?.length ? options.relays : DEFAULT_RELAYS;
+    this.metadata = options?.metadata ?? this.metadata;
+
+    this.clientSecret = generateSecretKey();
+    this.clientSecretHex = Array.from(this.clientSecret).map((b) => b.toString(16).padStart(2, '0')).join('');
+    this.clientPubkey = getPublicKey(this.clientSecret);
+
+    this.connectedPromise = new Promise<string>((resolve, reject) => {
+      this.resolveConnected = resolve;
+      this.rejectConnected = reject;
+    });
+
+    this.subCloser = this.pool.subscribeMany(
+      this.relays,
+      {
+        kinds: [NOSTR_CONNECT_KIND],
+        '#p': [this.clientPubkey],
+        since: Math.floor(Date.now() / 1000) - 15,
+      },
+      {
+        onevent: (event) => {
+          void this.handleIncomingEvent(event as NostrEvent);
+        },
+      }
+    );
   }
 
   private async handleIncomingEvent(event: NostrEvent): Promise<void> {

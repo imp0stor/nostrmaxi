@@ -14,6 +14,23 @@ export function useNostrConnect() {
   const [connectionUri, setConnectionUri] = useState<string>('');
   const clientRef = useRef<NostrConnectClient | null>(null);
 
+  const runAuthWithClient = useCallback(async (client: NostrConnectClient) => {
+    try {
+      const remotePubkey = await client.getUserPubkey();
+      setStatus('connected');
+      setStatus('signing');
+      const ok = await loginWithNostrConnect(remotePubkey, (unsignedEvent) => client.signEvent(unsignedEvent));
+      if (!ok) {
+        throw new Error('Signer authenticated but backend verification failed');
+      }
+      setStatus('done');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to connect signer';
+      setError(message);
+      setStatus('error');
+    }
+  }, [loginWithNostrConnect]);
+
   const start = useCallback(async () => {
     clearAuthError();
     setError(null);
@@ -32,21 +49,35 @@ export function useNostrConnect() {
     });
     setConnectionUri(uri);
 
+    await runAuthWithClient(client);
+  }, [clearAuthError, runAuthWithClient]);
+
+  const startWithBunkerUri = useCallback(async (bunkerUri: string) => {
+    clearAuthError();
+    setError(null);
+    setConnectionUri('');
+    setStatus('waiting');
+
+    const client = new NostrConnectClient();
+    clientRef.current = client;
+
     try {
-      const remotePubkey = await client.getUserPubkey();
-      setStatus('connected');
-      setStatus('signing');
-      const ok = await loginWithNostrConnect(remotePubkey, (unsignedEvent) => client.signEvent(unsignedEvent));
-      if (!ok) {
-        throw new Error('Signer authenticated but backend verification failed');
-      }
-      setStatus('done');
+      client.initializeFromBunkerUri(bunkerUri, {
+        metadata: {
+          name: 'NostrMaxi',
+          url: window.location.origin,
+          description: 'NostrMaxi bunker signer login',
+        },
+      });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to connect signer';
+      const message = err instanceof Error ? err.message : 'Invalid bunker URI';
       setError(message);
       setStatus('error');
+      return;
     }
-  }, [clearAuthError, loginWithNostrConnect]);
+
+    await runAuthWithClient(client);
+  }, [clearAuthError, runAuthWithClient]);
 
   const cancel = useCallback(() => {
     clientRef.current?.cleanup();
@@ -62,7 +93,7 @@ export function useNostrConnect() {
   }, []);
 
   return useMemo(
-    () => ({ status, error, connectionUri, start, cancel, reset }),
-    [status, error, connectionUri, start, cancel, reset]
+    () => ({ status, error, connectionUri, start, startWithBunkerUri, cancel, reset }),
+    [status, error, connectionUri, start, startWithBunkerUri, cancel, reset]
   );
 }

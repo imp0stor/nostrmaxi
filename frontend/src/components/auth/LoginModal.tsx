@@ -10,8 +10,8 @@ interface LoginModalProps {
   onClose: () => void;
 }
 
-type LoginMethod = 'extension' | 'lnurl' | 'nsec' | 'nostr_connect';
-type MobileLoginOption = '' | 'nostr_connect' | 'alby' | 'nos2x' | 'nostrcast' | 'window_nostr' | 'lnurl' | 'nsec';
+type LoginMethod = 'extension' | 'lnurl' | 'nsec' | 'nostr_connect' | 'bunker';
+type MobileLoginOption = '' | 'nostr_connect' | 'bunker' | 'alby' | 'nos2x' | 'nostrcast' | 'window_nostr' | 'lnurl' | 'nsec';
 
 const LAST_SIGNER_STORAGE_KEY = 'nostrmaxi_last_signer';
 
@@ -27,13 +27,22 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     isAuthenticated,
     signerDebugMarker,
   } = useAuth();
-  const { status: nostrConnectStatus, error: nostrConnectError, connectionUri, start: startNostrConnect, cancel: cancelNostrConnect, reset: resetNostrConnect } = useNostrConnect();
+  const {
+    status: nostrConnectStatus,
+    error: nostrConnectError,
+    connectionUri,
+    start: startNostrConnect,
+    startWithBunkerUri,
+    cancel: cancelNostrConnect,
+    reset: resetNostrConnect,
+  } = useNostrConnect();
   const [method, setMethod] = useState<LoginMethod | null>(null);
   const [mobileMethod, setMobileMethod] = useState<MobileLoginOption>('');
   const [lnurlData, setLnurlData] = useState<{ lnurl: string; k1: string } | null>(null);
   const [providers, setProviders] = useState<NostrProviderOption[]>([]);
   const [activeProvider, setActiveProvider] = useState<NostrProviderId | null>(null);
   const [nsecInput, setNsecInput] = useState('');
+  const [bunkerUriInput, setBunkerUriInput] = useState('');
 
   const availableProviders = providers.filter((provider) => provider.isAvailable);
   const hasExtension = availableProviders.length > 0;
@@ -137,11 +146,19 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     await startNostrConnect();
   }, [clearError, resetNostrConnect, startNostrConnect]);
 
+  const handleBunkerConnectLogin = useCallback(async () => {
+    setMethod('bunker');
+    clearError();
+    resetNostrConnect();
+    await startWithBunkerUri(bunkerUriInput);
+  }, [bunkerUriInput, clearError, resetNostrConnect, startWithBunkerUri]);
+
   const handleBack = useCallback(() => {
     setMethod(null);
     setMobileMethod('');
     setLnurlData(null);
     setNsecInput('');
+    setBunkerUriInput('');
     cancelNostrConnect();
     clearError();
   }, [cancelNostrConnect, clearError]);
@@ -151,6 +168,13 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
     if (value === 'nostr_connect') {
       void handleNostrConnectLogin();
+      return;
+    }
+
+    if (value === 'bunker') {
+      setMethod('bunker');
+      clearError();
+      resetNostrConnect();
       return;
     }
 
@@ -170,7 +194,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         void handleExtensionLogin(value);
       }
     }
-  }, [clearError, handleExtensionLogin, handleLnurlLogin, handleNostrConnectLogin, isProviderAvailable]);
+  }, [clearError, handleExtensionLogin, handleLnurlLogin, handleNostrConnectLogin, isProviderAvailable, resetNostrConnect]);
 
   if (!isOpen) return null;
 
@@ -208,6 +232,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 >
                   <option value="">Select login method...</option>
                   <option value="nostr_connect">📱 Connect with Signer App (Alby, Amber)</option>
+                  <option value="bunker">Paste Bunker URI (Primal, etc.)</option>
                   <option value="alby" disabled={!isProviderAvailable('alby')}>{providerLabel.alby}{!isProviderAvailable('alby') ? ' (not detected)' : ''}</option>
                   <option value="nos2x" disabled={!isProviderAvailable('nos2x')}>{providerLabel.nos2x}{!isProviderAvailable('nos2x') ? ' (not detected)' : ''}</option>
                   <option value="nostrcast" disabled={!isProviderAvailable('nostrcast')}>{providerLabel.nostrcast}{!isProviderAvailable('nostrcast') ? ' (not detected)' : ''}</option>
@@ -220,7 +245,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                 </svg>
               </div>
               <p className="text-xs text-gray-400 mb-4">Signer extensions not detected on this device are disabled.</p>
-              
+
               {/* Quick action button for mobile */}
               <button
                 onClick={() => void handleNostrConnectLogin()}
@@ -256,6 +281,45 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
             error={nostrConnectError}
             onBack={handleBack}
           />
+        )}
+
+        {method === 'bunker' && (
+          <div className="space-y-4">
+            <p className="text-sm text-cyan-100/90">Paste a signer bunker URI from Primal or another signer app.</p>
+            <textarea
+              value={bunkerUriInput}
+              onChange={(e) => setBunkerUriInput(e.target.value)}
+              placeholder="bunker://<signer-pubkey>?relay=wss://...&secret=..."
+              rows={3}
+              className="w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-white text-sm"
+            />
+
+            {nostrConnectError && (
+              <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-200">{nostrConnectError}</div>
+            )}
+
+            {nostrConnectStatus === 'waiting' || nostrConnectStatus === 'connected' || nostrConnectStatus === 'signing' ? (
+              <div className="text-center py-4">
+                <div className="w-10 h-10 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                <p className="text-sm text-gray-300">
+                  {nostrConnectStatus === 'waiting' && 'Connecting to bunker relay...'}
+                  {nostrConnectStatus === 'connected' && 'Signer connected. Preparing auth challenge...'}
+                  {nostrConnectStatus === 'signing' && 'Waiting for signer to complete event signature...'}
+                </p>
+              </div>
+            ) : null}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => void handleBunkerConnectLogin()}
+                disabled={isLoading || !bunkerUriInput.trim() || nostrConnectStatus === 'waiting' || nostrConnectStatus === 'signing'}
+                className="flex-1 rounded-lg bg-cyan-500/80 hover:bg-cyan-500 text-black font-medium py-2 disabled:opacity-50"
+              >
+                Connect bunker URI
+              </button>
+              <button onClick={handleBack} disabled={isLoading} className="rounded-lg border border-gray-600 text-gray-300 px-4 py-2">Back</button>
+            </div>
+          </div>
         )}
 
         {method === 'nsec' && (
