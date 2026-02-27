@@ -235,13 +235,11 @@ export class NostrConnectClient {
     
     this.subCloser = this.pool.subscribeMany(
       this.relays,
-      [
-        {
-          kinds: [NOSTR_CONNECT_KIND],
-          '#p': [this.clientPubkey],
-          since: Math.floor(Date.now() / 1000) - 60, // Extend lookback to 60 seconds
-        },
-      ],
+      {
+        kinds: [NOSTR_CONNECT_KIND],
+        '#p': [this.clientPubkey],
+        since: Math.floor(Date.now() / 1000) - 60, // Extend lookback to 60 seconds
+      } as Parameters<SimplePool['subscribeMany']>[1],
       {
         onevent: (event) => {
           console.log('[NostrConnect] Received event:', event.kind, 'from:', event.pubkey?.slice(0, 8));
