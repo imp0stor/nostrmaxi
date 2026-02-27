@@ -12,6 +12,7 @@ import { createMockPrismaService } from './mocks/prisma.mock';
 import { generateTestKeypair, createNip98AuthHeader } from './helpers/test-utils';
 import { NotFoundException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { nip19 } from 'nostr-tools';
+import { WebhooksService } from '../webhooks/webhooks.service';
 
 describe('NIP-05 Verification Endpoint', () => {
   let controller: Nip05Controller;
@@ -59,6 +60,10 @@ describe('NIP-05 Verification Endpoint', () => {
             }),
           },
         },
+        {
+          provide: WebhooksService,
+          useValue: { emit: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
@@ -74,14 +79,22 @@ describe('NIP-05 Verification Endpoint', () => {
       npub: nip19.npubEncode(testKeypair.pubkey),
       subscription: {
         id: 'sub_test_1',
-        tier: 'FREE',
+        tier: 'PRO',
         userId: 'user_test_1',
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       },
       nip05s: [],
     };
     
     prisma.seed({
       users: [testUser],
+    });
+
+    prisma.payments.set('payment_paid_1', {
+      id: 'payment_paid_1',
+      subscriptionId: 'sub_test_1',
+      status: 'paid',
+      paidAt: new Date(),
     });
   });
 

@@ -3,6 +3,18 @@
  */
 import * as crypto from 'crypto';
 
+// Mock Nostr event structure validation
+export function validateEvent(event: any): boolean {
+  return Boolean(
+    event &&
+    typeof event.kind === 'number' &&
+    typeof event.created_at === 'number' &&
+    typeof event.content === 'string' &&
+    Array.isArray(event.tags) &&
+    typeof event.pubkey === 'string'
+  );
+}
+
 // Mock Nostr event verification using simple signature check
 export function verifyEvent(event: any): boolean {
   // In tests, we trust all events (or validate structure only)
