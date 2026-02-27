@@ -194,7 +194,8 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         {!method && (
           <>
-            <div className="lg:hidden space-y-3">
+            {/* Mobile-first: always show dropdown + quick action */}
+            <div className="space-y-3">
               <label htmlFor="mobile-login-method" className="block text-sm text-cyan-200">
                 Choose login method
               </label>
@@ -236,89 +237,6 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
                   <div className="text-sm text-emerald-200/80">Alby, Amber, or other NIP-46 signer</div>
                 </div>
               </button>
-            </div>
-
-            <div className="hidden lg:block">
-              <div className="space-y-3">
-                <button
-                  onClick={() => void handleNostrConnectLogin()}
-                  disabled={isLoading}
-                  className="w-full p-4 rounded-lg border border-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all flex items-center gap-4"
-                >
-                  <div className="w-12 h-12 bg-emerald-500/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold text-white">Connect with Signer App</div>
-                    <div className="text-sm text-gray-400">Best for mobile (Amber, Alby, etc.)</div>
-                  </div>
-                </button>
-
-                {multipleSigners && (
-                  <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-200">
-                    Multiple Nostr signers detected. Choose one explicit signer button below.
-                  </div>
-                )}
-
-                {providers.map((provider) => (
-                  <button
-                    key={provider.id}
-                    onClick={() => void handleExtensionLogin(provider.id)}
-                    disabled={isLoading || !provider.isAvailable}
-                    className={`w-full p-4 rounded-lg border border-nostr-purple ${provider.isAvailable ? 'bg-nostr-purple/10 hover:bg-nostr-purple/20' : 'bg-gray-900/60'} transition-all text-left`}
-                  >
-                    <div className="font-semibold text-white">Login with {provider.label}</div>
-                    <div className="text-xs text-gray-400 mt-1">{provider.source}</div>
-                    {provider.warning && <div className="text-xs text-yellow-300 mt-1">{provider.warning}</div>}
-                    {!provider.isAvailable && provider.unavailableReason && (
-                      <div className="text-xs text-amber-300 mt-1">{provider.unavailableReason}</div>
-                    )}
-                  </button>
-                ))}
-
-                {!hasExtension && (
-                  <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 text-sm text-gray-300">
-                    No NIP-07 signer detected.
-                  </div>
-                )}
-
-                <button
-                  onClick={handleLnurlLogin}
-                  disabled={isLoading}
-                  className="w-full p-4 rounded-lg border border-nostr-orange bg-nostr-orange/10 hover:bg-nostr-orange/20 transition-all flex items-center gap-4"
-                >
-                  <div className="w-12 h-12 bg-nostr-orange/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-nostr-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold text-white">Lightning Wallet</div>
-                    <div className="text-sm text-gray-400">Scan QR with your wallet</div>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setMethod('nsec');
-                    clearError();
-                  }}
-                  disabled={isLoading}
-                  className="w-full p-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 hover:bg-yellow-500/20 transition-all flex items-center gap-4"
-                >
-                  <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0-1.657 1.343-3 3-3h0a3 3 0 013 3v2a3 3 0 01-3 3h-6a3 3 0 01-3-3v-2a3 3 0 013-3h0m3-6v6" />
-                    </svg>
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-semibold text-white">Use nsec (fallback)</div>
-                    <div className="text-sm text-gray-400">Only if extension login fails</div>
-                  </div>
-                </button>
-              </div>
             </div>
           </>
         )}
