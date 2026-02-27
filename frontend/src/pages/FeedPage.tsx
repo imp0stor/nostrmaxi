@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { signEvent, publishEvent, truncateNpub } from '../lib/nostr';
 import { loadBookmarkFeed, loadDiscoverableCustomFeeds, loadFeedForCustomDefinition, loadFeedWithDiagnostics, loadFollowing, loadUserCustomFeeds, publishCustomFeed, publishKind1, reactToEvent, type CustomFeedDefinition, type FeedItem, type FeedDiagnostics, type FeedMode } from '../lib/social';
@@ -11,14 +11,31 @@ import { fetchProfilesBatchCached } from '../lib/profileCache';
 import { aggregateZaps, buildZapButtonLabel, createPendingZap, formatZapIndicator, getDefaultZapAmountOptions, getZapPreferences, loadZapReceipts, mergePendingIntoAggregates, sendZap, subscribeToZaps, type PendingZap, type ZapAggregate } from '../lib/zaps';
 import { evaluateMute } from '../lib/muteWords';
 import { useMuteSettings } from '../hooks/useMuteSettings';
-import { CONTENT_TYPE_LABELS, detectContentTypes, extractLiveStreamMeta, type ContentType } from '../lib/contentTypes';
+import { CONTENT_TYPE_LABELS, detectContentTypes, extractLiveStreamMeta } from '../lib/contentTypes';
 import { LiveStreamCard } from '../components/LiveStreamCard';
+import { ConfigAccordion } from '../components/ConfigAccordion';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
 }
 
-type FeedFilter = ContentType;
+type FeedFilter = 'mediaOnly' | 'textOnly' | 'replies' | 'reposts' | 'withLinks';
+
+interface FeedFilterState {
+  mediaOnly: boolean;
+  textOnly: boolean;
+  replies: boolean;
+  reposts: boolean;
+  withLinks: boolean;
+}
+
+const FEED_FILTER_LABELS: Record<FeedFilter, string> = {
+  mediaOnly: 'Media only',
+  textOnly: 'Text only',
+  replies: 'Replies',
+  reposts: 'Reposts',
+  withLinks: 'With links',
+};
 
 const FEED_MODE_LABELS: Record<FeedMode, string> = {
   firehose: 'Firehose',
@@ -31,10 +48,28 @@ const FEED_MODE_STORAGE_KEY = 'nostrmaxi.feed.mode';
 const FEED_FILTERS_STORAGE_KEY = 'nostrmaxi.feed.content-filters';
 const LIVE_NOTIFIED_IDS_KEY = 'nostrmaxi.live.notified';
 
-function parseFilters(value: string | null): Set<FeedFilter> {
-  if (!value) return new Set();
-  const valid = Object.keys(CONTENT_TYPE_LABELS) as FeedFilter[];
-  return new Set(value.split(',').map((x) => x.trim()).filter((x): x is FeedFilter => valid.includes(x as FeedFilter)));
+const DEFAULT_FEED_FILTERS: FeedFilterState = {
+  mediaOnly: false,
+  textOnly: false,
+  replies: false,
+  reposts: false,
+  withLinks: false,
+};
+
+function parseFeedFilters(value: string | null): FeedFilterState {
+  if (!value) return DEFAULT_FEED_FILTERS;
+  try {
+    const parsed = JSON.parse(value) as Partial<FeedFilterState>;
+    return {
+      mediaOnly: Boolean(parsed.mediaOnly),
+      textOnly: Boolean(parsed.textOnly),
+      replies: Boolean(parsed.replies),
+      reposts: Boolean(parsed.reposts),
+      withLinks: Boolean(parsed.withLinks),
+    };
+  } catch {
+    return DEFAULT_FEED_FILTERS;
+  }
 }
 
 function getInitialMode(): FeedMode {
@@ -47,7 +82,10 @@ function getInitialMode(): FeedMode {
 export function FeedPage() {
   const { user, isAuthenticated } = useAuth();
   const [feed, setFeed] = useState<FeedItem[]>([]);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [feedFilters, setFeedFilters] = useState<FeedFilterState>(() => {
+    if (typeof window === 'undefined') return DEFAULT_FEED_FILTERS;
+    return parseFeedFilters(window.localStorage.getItem(FEED_FILTERS_STORAGE_KEY));
+  });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -78,16 +116,6 @@ export function FeedPage() {
   const observerRef = useRef<HTMLDivElement | null>(null);
 
   const canPost = useMemo(() => isAuthenticated && Boolean(user?.pubkey), [isAuthenticated, user?.pubkey]);
-  const activeFilters = useMemo(() => parseFilters(searchParams.get('filters')), [searchParams]);
-
-  const counts = useMemo(() => {
-    const result = Object.fromEntries((Object.keys(CONTENT_TYPE_LABELS) as FeedFilter[]).map((k) => [k, 0])) as Record<FeedFilter, number>;
-    for (const item of feed) {
-      const detected = detectContentTypes(item);
-      for (const kind of detected) result[kind] += 1;
-    }
-    return result;
-  }, [feed]);
 
   const mutedByEventId = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -106,11 +134,23 @@ export function FeedPage() {
   const filteredFeed = useMemo(() => {
     return feed.filter((item) => {
       if (mutedByEventId.get(item.id)) return false;
-      if (activeFilters.size === 0) return true;
-      const detected = detectContentTypes(item);
-      return Array.from(activeFilters).some((f) => detected.has(f));
+
+      const media = parseMediaFromFeedItem(item);
+      const hasMedia = media.images.length > 0 || media.videos.length > 0 || media.audios.length > 0;
+      const hasLinks = media.links.length > 0;
+      const isReply = item.kind === 1 && item.tags?.some((t) => t[0] === 'e');
+      const isRepost = item.kind === 6;
+      const isTextOnly = item.kind === 1 && !hasMedia && !hasLinks;
+
+      if (feedFilters.mediaOnly && !hasMedia) return false;
+      if (feedFilters.textOnly && !isTextOnly) return false;
+      if (feedFilters.replies && !isReply) return false;
+      if (feedFilters.reposts && !isRepost) return false;
+      if (feedFilters.withLinks && !hasLinks) return false;
+
+      return true;
     });
-  }, [feed, activeFilters, mutedByEventId]);
+  }, [feed, feedFilters, mutedByEventId]);
 
   const activeCustomFeed = useMemo(
     () => userCustomFeeds.find((feedDef) => feedDef.id === activeCustomFeedId) || null,
@@ -136,17 +176,8 @@ export function FeedPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const existing = searchParams.get('filters');
-    if (existing) {
-      window.localStorage.setItem(FEED_FILTERS_STORAGE_KEY, existing);
-      return;
-    }
-    const saved = window.localStorage.getItem(FEED_FILTERS_STORAGE_KEY);
-    if (!saved) return;
-    const params = new URLSearchParams(searchParams);
-    params.set('filters', saved);
-    setSearchParams(params, { replace: true });
-  }, [searchParams, setSearchParams]);
+    window.localStorage.setItem(FEED_FILTERS_STORAGE_KEY, JSON.stringify(feedFilters));
+  }, [feedFilters]);
 
   useEffect(() => {
     if (!user?.pubkey) return;
@@ -399,21 +430,11 @@ export function FeedPage() {
   };
 
   const toggleFilter = (filter: FeedFilter) => {
-    const next = new Set(activeFilters);
-    if (next.has(filter)) next.delete(filter);
-    else next.add(filter);
-
-    const params = new URLSearchParams(searchParams);
-    if (next.size === 0) params.delete('filters');
-    else params.set('filters', Array.from(next).join(','));
-    setSearchParams(params, { replace: true });
+    setFeedFilters((prev) => ({ ...prev, [filter]: !prev[filter] }));
   };
 
   const clearFilters = () => {
-    const params = new URLSearchParams(searchParams);
-    params.delete('filters');
-    if (typeof window !== 'undefined') window.localStorage.removeItem(FEED_FILTERS_STORAGE_KEY);
-    setSearchParams(params, { replace: true });
+    setFeedFilters(DEFAULT_FEED_FILTERS);
   };
 
 
@@ -559,29 +580,27 @@ export function FeedPage() {
       </section>
 
       <section className="space-y-4">
-        <div className="cy-card p-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <p className="cy-kicker">CONTENT FILTERS</p>
-            <button className="cy-btn-secondary text-xs" onClick={clearFilters}>All / Clear filters</button>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(Object.keys(CONTENT_TYPE_LABELS) as FeedFilter[]).map((filter) => {
-              const active = activeFilters.has(filter);
+        <ConfigAccordion
+          title="Content Filters"
+          subtitle="Narrow the timeline by post type"
+          defaultOpen={false}
+          rightSlot={<button className="cy-btn-secondary text-xs" onClick={clearFilters}>Reset</button>}
+        >
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(FEED_FILTER_LABELS) as FeedFilter[]).map((filter) => {
+              const active = feedFilters[filter];
               return (
                 <button
                   key={filter}
                   className={`cy-chip text-sm ${active ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
                   onClick={() => toggleFilter(filter)}
                 >
-                  {CONTENT_TYPE_LABELS[filter]} ({counts[filter]})
+                  {FEED_FILTER_LABELS[filter]}
                 </button>
               );
             })}
           </div>
-          {activeFilters.size > 0 ? (
-            <p className="text-xs text-cyan-300 mt-2">Active filters: {Array.from(activeFilters).map((f) => CONTENT_TYPE_LABELS[f]).join(' + ')}</p>
-          ) : null}
-        </div>
+        </ConfigAccordion>
 
         <div className="cy-card p-4 flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm text-cyan-200">{hiddenCount} posts hidden by profile mute rules</p>
@@ -623,6 +642,9 @@ export function FeedPage() {
           const media = parseMediaFromFeedItem(item);
           const contentTypes = Array.from(detectContentTypes(item));
           const liveMeta = extractLiveStreamMeta(item);
+          const displayName = item.profile?.display_name || item.profile?.name || 'nostr user';
+          const hasNip05 = Boolean(item.profile?.nip05);
+          const shortNpub = truncateNpub(item.pubkey, 10);
           return (
             <article key={item.id} className="cy-card p-5">
               <div className="flex items-center justify-between gap-3">
@@ -630,9 +652,13 @@ export function FeedPage() {
                   <Avatar pubkey={item.pubkey} size={44} />
                   <div>
                     <Link to={`/profile/${item.pubkey}`} className="text-cyan-300 font-semibold">
-                      {item.profile?.nip05 || item.profile?.display_name || item.profile?.name || truncateNpub(item.pubkey, 6)}
+                      {hasNip05 ? item.profile?.nip05 : displayName}
                     </Link>
-                    <p className="cy-mono text-xs text-cyan-500">{truncateNpub(item.pubkey, 10)}</p>
+                    {!hasNip05 ? <p className="text-xs text-cyan-400/80">{displayName}</p> : null}
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-xs text-cyan-500">Identity details</summary>
+                      <p className="cy-mono text-xs text-cyan-500 mt-1">{shortNpub}</p>
+                    </details>
                   </div>
                 </div>
                 <span className="cy-mono text-xs text-blue-300">{formatTime(item.created_at)}</span>
