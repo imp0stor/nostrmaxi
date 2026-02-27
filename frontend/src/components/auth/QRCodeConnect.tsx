@@ -25,11 +25,34 @@ export function QRCodeConnect({ uri, status, error, onBack }: QRCodeConnectProps
 
   const copyUri = async () => {
     try {
-      await navigator.clipboard.writeText(uri);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(uri);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        return;
+      }
     } catch {
-      // no-op fallback
+      // Fall through to fallback
+    }
+    
+    // Fallback: create temporary textarea and use execCommand
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = uri;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Show the URI field if copy completely fails
+      alert('Copy failed. Please manually select and copy the URI shown below.');
     }
   };
 
@@ -54,10 +77,23 @@ export function QRCodeConnect({ uri, status, error, onBack }: QRCodeConnectProps
 
       <button
         onClick={copyUri}
-        className="w-full rounded-lg border border-gray-600 text-gray-200 hover:bg-gray-800 py-2"
+        className="w-full rounded-lg border border-cyan-500/50 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/20 py-3 font-medium"
       >
-        {copied ? 'Copied URI' : 'Copy connection URI'}
+        {copied ? '✓ Copied!' : '📋 Copy Connection URI'}
       </button>
+
+      {/* Visible URI for manual copy */}
+      <div className="space-y-1">
+        <label className="text-xs text-gray-400">Connection URI (tap to select):</label>
+        <input
+          type="text"
+          readOnly
+          value={uri}
+          onFocus={(e) => e.target.select()}
+          onClick={(e) => (e.target as HTMLInputElement).select()}
+          className="w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-300 font-mono"
+        />
+      </div>
 
       <div className="rounded-lg border border-gray-700 bg-gray-900/70 p-3 text-sm text-gray-300">
         Status:{' '}
