@@ -2,9 +2,9 @@ FROM node:20
 
 WORKDIR /app
 
-# Install dependencies first (caching)
+# Install dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci --only=production || npm install --only=production --legacy-peer-deps
 
 # Copy prisma schema and generate client
 COPY prisma ./prisma/
