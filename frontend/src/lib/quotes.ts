@@ -1,0 +1,137 @@
+import { SimplePool, nip19 } from 'nostr-tools';
+import type { NostrEvent, NostrProfile } from '../types';
+import { isValidNip05 } from './profileCache';
+
+const DEFAULT_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://relay.nostr.band',
+  'wss://nos.lol',
+  'wss://relay.primal.net',
+];
+
+const QUOTE_CACHE_KEY = 'nostrmaxi.quotes.cache.v1';
+const QUOTE_CACHE_TTL_MS = 30 * 60 * 1000;
+const quoteCache = new Map<string, { event: NostrEvent | null; at: number }>();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readQuoteCacheFromStorage(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(QUOTE_CACHE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, { event: NostrEvent | null; at: number }>;
+    const now = Date.now();
+    for (const [id, entry] of Object.entries(parsed)) {
+      if (!entry || (now - entry.at) > QUOTE_CACHE_TTL_MS) continue;
+      quoteCache.set(id, entry);
+    }
+  } catch {
+    // ignore cache parse failures
+  }
+}
+
+function persistQuoteCacheToStorage(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const now = Date.now();
+    const out: Record<string, { event: NostrEvent | null; at: number }> = {};
+    for (const [id, entry] of quoteCache.entries()) {
+      if ((now - entry.at) > QUOTE_CACHE_TTL_MS) continue;
+      out[id] = entry;
+    }
+    window.localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify(out));
+  } catch {
+    // ignore storage failures
+  }
+}
+
+let quoteCacheHydrated = false;
+function hydrateQuoteCacheOnce(): void {
+  if (quoteCacheHydrated) return;
+  quoteCacheHydrated = true;
+  readQuoteCacheFromStorage();
+}
+
+export function parseQuotedEventRefs(event: Pick<NostrEvent, 'tags' | 'content'>): string[] {
+  const ids = new Set<string>();
+  for (const tag of event.tags || []) {
+    if (tag[0] === 'e' && tag[1]) ids.add(tag[1]);
+  }
+
+  const matches = event.content.match(/nostr:(note1[0-9a-z]+|nevent1[0-9a-z]+)/gi) || [];
+  for (const raw of matches) {
+    const value = raw.replace(/^nostr:/i, '');
+    try {
+      const decoded = nip19.decode(value);
+      if (decoded.type === 'note') ids.add(decoded.data as string);
+      if (decoded.type === 'nevent') {
+        const d = decoded.data as any;
+        if (d?.id) ids.add(d.id);
+      }
+    } catch {
+      // ignore invalid refs
+    }
+  }
+
+  return [...ids];
+}
+
+export async function resolveQuotedEvents(ids: string[], relays: string[] = DEFAULT_RELAYS): Promise<Map<string, NostrEvent>> {
+  hydrateQuoteCacheOnce();
+  const uniq = [...new Set(ids.filter(Boolean))].slice(0, 60);
+  if (uniq.length === 0) return new Map();
+
+  const now = Date.now();
+  const out = new Map<string, NostrEvent>();
+  let unresolved = uniq.filter((id) => {
+    const cached = quoteCache.get(id);
+    if (!cached) return true;
+    if ((now - cached.at) > QUOTE_CACHE_TTL_MS) return true;
+    if (cached.event) out.set(id, cached.event);
+    return false;
+  });
+
+  if (unresolved.length === 0) return out;
+
+  const pool = new SimplePool();
+  try {
+    const attempts = 3;
+    for (let attempt = 0; attempt < attempts && unresolved.length > 0; attempt += 1) {
+      const events = await pool.querySync(relays, {
+        kinds: [1, 30023],
+        ids: unresolved,
+        limit: Math.max(unresolved.length * 2, 20),
+      } as any);
+
+      const resolved = new Set<string>();
+      for (const evt of events) {
+        const prev = out.get(evt.id);
+        if (!prev || evt.created_at > prev.created_at) out.set(evt.id, evt as NostrEvent);
+        resolved.add(evt.id);
+        quoteCache.set(evt.id, { event: evt as NostrEvent, at: Date.now() });
+      }
+
+      unresolved = unresolved.filter((id) => !resolved.has(id));
+      if (unresolved.length > 0 && attempt < attempts - 1) {
+        await sleep(180 * Math.pow(2, attempt));
+      }
+    }
+
+    for (const id of unresolved) {
+      quoteCache.set(id, { event: null, at: Date.now() });
+    }
+    persistQuoteCacheToStorage();
+
+    return out;
+  } finally {
+    pool.close(relays);
+  }
+}
+
+export function quotedIdentity(pubkey: string, profile?: NostrProfile | null): string {
+  if (isValidNip05(profile?.nip05)) return profile!.nip05!;
+  return profile?.display_name || profile?.name || `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`;
+}
