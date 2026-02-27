@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ContentToken } from '../lib/media';
 import { getDomain, imageLoadingMode } from '../lib/media';
@@ -19,6 +19,25 @@ import { extractGitHubRepo, extractTweetId } from '../lib/richEmbeds';
 import { MarkdownContent } from './MarkdownContent';
 
 const previewCache = new Map<string, LinkPreview>();
+
+type ImageMeta = { width: number; height: number };
+
+function getImageSizingClass(meta?: ImageMeta): string {
+  if (!meta) return 'w-full h-auto object-contain';
+
+  const ratio = meta.width / Math.max(meta.height, 1);
+  const isVeryTall = meta.height > 2000;
+  const isVeryWide = ratio > 3;
+  const isVerySmall = meta.width < 120 || meta.height < 120;
+
+  const classes = ['w-full', 'h-auto', 'object-contain', 'bg-black/20'];
+
+  if (isVeryTall) classes.push('max-h-[75vh]', 'sm:max-h-[80vh]');
+  if (isVeryWide) classes.push('max-w-[min(100%,56rem)]', 'mx-auto');
+  if (isVerySmall) classes.push('min-h-24');
+
+  return classes.join(' ');
+}
 
 async function fetchPreview(url: string): Promise<LinkPreview> {
   if (previewCache.has(url)) return previewCache.get(url)!;
@@ -50,6 +69,8 @@ export function InlineContent({
   const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
+  const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
+  const [imageMeta, setImageMeta] = useState<Record<string, ImageMeta>>({});
 
   useEffect(() => {
     const links = [...new Set(tokens.filter((t) => t.type === 'link').map((t: any) => t.url))];
@@ -72,6 +93,15 @@ export function InlineContent({
       cancelled = true;
     };
   }, [tokens]);
+
+  const imageClassByUrl = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const token of tokens) {
+      if (token.type !== 'image') continue;
+      map[token.url] = getImageSizingClass(imageMeta[token.url]);
+    }
+    return map;
+  }, [tokens, imageMeta]);
 
   return (
     <div className="mt-4 space-y-3">
@@ -98,19 +128,63 @@ export function InlineContent({
         if (token.type === 'image') {
           const broken = imageErrors[token.url];
           if (broken) {
-            return <div key={`img-err-${token.url}-${i}`} className="rounded-md border border-red-700/60 bg-red-950/20 p-3 text-xs text-red-200">Image unavailable: {token.url}</div>;
+            return (
+              <div key={`img-err-${token.url}-${i}`} className="rounded-md border border-red-700/60 bg-red-950/20 p-3 space-y-2">
+                <p className="text-xs text-red-200">Image failed to load</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="rounded-md border border-red-400/40 bg-red-500/10 px-2 py-1 text-xs text-red-100 hover:bg-red-500/20"
+                    onClick={() => {
+                      setImageErrors((prev) => ({ ...prev, [token.url]: false }));
+                      setImageLoaded((prev) => ({ ...prev, [token.url]: false }));
+                    }}
+                  >
+                    Retry
+                  </button>
+                  <a
+                    href={token.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-md border border-red-400/40 bg-red-500/10 px-2 py-1 text-xs text-red-100 hover:bg-red-500/20"
+                  >
+                    Open URL
+                  </a>
+                </div>
+              </div>
+            );
           }
           const mode = imageLoadingMode(i);
+          const loaded = !!imageLoaded[token.url];
+          const isGif = token.isGif;
           return (
-            <button key={`img-${token.url}-${i}`} type="button" className="w-full overflow-hidden rounded-md border border-cyan-900/70 bg-[#070b1d]" onClick={() => setLightbox(token.url)}>
+            <button key={`img-${token.url}-${i}`} type="button" className="relative w-full overflow-hidden rounded-md border border-cyan-900/70 bg-[#070b1d] hover:border-cyan-300/80 transition-colors" onClick={() => setLightbox(token.url)}>
+              {!loaded ? (
+                <div className="h-56 w-full animate-pulse bg-cyan-900/20" aria-hidden="true">
+                  {isGif ? <div className="absolute inset-0 flex items-center justify-center text-xs text-cyan-400/60">Loading GIF...</div> : null}
+                </div>
+              ) : null}
+              {isGif && loaded ? (
+                <div className="absolute top-2 right-2 z-10 rounded-full bg-black/70 px-2 py-0.5 text-xs font-medium text-cyan-300 backdrop-blur-sm">
+                  GIF
+                </div>
+              ) : null}
               <img
                 src={token.url}
                 loading={mode}
                 fetchPriority={mode === 'eager' ? 'high' : 'auto'}
                 decoding="async"
                 referrerPolicy="no-referrer"
-                alt="Nostr post media"
-                className="w-full max-h-[28rem] object-cover"
+                alt={isGif ? 'Animated GIF' : 'Nostr post media'}
+                className={`${imageClassByUrl[token.url] || 'w-full h-auto object-contain'} ${loaded ? 'block' : 'hidden'}`}
+                onLoad={(event) => {
+                  const target = event.currentTarget;
+                  setImageLoaded((prev) => ({ ...prev, [token.url]: true }));
+                  setImageMeta((prev) => ({
+                    ...prev,
+                    [token.url]: { width: target.naturalWidth, height: target.naturalHeight },
+                  }));
+                }}
                 onError={() => setImageErrors((prev) => ({ ...prev, [token.url]: true }))}
               />
             </button>
@@ -174,8 +248,8 @@ export function InlineContent({
 
         if (extractTweetId(token.url)) return <TwitterEmbed key={`link-twitter-${token.url}-${i}`} url={token.url} />;
         if (extractGitHubRepo(token.url)) return <GitHubRepoCard key={`link-gh-${token.url}-${i}`} url={token.url} />;
-        const preview = previews[token.url];
-        return <LinkPreviewCard key={`link-${token.url}-${i}`} url={token.url} preview={preview} />;
+        const preview = previews[token.url] || { url: token.url, domain: getDomain(token.url) };
+        return <LinkPreviewCard key={`link-${token.url}-${i}`} preview={preview} />;
       })}
 
       {lightbox ? <button type="button" className="fixed inset-0 z-50 bg-black/90 p-6" onClick={() => setLightbox(null)} aria-label="Close media viewer"><img src={lightbox} alt="Expanded media" className="w-full h-full object-contain" /></button> : null}

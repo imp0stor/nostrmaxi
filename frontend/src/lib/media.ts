@@ -1,5 +1,6 @@
 import { nip19 } from 'nostr-tools';
 import type { FeedItem } from './social';
+import { isLikelyImageUrl, isGifUrl, detectMediaType } from './mediaDetection';
 
 export interface ParsedMedia {
   text: string;
@@ -29,7 +30,7 @@ export interface AudioRef {
 
 export type ContentToken =
   | { type: 'text'; text: string }
-  | { type: 'image'; url: string }
+  | { type: 'image'; url: string; isGif?: boolean }
   | { type: 'video'; video: VideoRef }
   | { type: 'audio'; audio: AudioRef }
   | { type: 'link'; url: string }
@@ -268,10 +269,19 @@ function classifyUrl(url: string): ContentToken {
   const audio = toAudioRef(url);
   if (audio) return { type: 'audio', audio };
 
+  // Enhanced image detection (handles extension-less URLs and GIFs)
   try {
     const pathname = new URL(url).pathname;
-    if (IMAGE_EXT.test(pathname)) return { type: 'image', url };
+    if (IMAGE_EXT.test(pathname)) {
+      return { type: 'image', url, isGif: isGifUrl(url) };
+    }
   } catch { /* noop */ }
+
+  // Check for extension-less image URLs (imgur, nostr.build, etc.)
+  if (isLikelyImageUrl(url)) {
+    return { type: 'image', url };
+  }
+
   return { type: 'link', url };
 }
 
@@ -354,10 +364,15 @@ function appendTagOnlyTokens(item: FeedItem, tokens: ContentToken[]): ContentTok
     const normalized = normalizeUrl(entry.url);
     if (!normalized || presentUrls.has(normalized)) continue;
     let token: ContentToken;
-    if (entry.mime?.startsWith('image/')) token = { type: 'image', url: normalized };
-    else if (entry.mime?.startsWith('video/')) token = toVideoRef(normalized) ? { type: 'video', video: toVideoRef(normalized)! } : { type: 'link', url: normalized };
-    else if (entry.mime?.startsWith('audio/')) token = { type: 'audio', audio: { url: normalized, sourceUrl: normalized, provider: 'direct' } };
-    else token = classifyUrl(normalized);
+    if (entry.mime?.startsWith('image/')) {
+      token = { type: 'image', url: normalized, isGif: entry.mime === 'image/gif' };
+    } else if (entry.mime?.startsWith('video/')) {
+      token = toVideoRef(normalized) ? { type: 'video', video: toVideoRef(normalized)! } : { type: 'link', url: normalized };
+    } else if (entry.mime?.startsWith('audio/')) {
+      token = { type: 'audio', audio: { url: normalized, sourceUrl: normalized, provider: 'direct' } };
+    } else {
+      token = classifyUrl(normalized);
+    }
     out.push(token);
     presentUrls.add(normalized);
   }

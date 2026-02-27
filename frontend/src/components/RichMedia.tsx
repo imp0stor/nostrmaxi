@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AudioRef, VideoRef } from '../lib/media';
 import { getDomain, imageLoadingMode } from '../lib/media';
+import { isGifUrl } from '../lib/mediaDetection';
 import { SpotifyEmbedCard } from './SpotifyEmbedCard';
 import { YouTubeEmbed } from './YouTubeEmbed';
 import { VimeoEmbed } from './VimeoEmbed';
@@ -13,6 +14,25 @@ import type { LinkPreview } from '../lib/richEmbeds';
 import { extractGitHubRepo, extractTweetId } from '../lib/richEmbeds';
 
 const previewCache = new Map<string, LinkPreview>();
+
+type ImageMeta = { width: number; height: number };
+
+function getImageSizingClass(meta?: ImageMeta): string {
+  if (!meta) return 'w-full h-auto object-contain';
+
+  const ratio = meta.width / Math.max(meta.height, 1);
+  const isVeryTall = meta.height > 2000;
+  const isVeryWide = ratio > 3;
+  const isVerySmall = meta.width < 120 || meta.height < 120;
+
+  const classes = ['w-full', 'h-auto', 'object-contain', 'bg-black/20'];
+
+  if (isVeryTall) classes.push('max-h-[75vh]', 'sm:max-h-[80vh]');
+  if (isVeryWide) classes.push('max-w-[min(100%,56rem)]', 'mx-auto');
+  if (isVerySmall) classes.push('min-h-24');
+
+  return classes.join(' ');
+}
 
 async function fetchPreview(url: string): Promise<LinkPreview> {
   if (previewCache.has(url)) return previewCache.get(url)!;
@@ -42,10 +62,16 @@ function MediaImage({ src, index, onClick }: { src: string; index: number; onCli
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [meta, setMeta] = useState<ImageMeta | undefined>();
+  const isGif = isGifUrl(src);
 
   return (
     <div className="relative w-full overflow-hidden border border-cyan-900/70 bg-[#070b1d] hover:border-cyan-300/80 transition-colors rounded-md">
-      {!loaded && !failed ? <div className="h-56 animate-pulse bg-cyan-900/20" /> : null}
+      {!loaded && !failed ? (
+        <div className="h-56 animate-pulse bg-cyan-900/20 flex items-center justify-center">
+          {isGif ? <span className="text-xs text-cyan-400/60">Loading GIF...</span> : null}
+        </div>
+      ) : null}
       {failed ? (
         <div className="h-40 grid place-items-center text-sm text-red-300 p-3 text-center gap-2">
           <span>Image failed to load</span>
@@ -55,7 +81,12 @@ function MediaImage({ src, index, onClick }: { src: string; index: number; onCli
           </div>
         </div>
       ) : null}
-      <button type="button" className="w-full" onClick={() => onClick(src)} aria-label={`Open image ${index + 1}`}>
+      {isGif && loaded ? (
+        <div className="absolute top-2 right-2 z-10 rounded-full bg-black/70 px-2 py-0.5 text-xs font-medium text-cyan-300 backdrop-blur-sm">
+          GIF
+        </div>
+      ) : null}
+      <button type="button" className="w-full" onClick={() => onClick(src)} aria-label={`Open ${isGif ? 'GIF' : 'image'} ${index + 1}`}>
         <img
           key={`${src}-${retryKey}`}
           src={src}
@@ -63,9 +94,13 @@ function MediaImage({ src, index, onClick }: { src: string; index: number; onCli
           fetchPriority={imageLoadingMode(index) === 'eager' ? 'high' : 'auto'}
           decoding="async"
           referrerPolicy="no-referrer"
-          alt="Nostr post media"
-          className={`w-full max-h-[32rem] object-cover ${loaded ? 'block' : 'hidden'}`}
-          onLoad={() => setLoaded(true)}
+          alt={isGif ? 'Animated GIF' : 'Nostr post media'}
+          className={`${getImageSizingClass(meta)} ${loaded ? 'block' : 'hidden'}`}
+          onLoad={(event) => {
+            const target = event.currentTarget;
+            setMeta({ width: target.naturalWidth, height: target.naturalHeight });
+            setLoaded(true);
+          }}
           onError={() => setFailed(true)}
         />
       </button>
@@ -157,7 +192,8 @@ export function RichMedia({ images, videos, audios = [], links, compact = false 
       {links.slice(0, 4).map((url) => {
         if (extractTweetId(url)) return <TwitterEmbed key={`link-twitter-${url}`} url={url} />;
         if (extractGitHubRepo(url)) return <GitHubRepoCard key={`link-gh-${url}`} url={url} />;
-        return <LinkPreviewCard key={url} url={url} preview={previews[url]} />;
+        const preview = previews[url] || { url, domain: getDomain(url) };
+        return <LinkPreviewCard key={url} preview={preview} />;
       })}
 
       {lightbox ? (

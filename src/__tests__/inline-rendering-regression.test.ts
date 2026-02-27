@@ -42,6 +42,6 @@ describe('inline rendering regressions', () => {
     } as any);
 
     expect(parsed.images).toEqual(['https://cdn.example.com/pic.png']);
-    expect(parsed.tokens[0]).toEqual({ type: 'image', url: 'https://cdn.example.com/pic.png' });
+    expect(parsed.tokens[0]).toEqual({ type: 'image', url: 'https://cdn.example.com/pic.png', isGif: false });
   });
 });
