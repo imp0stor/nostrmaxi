@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { AnalyticsScope, loadAnalyticsDashboard } from '../lib/analytics';
+import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
+import { encodeNpub, truncateNpub } from '../lib/nostr';
+import { fetchProfilesBatchCached, profileDisplayName } from '../lib/profileCache';
+import { Avatar } from '../components/Avatar';
 
 const SCOPE_STORAGE_KEY = 'nostrmaxi.analytics.scope';
 
@@ -29,6 +33,8 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
+  const [zapperProfiles, setZapperProfiles] = useState<Map<string, any>>(new Map());
 
   useEffect(() => {
     if (!user) return;
@@ -45,6 +51,15 @@ export function AnalyticsPage() {
       window.localStorage.setItem(SCOPE_STORAGE_KEY, scope);
     }
   }, [scope]);
+
+  // Hydrate zapper profiles
+  useEffect(() => {
+    if (!data?.engagement?.topZappers) return;
+    const pubkeys = data.engagement.topZappers
+      .filter((z: any) => z.pubkey !== 'anonymous')
+      .map((z: any) => z.pubkey);
+    fetchProfilesBatchCached(pubkeys).then(setZapperProfiles);
+  }, [data]);
 
   const insight = useMemo(() => {
     if (scope === 'wot') return 'Trending in your network: trusted follows + 2nd degree voices.';
@@ -114,10 +129,18 @@ export function AnalyticsPage() {
             <ChartCard title="Top posts by zaps/reactions">
               <div className="space-y-2">
                 {data.profile.topPosts.map((post: any) => (
-                  <div key={post.id} className="cy-panel p-3 text-sm">
+                  <button
+                    key={post.id}
+                    type="button"
+                    onClick={() => setSelectedPostId(post.id)}
+                    className="cy-panel p-3 text-sm w-full text-left hover:border-cyan-300/60 transition-colors cursor-pointer"
+                  >
                     <div className="text-cyan-100">{post.preview}</div>
-                    <div className="text-blue-300 text-xs mt-1">⚡ {post.zaps} zaps · ❤ {post.reactions} reactions · Score {post.score}</div>
-                  </div>
+                    <div className="text-blue-300 text-xs mt-1">
+                      ⚡ {post.zaps.toLocaleString()} sats · ❤ {post.reactions} reactions · Score {post.score}
+                    </div>
+                    <div className="text-xs text-cyan-400/70 mt-1">Click for zap breakdown →</div>
+                  </button>
                 ))}
               </div>
             </ChartCard>
@@ -134,7 +157,74 @@ export function AnalyticsPage() {
               <BarList rows={data.network.influentialConnections.map((c: any) => ({ label: c.pubkey.slice(0, 14), value: c.influence }))} />
             </ChartCard>
           </section>
+
+          {/* Top Zappers Section */}
+          {data.engagement?.topZappers && data.engagement.topZappers.length > 0 && (
+            <section className="cy-card p-6">
+              <h2 className="text-cyan-200 font-semibold mb-4 text-xl">⚡ Top Zappers</h2>
+              <p className="text-blue-200 text-sm mb-6">
+                Your biggest supporters — click for profile
+              </p>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {data.engagement.topZappers.map((zapper: any) => {
+                  const profile = zapperProfiles.get(zapper.pubkey);
+                  const isAnon = zapper.pubkey === 'anonymous';
+                  const displayName = isAnon ? 'Anonymous' : profileDisplayName(zapper.pubkey, profile);
+                  const npub = isAnon ? '' : encodeNpub(zapper.pubkey);
+                  
+                  return (
+                    <div
+                      key={zapper.pubkey}
+                      className="cy-panel p-4 hover:border-cyan-300/60 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        {!isAnon && (
+                          <Avatar
+                            pubkey={zapper.pubkey}
+                            size={40}
+                          />
+                        )}
+                        {isAnon && (
+                          <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-300 text-xl">
+                            👤
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-cyan-100 truncate">{displayName}</p>
+                          {!isAnon && (
+                            <p className="text-xs text-cyan-300/70 truncate">{truncateNpub(npub)}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <p className="text-lg font-bold text-cyan-100">{zapper.totalSats.toLocaleString()}</p>
+                          <p className="text-xs text-blue-300">Total sats</p>
+                        </div>
+                        <div>
+                          <p className="text-lg font-bold text-cyan-100">{zapper.zapCount}</p>
+                          <p className="text-xs text-blue-300">Zaps</p>
+                        </div>
+                        <div>
+                          <p className="text-lg font-bold text-cyan-100">{zapper.averageSats}</p>
+                          <p className="text-xs text-blue-300">Avg</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </>
+      )}
+
+      {/* Zap Breakdown Modal */}
+      {selectedPostId && (
+        <ZapBreakdownModal
+          eventId={selectedPostId}
+          onClose={() => setSelectedPostId(null)}
+        />
       )}
     </div>
   );

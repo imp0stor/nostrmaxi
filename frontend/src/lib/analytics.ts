@@ -42,6 +42,7 @@ export interface AnalyticsDashboardData {
   };
   engagement: {
     zaps: TimePoint[];
+    topZappers: { pubkey: string; totalSats: number; zapCount: number; averageSats: number }[];
     reactionsByType: { type: string; value: number }[];
     replyQuoteMetrics: { metric: string; value: number }[];
     engagementByContentType: { type: string; value: number }[];
@@ -87,6 +88,7 @@ export function computeAnalyticsFromEvents(params: {
   const zapsByDay = new Map<string, number>();
   const zapSatsByDay = new Map<string, number>();
   const mentionsByDay = new Map<string, number>();
+  const zapperStats = new Map<string, { totalSats: number; zapCount: number }>();
 
   const reactionTypeCounts: Record<string, number> = {};
   const hashtagCounts: Record<string, number> = {};
@@ -163,6 +165,14 @@ export function computeAnalyticsFromEvents(params: {
       if (parsed) {
         zapsByDay.set(day, (zapsByDay.get(day) || 0) + 1);
         zapSatsByDay.set(day, (zapSatsByDay.get(day) || 0) + parsed.amountSat);
+        
+        // Track zapper stats
+        const zapperKey = parsed.anonymous ? 'anonymous' : parsed.senderPubkey;
+        const existing = zapperStats.get(zapperKey) || { totalSats: 0, zapCount: 0 };
+        zapperStats.set(zapperKey, {
+          totalSats: existing.totalSats + parsed.amountSat,
+          zapCount: existing.zapCount + 1,
+        });
         
         eTargets.forEach((id) => {
           const metric = postMetrics.get(id);
@@ -275,6 +285,17 @@ export function computeAnalyticsFromEvents(params: {
     secondary: zapSatsByDay.get(d.key) || 0 // Total sats
   }));
 
+  // Compute top zappers
+  const topZappers = Array.from(zapperStats.entries())
+    .map(([pubkey, stats]) => ({
+      pubkey,
+      totalSats: stats.totalSats,
+      zapCount: stats.zapCount,
+      averageSats: Math.round(stats.totalSats / stats.zapCount),
+    }))
+    .sort((a, b) => b.totalSats - a.totalSats)
+    .slice(0, 10);
+
   const reactionsByType = Object.entries(reactionTypeCounts)
     .map(([type, value]) => ({ type, value }))
     .sort((a, b) => b.value - a.value)
@@ -346,6 +367,7 @@ export function computeAnalyticsFromEvents(params: {
     },
     engagement: {
       zaps,
+      topZappers,
       reactionsByType,
       replyQuoteMetrics,
       engagementByContentType: [
