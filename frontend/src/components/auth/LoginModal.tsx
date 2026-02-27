@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { hasNip07Extension } from '../../lib/nostr';
+import { getSignerChoices, type NostrProviderId, type NostrProviderOption } from '../../lib/nostr';
 import { LnurlQrCode } from './LnurlQrCode';
 
 interface LoginModalProps {
@@ -10,42 +10,72 @@ interface LoginModalProps {
 
 type LoginMethod = 'extension' | 'lnurl' | 'nsec';
 
+const LAST_SIGNER_STORAGE_KEY = 'nostrmaxi_last_signer';
+
 export function LoginModal({ isOpen, onClose }: LoginModalProps) {
-  const { loginWithExtension, loginWithNsec, loginWithLnurl, pollLnurlLogin, isLoading, error, clearError, isAuthenticated } = useAuth();
+  const {
+    loginWithExtension,
+    loginWithNsec,
+    loginWithLnurl,
+    pollLnurlLogin,
+    isLoading,
+    error,
+    clearError,
+    isAuthenticated,
+    signerDebugMarker,
+  } = useAuth();
   const [method, setMethod] = useState<LoginMethod | null>(null);
   const [lnurlData, setLnurlData] = useState<{ lnurl: string; k1: string } | null>(null);
-  const [hasExtension, setHasExtension] = useState(false);
+  const [providers, setProviders] = useState<NostrProviderOption[]>([]);
+  const [activeProvider, setActiveProvider] = useState<NostrProviderId | null>(null);
   const [nsecInput, setNsecInput] = useState('');
 
-  // Check for extension on open with short retry to avoid injection race
+  const availableProviders = providers.filter((provider) => provider.isAvailable);
+  const hasExtension = availableProviders.length > 0;
+  const multipleSigners = availableProviders.length > 1;
+
   useEffect(() => {
     if (!isOpen) return;
 
+    const savedSigner = typeof window !== 'undefined'
+      ? (localStorage.getItem(LAST_SIGNER_STORAGE_KEY) as NostrProviderId | null)
+      : null;
+
     let mounted = true;
-    const checkExtension = async () => {
+
+    const checkProviders = async () => {
       for (let i = 0; i < 10; i += 1) {
         if (!mounted) return;
-        const detected = hasNip07Extension();
-        setHasExtension(detected);
-        if (detected) return;
+
+        const detected = getSignerChoices();
+        setProviders(detected);
+
+        const available = detected.filter((provider) => provider.isAvailable);
+        if (available.length > 0) {
+          const chosen = (savedSigner && available.some((p) => p.id === savedSigner))
+            ? savedSigner
+            : available[0].id;
+          setActiveProvider(chosen);
+          return;
+        }
+
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
+      setActiveProvider(null);
     };
 
-    void checkExtension();
+    void checkProviders();
     return () => {
       mounted = false;
     };
   }, [isOpen]);
 
-  // Close modal when authenticated
   useEffect(() => {
     if (isAuthenticated) {
       onClose();
     }
   }, [isAuthenticated, onClose]);
 
-  // Poll for LNURL auth
   useEffect(() => {
     if (!lnurlData) return;
 
@@ -60,10 +90,11 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     return () => clearInterval(interval);
   }, [lnurlData, pollLnurlLogin]);
 
-  const handleExtensionLogin = useCallback(async () => {
+  const handleExtensionLogin = useCallback(async (provider: NostrProviderId) => {
+    setActiveProvider(provider);
     setMethod('extension');
     clearError();
-    await loginWithExtension();
+    await loginWithExtension(provider);
   }, [loginWithExtension, clearError]);
 
   const handleLnurlLogin = useCallback(async () => {
@@ -91,61 +122,51 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-nostr-dark rounded-xl max-w-md w-full p-6 relative">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-white"
-        >
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
 
-        {/* Header */}
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">Login with Nostr</h2>
           <p className="text-gray-400">Authenticate with your npub using NIP-07 or LNURL</p>
         </div>
 
-        {/* Error display */}
         {error && (
-          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
-            {error}
-          </div>
+          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">{error}</div>
         )}
 
-        {/* Login options */}
         {!method && (
           <div className="space-y-3">
-            {/* NIP-07 Extension */}
-            <button
-              onClick={handleExtensionLogin}
-              disabled={!hasExtension || isLoading}
-              className={`w-full p-4 rounded-lg border transition-all flex items-center gap-4 ${
-                hasExtension
-                  ? 'border-nostr-purple bg-nostr-purple/10 hover:bg-nostr-purple/20'
-                  : 'border-gray-700 bg-gray-800/50 cursor-not-allowed'
-              }`}
-            >
-              <div className="w-12 h-12 bg-nostr-purple/20 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-nostr-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                </svg>
+            {multipleSigners && (
+              <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+                Multiple Nostr signers detected. Choose one explicit signer button below.
               </div>
-              <div className="flex-1 text-left">
-                <div className="font-semibold text-white">Browser Extension</div>
-                <div className="text-sm text-gray-400">
-                  {hasExtension ? 'Sign with nos2x, Alby, etc.' : 'No extension detected'}
-                </div>
-              </div>
-              {hasExtension && (
-                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">
-                  Recommended
-                </span>
-              )}
-            </button>
+            )}
 
-            {/* Lightning Login */}
+            {providers.map((provider) => (
+              <button
+                key={provider.id}
+                onClick={() => void handleExtensionLogin(provider.id)}
+                disabled={isLoading || !provider.isAvailable}
+                className={`w-full p-4 rounded-lg border border-nostr-purple ${provider.isAvailable ? 'bg-nostr-purple/10 hover:bg-nostr-purple/20' : 'bg-gray-900/60'} transition-all text-left`}
+              >
+                <div className="font-semibold text-white">Login with {provider.label}</div>
+                <div className="text-xs text-gray-400 mt-1">{provider.source}</div>
+                {provider.warning && <div className="text-xs text-yellow-300 mt-1">{provider.warning}</div>}
+                {!provider.isAvailable && provider.unavailableReason && (
+                  <div className="text-xs text-amber-300 mt-1">{provider.unavailableReason}</div>
+                )}
+              </button>
+            ))}
+
+            {!hasExtension && (
+              <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 text-sm text-gray-300">
+                No NIP-07 signer detected.
+              </div>
+            )}
+
             <button
               onClick={handleLnurlLogin}
               disabled={isLoading}
@@ -162,7 +183,6 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
               </div>
             </button>
 
-            {/* nsec fallback */}
             <button
               onClick={() => {
                 setMethod('nsec');
@@ -184,67 +204,37 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
           </div>
         )}
 
-        {/* LNURL QR Code */}
         {method === 'lnurl' && lnurlData && (
           <div className="text-center">
             <LnurlQrCode lnurl={lnurlData.lnurl} />
-            <p className="mt-4 text-gray-400 text-sm">
-              Scan with your Lightning wallet to login
-            </p>
-            <button
-              onClick={handleBack}
-              className="mt-4 text-nostr-purple hover:underline text-sm"
-            >
-              ← Back to login options
-            </button>
+            <p className="mt-4 text-gray-400 text-sm">Scan with your Lightning wallet to login</p>
+            <button onClick={handleBack} className="mt-4 text-nostr-purple hover:underline text-sm">← Back to login options</button>
           </div>
         )}
 
-        {/* nsec fallback form */}
         {method === 'nsec' && (
           <div className="space-y-4">
-            <p className="text-sm text-yellow-300/80">
-              Fallback login: paste your nsec or 64-char hex private key.
-            </p>
-            <textarea
-              value={nsecInput}
-              onChange={(e) => setNsecInput(e.target.value)}
-              placeholder="nsec1..."
-              rows={3}
-              className="w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-white text-sm"
-            />
+            <p className="text-sm text-yellow-300/80">Fallback login: paste your nsec or 64-char hex private key.</p>
+            <textarea value={nsecInput} onChange={(e) => setNsecInput(e.target.value)} placeholder="nsec1..." rows={3} className="w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-white text-sm" />
             <div className="flex gap-3">
-              <button
-                onClick={handleNsecLogin}
-                disabled={isLoading || !nsecInput.trim()}
-                className="flex-1 rounded-lg bg-yellow-500/80 hover:bg-yellow-500 text-black font-medium py-2 disabled:opacity-50"
-              >
-                Continue with nsec
-              </button>
-              <button
-                onClick={handleBack}
-                disabled={isLoading}
-                className="rounded-lg border border-gray-600 text-gray-300 px-4 py-2"
-              >
-                Back
-              </button>
+              <button onClick={handleNsecLogin} disabled={isLoading || !nsecInput.trim()} className="flex-1 rounded-lg bg-yellow-500/80 hover:bg-yellow-500 text-black font-medium py-2 disabled:opacity-50">Continue with nsec</button>
+              <button onClick={handleBack} disabled={isLoading} className="rounded-lg border border-gray-600 text-gray-300 px-4 py-2">Back</button>
             </div>
           </div>
         )}
 
-        {/* Loading state */}
         {isLoading && (method === 'extension' || method === 'nsec') && (
           <div className="text-center py-8">
             <div className="w-12 h-12 border-4 border-nostr-purple border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <p className="text-gray-400">
-              {method === 'extension' ? 'Check your extension for the signing prompt...' : 'Signing authentication challenge...'}
+              {method === 'extension'
+                ? `Check ${providers.find((p) => p.id === activeProvider)?.label ?? 'your selected signer'} for the signing prompt...`
+                : 'Signing authentication challenge...'}
             </p>
-            <button
-              onClick={handleBack}
-              className="mt-4 text-nostr-purple hover:underline text-sm"
-            >
-              Cancel
-            </button>
+            {signerDebugMarker && (
+              <div className="text-[10px] text-gray-500 mt-2">debug: {signerDebugMarker}</div>
+            )}
+            <button onClick={handleBack} className="mt-4 text-nostr-purple hover:underline text-sm">Cancel</button>
           </div>
         )}
       </div>
