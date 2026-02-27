@@ -11,6 +11,7 @@ import { requestIdentityRefresh } from '../lib/identityRefresh';
 import { CONTENT_TYPE_LABELS, type ContentType } from '../lib/contentTypes';
 import type { DiscoverCardDataLike } from '../types/discover';
 import { Avatar } from '../components/Avatar';
+import { useBeaconSearch } from '../lib/beaconSearch';
 
 interface DiscoverCardData extends DiscoverUser, DiscoverCardDataLike {
   name: string;
@@ -84,6 +85,9 @@ export function DiscoverPage() {
   const [relayMetricsUniverse, setRelayMetricsUniverse] = useState<RelayMetricsSeed[]>([]);
   const [selectedRelay, setSelectedRelay] = useState<RankedRelayRecommendation | null>(null);
   const [postFilters, setPostFilters] = useState<Set<DiscoverPostFilter>>(new Set());
+  
+  // Beacon search integration
+  const beaconSearch = useBeaconSearch(search, 300);
 
   const refresh = async (opts?: { background?: boolean }) => {
     if (!user?.pubkey) return;
@@ -234,6 +238,41 @@ export function DiscoverPage() {
   };
 
   const filteredSorted = useMemo(() => {
+    const q = search.trim();
+    
+    // Use Beacon search results when search is active
+    if (q && beaconSearch.results && beaconSearch.results.results.length > 0) {
+      const beaconCards: DiscoverCardData[] = beaconSearch.results.results.map((result) => ({
+        pubkey: result.pubkey,
+        followers: 0,
+        following: 0,
+        activity: 0,
+        freshnessScore: result.score || 0,
+        overlapScore: 0,
+        secondHopCount: 0,
+        wotFollowerCount: 0,
+        proximityScore: 0,
+        interactionScore: 0,
+        relayAffinityScore: 0,
+        forYouScore: result.score || 0,
+        wotScore: 0,
+        score: result.score || 0,
+        verifiedNip05: Boolean(result.nip05),
+        name: result.name || truncateNpub(result.npub),
+        nip05: result.nip05,
+        about: result.about,
+        picture: result.picture,
+      }));
+      
+      // Apply filters to Beacon results
+      let out = beaconCards;
+      if (verifiedOnly) out = out.filter((c) => c.verifiedNip05);
+      if (activeOnly) out = out.filter((c) => c.activity > 2);
+      
+      return out;
+    }
+    
+    // Fallback to local filtering when no search or Beacon unavailable
     const sourceCards = tab === 'following'
       ? followingCards
       : (tab === 'wot' && poolCards.wot.length === 0 ? poolCards.general : poolCards[tab]);
@@ -242,15 +281,16 @@ export function DiscoverPage() {
     if (verifiedOnly) out = out.filter((c) => c.verifiedNip05);
     if (activeOnly) out = out.filter((c) => c.activity > 2);
 
-    const q = search.trim().toLowerCase();
+    // Client-side search fallback
     if (q) {
-      out = out.filter((c) => c.name.toLowerCase().includes(q)
-        || c.nip05?.toLowerCase().includes(q)
-        || toNpub(c.pubkey).toLowerCase().includes(q));
+      const qLower = q.toLowerCase();
+      out = out.filter((c) => c.name.toLowerCase().includes(qLower)
+        || c.nip05?.toLowerCase().includes(qLower)
+        || toNpub(c.pubkey).toLowerCase().includes(qLower));
     }
 
     return sortDiscoverUsers(out, tab);
-  }, [poolCards, followingCards, following, tab, verifiedOnly, activeOnly, search]);
+  }, [poolCards, followingCards, following, tab, verifiedOnly, activeOnly, search, beaconSearch.results]);
 
   const relaySuggestions = useMemo<RankedRelayRecommendation[]>(() => {
     const filter: RelayFilter = {
@@ -360,13 +400,29 @@ export function DiscoverPage() {
             </div>
 
             <div className="grid md:grid-cols-3 gap-3">
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search NIP-05, name, npub..." className="md:col-span-2 bg-slate-950/70 border border-cyan-500/30 rounded-lg px-3 py-2 text-sm text-white" />
+              <div className="md:col-span-2 relative">
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search NIP-05, name, npub..." className="w-full bg-slate-950/70 border border-cyan-500/30 rounded-lg px-3 py-2 text-sm text-white" />
+                {search.trim() && beaconSearch.results && beaconSearch.results.beaconAvailable && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+                    🔍 Beacon
+                  </div>
+                )}
+                {search.trim() && beaconSearch.loading && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-cyan-400">
+                    Searching...
+                  </div>
+                )}
+              </div>
               <button type="button" onClick={() => setVerifiedOnly((v) => !v)} className={`rounded-lg px-3 py-2 text-sm border ${verifiedOnly ? 'bg-cyan-500/20 border-cyan-300 text-cyan-100' : 'bg-slate-950/70 border-cyan-500/30 text-cyan-200'}`}>
                 {verifiedOnly ? 'Verified only ✓' : 'Verified only'}
               </button>
             </div>
 
-            <p className="text-xs text-cyan-300">{discoverSortLabel(tab)}</p>
+            <p className="text-xs text-cyan-300">
+              {search.trim() && beaconSearch.results 
+                ? `${beaconSearch.results.total} results from ${beaconSearch.results.source === 'beacon' ? 'Beacon search' : 'local cache'}`
+                : discoverSortLabel(tab)}
+            </p>
 
             <button type="button" onClick={() => setActiveOnly((v) => !v)} className={`rounded-lg px-3 py-2 text-sm border ${activeOnly ? 'bg-fuchsia-500/20 border-fuchsia-300 text-fuchsia-100' : 'bg-slate-950/70 border-fuchsia-500/40 text-fuchsia-200'}`}>
               {activeOnly ? 'Active users ✓' : 'Active users'}
