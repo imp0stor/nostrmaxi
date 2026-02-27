@@ -29,9 +29,6 @@ export class MockPrismaService {
           (n: any) => n.userId === user.id && n.isActive
         );
       }
-      if (include?.wotScore && user.wotScoreId) {
-        result.wotScore = { trustScore: 50, discountPercent: 10 };
-      }
       if (include?.sessions) {
         result.sessions = Array.from(this.sessions.values()).filter(
           (s: any) => s.userId === user.id
@@ -53,11 +50,6 @@ export class MockPrismaService {
         if (include?.subscription) {
           user.subscription = subscription;
         }
-      }
-      
-      // Handle nested wotScore creation
-      if (data.wotScore?.create) {
-        user.wotScoreId = `wot_${Date.now()}`;
       }
       
       this.users.set(data.pubkey, user);

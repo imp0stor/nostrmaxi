@@ -45,7 +45,6 @@ export class IdentityService {
       include: {
         nip05s: { where: { isActive: true } },
         subscription: true,
-        wotScore: true,
       },
     });
 
@@ -57,6 +56,8 @@ export class IdentityService {
       };
     }
 
+    const wotScore = await this.wotService.getScore(pubkey);
+
     return {
       found: true,
       pubkey: user.pubkey,
@@ -67,14 +68,12 @@ export class IdentityService {
         address: `${n.localPart}@${n.domain}`,
         createdAt: n.createdAt,
       })),
-      wot: user.wotScore
-        ? {
-            trustScore: user.wotScore.trustScore,
-            isLikelyBot: user.wotScore.isLikelyBot,
-            discountPercent: user.wotScore.discountPercent,
-            lastCalculated: user.wotScore.lastCalculated,
-          }
-        : null,
+      wot: {
+        trustScore: wotScore.trustScore,
+        isLikelyBot: wotScore.isLikelyBot,
+        discountPercent: wotScore.discountPercent,
+        lastCalculated: wotScore.lastCalculated,
+      },
     };
   }
 

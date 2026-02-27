@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService, TierInfo, SubscriptionTier } from '../payments/payments.service';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { WotService } from '../wot/wot.service';
 
 @Injectable()
 export class SubscriptionService {
@@ -9,6 +10,7 @@ export class SubscriptionService {
     private prisma: PrismaService,
     private paymentsService: PaymentsService,
     private webhooks: WebhooksService,
+    private wotService: WotService,
   ) {}
 
   /**
@@ -42,7 +44,6 @@ export class SubscriptionService {
           },
         },
         nip05s: true,
-        wotScore: true,
       },
     });
 
@@ -67,6 +68,8 @@ export class SubscriptionService {
       );
     }
 
+    const wotScore = await this.wotService.getScore(pubkey);
+
     return {
       tier,
       tierInfo,
@@ -77,7 +80,7 @@ export class SubscriptionService {
       isActive,
       isCancelled: !!user.subscription?.cancelledAt,
       daysRemaining,
-      wotDiscount: user.wotScore?.discountPercent || 0,
+      wotDiscount: wotScore.discountPercent || 0,
       recentPayments: user.subscription?.payments.map((p) => ({
         id: p.id,
         amountSats: p.amountSats,

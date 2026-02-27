@@ -165,7 +165,7 @@ export class AuthService {
         npub: user.npub,
         tier: user.subscription?.tier || 'FREE',
         nip05s: user.nip05s,
-        wotScore: user.wotScore?.trustScore || 0,
+        wotScore: 0,
       },
       expiresAt: Math.floor(expiresAt.getTime() / 1000),
     };
@@ -273,7 +273,6 @@ export class AuthService {
             include: {
               subscription: true,
               nip05s: true,
-              wotScore: true,
             },
           },
         },
@@ -383,7 +382,6 @@ export class AuthService {
       where: { pubkey },
       include: {
         subscription: true,
-        wotScore: true,
         nip05s: true,
       },
     });
@@ -397,14 +395,10 @@ export class AuthService {
           subscription: {
             create: { tier: 'FREE' },
           },
-          wotScore: {
-            create: {},
-          },
         },
         include: {
           subscription: true,
-          wotScore: true,
-          nip05s: true,
+            nip05s: true,
         },
       });
     }

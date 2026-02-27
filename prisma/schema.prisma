@@ -19,7 +19,6 @@ model User {
   // Relations
   nip05s       Nip05[]
   subscription Subscription?
-  wotScore     WotScore?
   sessions     Session[]
   apiKeys      ApiKey[]
   lnurlSessions LnurlSession[]
@@ -217,33 +216,6 @@ model Payment {
   @@index([lnbitsPaymentId])
   @@index([provider, providerInvoiceId])
   @@index([providerPaymentId])
-}
-
-// Web of Trust scores
-model WotScore {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Calculated scores
-  followersCount  Int      @default(0)
-  followingCount  Int      @default(0)
-  wotDepth        Int      @default(0)     // Depth from well-known accounts
-  trustScore      Float    @default(0)     // 0-100 trust score
-  
-  // Bot detection
-  isLikelyBot     Boolean  @default(false)
-  accountAgeScore Float    @default(0)
-  activityScore   Float    @default(0)
-  
-  // Discount eligibility
-  discountPercent Int      @default(0)
-  
-  lastCalculated  DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([trustScore])
 }
 
 // Admin audit log

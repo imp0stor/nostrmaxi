@@ -30,21 +30,7 @@ export class WotService {
   }
 
   async getScore(pubkey: string): Promise<WotScoreResponse> {
-    const user = await this.prisma.user.findUnique({ where: { pubkey }, include: { wotScore: true } });
-    if (!user || !user.wotScore) {
-      return { pubkey, npub: nip19.npubEncode(pubkey), trustScore: 0, followersCount: 0, followingCount: 0, wotDepth: -1, isLikelyBot: false, discountPercent: 0, lastCalculated: new Date(0) };
-    }
-    return {
-      pubkey: user.pubkey,
-      npub: user.npub,
-      trustScore: user.wotScore.trustScore,
-      followersCount: user.wotScore.followersCount,
-      followingCount: user.wotScore.followingCount,
-      wotDepth: user.wotScore.wotDepth,
-      isLikelyBot: user.wotScore.isLikelyBot,
-      discountPercent: user.wotScore.discountPercent,
-      lastCalculated: user.wotScore.lastCalculated,
-    };
+    return this.computeScore(pubkey);
   }
 
   async verify(pubkey: string, minScore = 50): Promise<{ verified: boolean; score: number; reason?: string }> {
@@ -86,10 +72,12 @@ export class WotService {
   }
 
   async recalculate(pubkey: string): Promise<WotScoreResponse> {
-    let user = await this.prisma.user.findUnique({ where: { pubkey }, include: { wotScore: true } });
-    if (!user) {
-      user = await this.prisma.user.create({ data: { pubkey, npub: nip19.npubEncode(pubkey), wotScore: { create: {} } }, include: { wotScore: true } });
-    }
+    return this.computeScore(pubkey);
+  }
+
+  private async computeScore(pubkey: string): Promise<WotScoreResponse> {
+    const user = await this.prisma.user.findUnique({ where: { pubkey } });
+    const npub = user?.npub || nip19.npubEncode(pubkey);
 
     const pool = new SimplePool();
     let followersCount = 0;
@@ -120,29 +108,16 @@ export class WotService {
     const trustScore = Math.max(0, Math.min(100, Math.round(followerScore + followingScore + depthScore + activityScore)));
     const isLikelyBot = recentNotes > 150 || (followingCount > 3000 && followersCount < 10);
 
-    const wotScore = await this.prisma.wotScore.update({
-      where: { userId: user.id },
-      data: {
-        followersCount,
-        followingCount,
-        wotDepth,
-        trustScore,
-        isLikelyBot,
-        discountPercent: trustScore > 80 ? 20 : trustScore > 55 ? 10 : 0,
-        lastCalculated: new Date(),
-      },
-    });
-
     return {
-      pubkey: user.pubkey,
-      npub: user.npub,
-      trustScore: wotScore.trustScore,
-      followersCount: wotScore.followersCount,
-      followingCount: wotScore.followingCount,
-      wotDepth: wotScore.wotDepth,
-      isLikelyBot: wotScore.isLikelyBot,
-      discountPercent: wotScore.discountPercent,
-      lastCalculated: wotScore.lastCalculated,
+      pubkey,
+      npub,
+      trustScore,
+      followersCount,
+      followingCount,
+      wotDepth,
+      isLikelyBot,
+      discountPercent: trustScore > 80 ? 20 : trustScore > 55 ? 10 : 0,
+      lastCalculated: new Date(),
     };
   }
 }

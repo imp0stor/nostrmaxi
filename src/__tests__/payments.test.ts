@@ -12,6 +12,7 @@ import { createMockPrismaService } from './mocks/prisma.mock';
 import { generateTestKeypair, createNip98AuthHeader, mockLnbitsInvoice } from './helpers/test-utils';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { WotService } from '../wot/wot.service';
 import { nip19 } from 'nostr-tools';
 import * as crypto from 'crypto';
 
@@ -26,6 +27,7 @@ describe('Payment Webhook Handling', () => {
   let testUser: any;
   let testKeypair: any;
   let mockRequest: any;
+  let wotService: any;
 
   beforeEach(async () => {
     prisma = createMockPrismaService();
@@ -44,6 +46,8 @@ describe('Payment Webhook Handling', () => {
       }),
     };
     
+    wotService = { getScore: jest.fn().mockResolvedValue({ trustScore: 0, discountPercent: 0 }) };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PaymentsController],
       providers: [
@@ -69,6 +73,10 @@ describe('Payment Webhook Handling', () => {
         {
           provide: WebhooksService,
           useValue: { emit: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: WotService,
+          useValue: wotService,
         },
       ],
     }).compile();
@@ -156,10 +164,7 @@ describe('Payment Webhook Handling', () => {
 
     it('should apply WoT discount when eligible', async () => {
       // Setup: Add WoT score to user
-      testUser.wotScore = {
-        trustScore: 75,
-        discountPercent: 20,
-      };
+      wotService.getScore.mockResolvedValueOnce({ trustScore: 75, discountPercent: 20 });
 
       const authHeader = createNip98AuthHeader(
         'POST',
@@ -181,10 +186,7 @@ describe('Payment Webhook Handling', () => {
 
     it('should cap WoT discount at 50%', async () => {
       // Setup: Add excessive discount
-      testUser.wotScore = {
-        trustScore: 95,
-        discountPercent: 80, // Trying to get 80% discount
-      };
+      wotService.getScore.mockResolvedValueOnce({ trustScore: 95, discountPercent: 80 });
 
       const authHeader = createNip98AuthHeader(
         'POST',

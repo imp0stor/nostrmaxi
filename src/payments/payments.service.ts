@@ -9,6 +9,7 @@ import {
 } from './providers';
 import { BtcpayProvider } from './providers/btcpay.provider';
 import { LnbitsProvider } from './providers/lnbits.provider';
+import { WotService } from '../wot/wot.service';
 
 export type SubscriptionTier = 'FREE' | 'PRO' | 'BUSINESS' | 'LIFETIME';
 export type BillingCycle = 'monthly' | 'annual' | 'lifetime';
@@ -114,6 +115,7 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private wotService: WotService,
   ) {
     const lnbitsUrl = this.config.get('LNBITS_URL') || 'https://legend.lnbits.com';
     const lnbitsApiKey = this.config.get('LNBITS_API_KEY') || '';
@@ -199,7 +201,7 @@ export class PaymentsService {
 
     const user = await this.prisma.user.findUnique({
       where: { pubkey },
-      include: { subscription: true, wotScore: true },
+      include: { subscription: true },
     });
 
     if (!user) {
@@ -216,8 +218,9 @@ export class PaymentsService {
 
     // Apply WoT discount if eligible
     let discountPercent = 0;
-    if (applyWotDiscount && user.wotScore?.discountPercent) {
-      discountPercent = Math.min(user.wotScore.discountPercent, 50); // Max 50% discount
+    if (applyWotDiscount) {
+      const wotScore = await this.wotService.getScore(pubkey);
+      discountPercent = Math.min(wotScore.discountPercent || 0, 50); // Max 50% discount
     }
 
     const cycleMultiplier = resolvedBillingCycle === 'annual' ? ANNUAL_MULTIPLIER : 1;

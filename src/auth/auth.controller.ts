@@ -88,7 +88,7 @@ export class AuthController {
       npub: user.npub,
       tier: user.subscription?.tier || 'FREE',
       nip05s: user.nip05s,
-      wotScore: user.wotScore?.trustScore || 0,
+      wotScore: 0,
       subscription: user.subscription ? {
         tier: user.subscription.tier,
         expiresAt: user.subscription.expiresAt,
@@ -158,7 +158,7 @@ export class AuthController {
       npub: user.npub,
       tier: user.subscription?.tier || 'FREE',
       nip05s: user.nip05s,
-      wotScore: user.wotScore?.trustScore || 0,
+      wotScore: 0,
     };
   }
 }

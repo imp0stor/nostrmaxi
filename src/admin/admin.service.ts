@@ -1,6 +1,7 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { WotService } from '../wot/wot.service';
 
 @Injectable()
 export class AdminService {
@@ -9,6 +10,7 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private wotService: WotService,
   ) {
     this.adminPubkeys = this.config.get('ADMIN_PUBKEYS', '').split(',').filter(Boolean);
   }
@@ -97,20 +99,24 @@ export class AdminService {
         include: {
           subscription: true,
           nip05s: { where: { isActive: true } },
-          wotScore: true,
         },
       }),
       this.prisma.user.count(),
     ]);
 
+    const usersWithWot = await Promise.all(users.map(async (u) => ({
+      user: u,
+      wot: await this.wotService.getScore(u.pubkey),
+    })));
+
     return {
-      users: users.map((u) => ({
+      users: usersWithWot.map(({ user: u, wot }) => ({
         id: u.id,
         pubkey: u.pubkey,
         npub: u.npub,
         tier: u.subscription?.tier || 'FREE',
         nip05s: u.nip05s.map((n) => `${n.localPart}@${n.domain}`),
-        wotScore: u.wotScore?.trustScore || 0,
+        wotScore: wot.trustScore || 0,
         createdAt: u.createdAt,
       })),
       total,

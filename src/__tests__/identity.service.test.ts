@@ -16,6 +16,7 @@ describe('IdentityService', () => {
 
   const wotService = {
     verify: jest.fn(),
+    getScore: jest.fn(),
   } as any;
 
   const webhooks = {
@@ -64,12 +65,12 @@ describe('IdentityService', () => {
       createdAt: new Date('2026-01-01T00:00:00Z'),
       subscription: { tier: 'FREE' },
       nip05s: [{ localPart: 'satoshi', domain: 'nostrmaxi.com', createdAt: new Date('2026-01-02T00:00:00Z') }],
-      wotScore: {
-        trustScore: 77,
-        isLikelyBot: false,
-        discountPercent: 10,
-        lastCalculated: new Date('2026-01-03T00:00:00Z'),
-      },
+    });
+    wotService.getScore.mockResolvedValue({
+      trustScore: 77,
+      isLikelyBot: false,
+      discountPercent: 10,
+      lastCalculated: new Date('2026-01-03T00:00:00Z'),
     });
 
     const result = await service.getIdentity(pubkey);
