@@ -1,6 +1,5 @@
 import { SimplePool } from 'nostr-tools';
-import { useEffect, useMemo, useState, type UIEventHandler } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { signEvent, publishEvent, truncateNpub } from '../lib/nostr';
 import { followPubkey, invalidateDiscoverCache, loadCuratedDiscoverUsers, loadFollowing, loadNetworkPosts, loadSuggestedTopics, toNpub, type DiscoverUser, type NetworkPost } from '../lib/social';
@@ -10,9 +9,10 @@ import { discoverSortLabel, excludeFollowedDiscoverUsers, hydrateFollowerCount, 
 import { requestIdentityRefresh } from '../lib/identityRefresh';
 import { CONTENT_TYPE_LABELS, type ContentType } from '../lib/contentTypes';
 import type { DiscoverCardDataLike } from '../types/discover';
-import { Avatar } from '../components/Avatar';
 import { useBeaconSearch } from '../lib/beaconSearch';
 import { ConfigAccordion } from '../components/ConfigAccordion';
+import { ProfileCard, type WotHop } from '../components/ProfileCard';
+import { DiscoverSection } from '../components/discover/DiscoverSection';
 
 interface DiscoverCardData extends DiscoverUser, DiscoverCardDataLike {
   name: string;
@@ -71,6 +71,7 @@ export function DiscoverPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [search, setSearch] = useState('');
   const [entityTab, setEntityTab] = useState<EntityTab>('users');
   const [tab, setTab] = useState<DiscoverTab>('for-you');
@@ -192,6 +193,10 @@ export function DiscoverPage() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search, tab, entityTab]);
+
   const onFollow = async (pubkey: string) => {
     if (!user?.pubkey || following.includes(pubkey)) return;
     const snapshot = following;
@@ -238,12 +243,30 @@ export function DiscoverPage() {
     }
   };
 
-  const filteredSorted = useMemo(() => {
+  const recommendedCards = useMemo(() => {
+    const sourceCards = tab === 'following'
+      ? followingCards
+      : (tab === 'wot' && poolCards.wot.length === 0 ? poolCards.general : poolCards[tab]);
+    let out = tab === 'following' ? [...sourceCards] : excludeFollowedDiscoverUsers([...sourceCards], following);
+
+    if (verifiedOnly) out = out.filter((c) => c.verifiedNip05);
+    if (activeOnly) out = out.filter((c) => c.activity > 2);
+
+    const sorted = sortDiscoverUsers(out, tab);
+    return [...sorted].sort((a, b) => {
+      const hopA = a.secondHopCount > 0 ? 2 : 3;
+      const hopB = b.secondHopCount > 0 ? 2 : 3;
+      if (hopA !== hopB) return hopA - hopB;
+      return (b.wotScore ?? b.score) - (a.wotScore ?? a.score);
+    });
+  }, [poolCards, followingCards, following, tab, verifiedOnly, activeOnly]);
+
+  const searchResultCards = useMemo(() => {
     const q = search.trim();
-    
-    // Use Beacon search results when search is active
-    if (q && beaconSearch.results && beaconSearch.results.results.length > 0) {
-      const beaconCards: DiscoverCardData[] = beaconSearch.results.results.map((result) => ({
+    if (!q) return [] as DiscoverCardData[];
+
+    if (beaconSearch.results?.results?.length) {
+      let out: DiscoverCardData[] = beaconSearch.results.results.map((result) => ({
         pubkey: result.pubkey,
         followers: 0,
         following: 0,
@@ -264,34 +287,17 @@ export function DiscoverPage() {
         about: result.about,
         picture: result.picture,
       }));
-      
-      // Apply filters to Beacon results
-      let out = beaconCards;
+
       if (verifiedOnly) out = out.filter((c) => c.verifiedNip05);
       if (activeOnly) out = out.filter((c) => c.activity > 2);
-      
       return out;
     }
-    
-    // Fallback to local filtering when no search or Beacon unavailable
-    const sourceCards = tab === 'following'
-      ? followingCards
-      : (tab === 'wot' && poolCards.wot.length === 0 ? poolCards.general : poolCards[tab]);
-    let out = tab === 'following' ? [...sourceCards] : excludeFollowedDiscoverUsers([...sourceCards], following);
 
-    if (verifiedOnly) out = out.filter((c) => c.verifiedNip05);
-    if (activeOnly) out = out.filter((c) => c.activity > 2);
-
-    // Client-side search fallback
-    if (q) {
-      const qLower = q.toLowerCase();
-      out = out.filter((c) => c.name.toLowerCase().includes(qLower)
-        || c.nip05?.toLowerCase().includes(qLower)
-        || toNpub(c.pubkey).toLowerCase().includes(qLower));
-    }
-
-    return sortDiscoverUsers(out, tab);
-  }, [poolCards, followingCards, following, tab, verifiedOnly, activeOnly, search, beaconSearch.results]);
+    const qLower = q.toLowerCase();
+    return recommendedCards.filter((c) => c.name.toLowerCase().includes(qLower)
+      || c.nip05?.toLowerCase().includes(qLower)
+      || toNpub(c.pubkey).toLowerCase().includes(qLower));
+  }, [search, beaconSearch.results, recommendedCards, verifiedOnly, activeOnly]);
 
   const relaySuggestions = useMemo<RankedRelayRecommendation[]>(() => {
     const filter: RelayFilter = {
@@ -311,22 +317,35 @@ export function DiscoverPage() {
     });
   }, [connectedRelays, similarTopics, relaySort, relayPricingFilter, relayRegionFilter, relayNipFilter, relayMetricsUniverse]);
 
-  const visibleCards = filteredSorted.slice(0, visibleCount);
-  const hasMore = visibleCount < filteredSorted.length;
+  const isSearching = search.trim().length > 0;
+  const visibleRecommendedCards = recommendedCards.slice(0, visibleCount);
+  const visibleSearchCards = searchResultCards.slice(0, visibleCount);
+  const activeListCount = isSearching ? searchResultCards.length : recommendedCards.length;
+  const hasMore = visibleCount < activeListCount;
 
-  const onGridScroll: UIEventHandler<HTMLDivElement> = (event) => {
-    if (loadingMore || !hasMore) return;
-    const target = event.currentTarget;
-    const nearBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 180;
-    if (!nearBottom) return;
-    setLoadingMore(true);
-    window.setTimeout(() => {
-      setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredSorted.length));
-      setLoadingMore(false);
-    }, 220);
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target || loading || loadingMore || !hasMore || entityTab !== 'users') return;
+
+    const observer = new IntersectionObserver((entries) => {
+      const first = entries[0];
+      if (!first?.isIntersecting) return;
+      setLoadingMore(true);
+      window.setTimeout(() => {
+        setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, activeListCount));
+        setLoadingMore(false);
+      }, 220);
+    }, { rootMargin: '220px 0px 220px 0px' });
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [loading, loadingMore, hasMore, activeListCount, entityTab]);
+
+  const wotHopForCard = (card: DiscoverCardData): WotHop => {
+    if (following.includes(card.pubkey) || tab === 'following') return 1;
+    if (card.secondHopCount > 0 || card.overlapScore > 0 || card.wotFollowerCount > 0) return 2;
+    return 3;
   };
-
-  const identityLabel = (card: DiscoverCardData): string => card.nip05 || (card.name && !card.name.startsWith('npub') ? card.name : truncateNpub(toNpub(card.pubkey), 10));
 
   const detectPostTypes = (post: NetworkPost): Set<DiscoverPostFilter> => {
     const text = (post.content || '').toLowerCase();
@@ -438,41 +457,63 @@ export function DiscoverPage() {
       </ConfigAccordion>
 
       <section className="cy-card p-4">
-        <div className="max-h-[68vh] overflow-y-auto pr-1" onScroll={onGridScroll}>
-          {entityTab === 'users' && (loading ? <div className="py-16 text-center text-cyan-200">Loading curated suggestions…</div> : visibleCards.length === 0 ? <div className="py-16 text-center text-cyan-200">No users match this filter yet.</div> : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {visibleCards.map((card) => {
-                  const isFollowing = following.includes(card.pubkey);
-                  return (
-                    <article key={card.pubkey} className="rounded-xl border border-cyan-400/25 bg-slate-950/85 shadow-[0_0_18px_rgba(34,211,238,0.12)] p-4 hover:border-cyan-300/50 transition">
-                      <Link to={`/profile/${card.pubkey}`} className="block">
-                        <div className="flex items-start gap-3">
-                          <Avatar pubkey={card.pubkey} size={56} clickable={false} className="shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-cyan-100 font-semibold truncate flex items-center gap-1">{identityLabel(card)}{card.verifiedNip05 && <span title="Verified NIP-05">✓</span>}</p>
-                            {card.name && card.name !== card.nip05 && <p className="text-sm text-slate-300 truncate">{card.name}</p>}
-                            <p className="mt-2 text-sm text-slate-400 line-clamp-2">{card.about || 'No bio provided yet.'}</p>
-                            <p className="mt-2 inline-block text-[11px] rounded-full px-2 py-0.5 border border-fuchsia-400/40 text-fuchsia-200 bg-fuchsia-500/10">{reasonLabel(card)}</p>
-                          </div>
-                        </div>
-                      </Link>
+        <div className="max-h-[68vh] overflow-y-auto pr-1">
+          {entityTab === 'users' && (
+            loading ? <div className="py-16 text-center text-cyan-200">Loading curated suggestions…</div> : (
+              <div className="space-y-7">
+                <DiscoverSection
+                  title="Recommended"
+                  subtitle="Curated accounts prioritized by Web-of-Trust proximity and profile quality."
+                >
+                  {visibleRecommendedCards.length === 0 ? (
+                    <div className="py-10 text-center text-cyan-200">No recommendations match this filter yet.</div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {visibleRecommendedCards.map((card) => (
+                        <ProfileCard
+                          key={`rec-${card.pubkey}`}
+                          user={card}
+                          hop={wotHopForCard(card)}
+                          reason={reasonLabel(card)}
+                          isFollowing={following.includes(card.pubkey)}
+                          onFollow={onFollow}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </DiscoverSection>
 
-                      <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                        <span>{card.followers.toLocaleString()} followers</span>
-                        <span>{card.following.toLocaleString()} following</span>
+                {isSearching && (
+                  <DiscoverSection
+                    title="Search Results"
+                    subtitle="Beacon-powered profile search rendered in the same curated card layout."
+                  >
+                    {visibleSearchCards.length === 0 ? (
+                      <div className="py-10 text-center text-cyan-200">No search results yet.</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {visibleSearchCards.map((card) => (
+                          <ProfileCard
+                            key={`search-${card.pubkey}`}
+                            user={card}
+                            hop={wotHopForCard(card)}
+                            reason="Search match"
+                            isFollowing={following.includes(card.pubkey)}
+                            onFollow={onFollow}
+                          />
+                        ))}
                       </div>
+                    )}
+                  </DiscoverSection>
+                )}
 
-                      <button type="button" onClick={() => onFollow(card.pubkey)} disabled={isFollowing} className={`mt-3 w-full rounded-md px-3 py-2 text-sm font-semibold transition ${isFollowing ? 'bg-slate-800 text-slate-300 border border-slate-700 cursor-default' : 'bg-cyan-500/20 text-cyan-100 border border-cyan-300/60 hover:bg-cyan-500/35'}`}>
-                        {isFollowing ? 'Following' : 'Follow'}
-                      </button>
-                    </article>
-                  );
-                })}
+                <div ref={loadMoreRef} className="py-4 text-center text-sm text-cyan-200">
+                  {loadingMore && 'Loading more profiles…'}
+                  {!loadingMore && !hasMore && 'End of suggestions'}
+                </div>
               </div>
-              <div className="py-4 text-center text-sm text-cyan-200">{loadingMore && 'Loading more suggestions…'}{!loadingMore && !hasMore && 'End of suggestions'}</div>
-            </>
-          ))}
+            )
+          )}
 
           {entityTab === 'relays' && (
             <div className="space-y-4">
