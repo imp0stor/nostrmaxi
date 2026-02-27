@@ -126,7 +126,9 @@ model Nip05 {
   domain    String   // Domain for the NIP-05
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -134,6 +136,7 @@ model Nip05 {
   @@unique([localPart, domain])
   @@index([domain])
   @@index([userId])
+  @@index([paymentId])
 }
 
 // Custom domains for NIP-05
@@ -180,6 +183,7 @@ model Payment {
   id             String       @id @default(cuid())
   subscriptionId String
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  nip05s         Nip05[]
   
   amountSats     Int?
   amountUsd      Int?         // cents

@@ -1,0 +1,16 @@
+{
+  "project": "nostrmaxi-canonical",
+  "migratedAt": "2026-02-26",
+  "source": "STACK-AUDIT-REPORT.md top-20",
+  "microservice": "proven-components-gateway",
+  "components": [
+    "feedparser",
+    "csv-parse",
+    "xml2js",
+    "zustand",
+    "axios",
+    "date-fns",
+    "zod"
+  ],
+  "status": "integrated"
+}

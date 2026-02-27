@@ -1,0 +1,1014 @@
+{
+  "version": 1,
+  "generatedAt": "2026-02-27T05:14:21.440Z",
+  "sources": [
+    "seed:manual-curation",
+    "nostr.watch",
+    "awesome-nostr"
+  ],
+  "entries": [
+    {
+      "id": "relay-damus",
+      "name": "relay.damus.io",
+      "url": "wss://relay.damus.io",
+      "description": "Major public relay.",
+      "category": "infrastructure",
+      "subcategory": "relays",
+      "features": [
+        "public relay"
+      ],
+      "supportedNips": [
+        "NIP-01",
+        "NIP-11",
+        "NIP-42"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.992,
+        "monthlyUsers": 240000,
+        "activityScore": 92,
+        "trend30d": [
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92
+        ]
+      },
+      "trustScore": 88,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.6
+        }
+      ],
+      "tags": [
+        "relay"
+      ],
+      "operator": "Damus",
+      "alternatives": [
+        "relay.primal.net"
+      ],
+      "useCases": [
+        "posting",
+        "discovery"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "blossom-primal",
+      "name": "Primal Blossom",
+      "url": "https://blossom.primal.net",
+      "description": "Blossom-compatible media host.",
+      "category": "infrastructure",
+      "subcategory": "media servers",
+      "features": [
+        "media hosting"
+      ],
+      "supportedNips": [
+        "NIP-94"
+      ],
+      "pricing": "freemium",
+      "status": "beta",
+      "metrics": {
+        "uptime": 0.988,
+        "monthlyUsers": 80000,
+        "activityScore": 80,
+        "trend30d": [
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80
+        ]
+      },
+      "trustScore": 79,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.2
+        }
+      ],
+      "tags": [
+        "blossom",
+        "media"
+      ],
+      "operator": "Primal",
+      "alternatives": [
+        "void.cat"
+      ],
+      "useCases": [
+        "media uploads"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "alby",
+      "name": "Alby",
+      "url": "https://getalby.com",
+      "description": "Lightning + wallet tooling used in zaps.",
+      "category": "infrastructure",
+      "subcategory": "lightning nodes/services",
+      "features": [
+        "wallet",
+        "lnurl"
+      ],
+      "supportedNips": [
+        "NIP-57"
+      ],
+      "pricing": "freemium",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.995,
+        "monthlyUsers": 450000,
+        "activityScore": 95,
+        "trend30d": [
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96
+        ]
+      },
+      "trustScore": 91,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.8
+        }
+      ],
+      "tags": [
+        "lightning"
+      ],
+      "operator": "Alby",
+      "alternatives": [
+        "Wallet of Satoshi"
+      ],
+      "useCases": [
+        "zaps"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "dvmdash",
+      "name": "DVM Dashboard",
+      "url": "https://dvmdash.live",
+      "description": "DVM discovery and health tracking.",
+      "category": "infrastructure",
+      "subcategory": "dvms",
+      "features": [
+        "dvm index"
+      ],
+      "supportedNips": [
+        "NIP-90"
+      ],
+      "pricing": "free",
+      "status": "beta",
+      "metrics": {
+        "uptime": 0.973,
+        "monthlyUsers": 12000,
+        "activityScore": 72,
+        "trend30d": [
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72
+        ]
+      },
+      "trustScore": 75,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4
+        }
+      ],
+      "tags": [
+        "dvm"
+      ],
+      "operator": "DVMDash",
+      "alternatives": [
+        "nostr.band"
+      ],
+      "useCases": [
+        "dvm analytics"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "snort",
+      "name": "Snort",
+      "url": "https://snort.social",
+      "description": "Web client with strong discovery UX.",
+      "category": "clients-apps",
+      "subcategory": "web clients",
+      "features": [
+        "web client"
+      ],
+      "supportedNips": [
+        "NIP-01",
+        "NIP-57"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.992,
+        "monthlyUsers": 170000,
+        "activityScore": 90,
+        "trend30d": [
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91
+        ]
+      },
+      "trustScore": 86,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.5
+        }
+      ],
+      "tags": [
+        "client",
+        "web"
+      ],
+      "operator": "Snort",
+      "alternatives": [
+        "Primal"
+      ],
+      "useCases": [
+        "social feed"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "primal",
+      "name": "Primal",
+      "url": "https://primal.net",
+      "description": "Cross-platform Nostr client.",
+      "category": "clients-apps",
+      "subcategory": "mobile apps",
+      "features": [
+        "mobile app"
+      ],
+      "supportedNips": [
+        "NIP-01",
+        "NIP-57",
+        "NIP-65"
+      ],
+      "pricing": "freemium",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.996,
+        "monthlyUsers": 290000,
+        "activityScore": 96,
+        "trend30d": [
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97
+        ]
+      },
+      "trustScore": 92,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.8
+        }
+      ],
+      "tags": [
+        "client",
+        "mobile"
+      ],
+      "operator": "Primal",
+      "alternatives": [
+        "Damus",
+        "Amethyst"
+      ],
+      "useCases": [
+        "consumer social"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "gossip",
+      "name": "gossip",
+      "url": "https://github.com/mikedilger/gossip",
+      "description": "Desktop Rust Nostr client.",
+      "category": "clients-apps",
+      "subcategory": "desktop apps",
+      "features": [
+        "desktop"
+      ],
+      "supportedNips": [
+        "NIP-01"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.98,
+        "monthlyUsers": 25000,
+        "activityScore": 70,
+        "trend30d": [
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70
+        ]
+      },
+      "trustScore": 84,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.2
+        }
+      ],
+      "tags": [
+        "desktop"
+      ],
+      "operator": "mikedilger",
+      "alternatives": [
+        "Coracle"
+      ],
+      "useCases": [
+        "desktop usage"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "nak",
+      "name": "nak",
+      "url": "https://github.com/fiatjaf/nak",
+      "description": "CLI for Nostr events and relay operations.",
+      "category": "clients-apps",
+      "subcategory": "cli tools",
+      "features": [
+        "cli"
+      ],
+      "supportedNips": [
+        "NIP-01"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.999,
+        "monthlyUsers": 12000,
+        "activityScore": 65,
+        "trend30d": [
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66
+        ]
+      },
+      "trustScore": 86,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.4
+        }
+      ],
+      "tags": [
+        "cli",
+        "developer"
+      ],
+      "operator": "fiatjaf",
+      "alternatives": [
+        "nostcat"
+      ],
+      "useCases": [
+        "automation"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "nos2x",
+      "name": "nos2x",
+      "url": "https://github.com/fiatjaf/nos2x",
+      "description": "Browser extension signer.",
+      "category": "clients-apps",
+      "subcategory": "browser extensions",
+      "features": [
+        "nip-07 signer"
+      ],
+      "supportedNips": [
+        "NIP-07"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.995,
+        "monthlyUsers": 60000,
+        "activityScore": 74,
+        "trend30d": [
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75
+        ]
+      },
+      "trustScore": 81,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.1
+        }
+      ],
+      "tags": [
+        "extension"
+      ],
+      "operator": "fiatjaf",
+      "alternatives": [
+        "Alby extension"
+      ],
+      "useCases": [
+        "web signing"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "nostrplebs",
+      "name": "NostrPlebs",
+      "url": "https://nostrplebs.com",
+      "description": "Managed NIP-05 provider.",
+      "category": "services",
+      "subcategory": "nip-05 providers",
+      "features": [
+        "nip05 setup"
+      ],
+      "supportedNips": [
+        "NIP-05"
+      ],
+      "pricing": "paid",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.982,
+        "monthlyUsers": 9000,
+        "activityScore": 68,
+        "trend30d": [
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68
+        ]
+      },
+      "trustScore": 76,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4
+        }
+      ],
+      "tags": [
+        "nip05"
+      ],
+      "operator": "NostrPlebs",
+      "alternatives": [
+        "Nostr Verified"
+      ],
+      "useCases": [
+        "identity"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "npubcash",
+      "name": "npub.cash",
+      "url": "https://npub.cash",
+      "description": "Lightning address services for Nostr users.",
+      "category": "services",
+      "subcategory": "lightning address providers",
+      "features": [
+        "ln address"
+      ],
+      "supportedNips": [
+        "NIP-57"
+      ],
+      "pricing": "freemium",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.984,
+        "monthlyUsers": 22000,
+        "activityScore": 76,
+        "trend30d": [
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77
+        ]
+      },
+      "trustScore": 77,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.2
+        }
+      ],
+      "tags": [
+        "payments"
+      ],
+      "operator": "npub.cash",
+      "alternatives": [
+        "Alby"
+      ],
+      "useCases": [
+        "tips"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "nostrarmyknife",
+      "name": "Nostr Army Knife",
+      "url": "https://nostrarmyknife.com",
+      "description": "Moderation and operational utility tools.",
+      "category": "services",
+      "subcategory": "moderation tools",
+      "features": [
+        "moderation"
+      ],
+      "supportedNips": [
+        "NIP-01",
+        "NIP-11"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.98,
+        "monthlyUsers": 19000,
+        "activityScore": 73,
+        "trend30d": [
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74
+        ]
+      },
+      "trustScore": 80,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.3
+        }
+      ],
+      "tags": [
+        "moderation"
+      ],
+      "operator": "Community",
+      "alternatives": [
+        "custom bots"
+      ],
+      "useCases": [
+        "safety"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "nostrmarket",
+      "name": "Nostr Market",
+      "url": "https://nostr.market",
+      "description": "Nostr commerce marketplace.",
+      "category": "portals-platforms",
+      "subcategory": "marketplaces",
+      "features": [
+        "listings"
+      ],
+      "supportedNips": [
+        "NIP-15"
+      ],
+      "pricing": "freemium",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.978,
+        "monthlyUsers": 33000,
+        "activityScore": 78,
+        "trend30d": [
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79
+        ]
+      },
+      "trustScore": 78,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.1
+        }
+      ],
+      "tags": [
+        "commerce"
+      ],
+      "operator": "Nostr Market",
+      "alternatives": [
+        "Pleb Market"
+      ],
+      "useCases": [
+        "buy/sell"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "habla",
+      "name": "Habla",
+      "url": "https://habla.news",
+      "description": "Long-form Nostr publishing platform.",
+      "category": "portals-platforms",
+      "subcategory": "publishing platforms",
+      "features": [
+        "long-form"
+      ],
+      "supportedNips": [
+        "NIP-23"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.987,
+        "monthlyUsers": 28000,
+        "activityScore": 75,
+        "trend30d": [
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76
+        ]
+      },
+      "trustScore": 82,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.4
+        }
+      ],
+      "tags": [
+        "publishing"
+      ],
+      "operator": "Habla",
+      "alternatives": [
+        "Blogstack"
+      ],
+      "useCases": [
+        "articles"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "wavlake",
+      "name": "Wavlake",
+      "url": "https://wavlake.com",
+      "description": "Media and podcast platform with zaps.",
+      "category": "portals-platforms",
+      "subcategory": "media/podcast platforms",
+      "features": [
+        "music",
+        "podcasts",
+        "zaps"
+      ],
+      "supportedNips": [
+        "NIP-57"
+      ],
+      "pricing": "freemium",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.992,
+        "monthlyUsers": 95000,
+        "activityScore": 89,
+        "trend30d": [
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89
+        ]
+      },
+      "trustScore": 87,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.6
+        }
+      ],
+      "tags": [
+        "media"
+      ],
+      "operator": "Wavlake",
+      "alternatives": [
+        "Fountain"
+      ],
+      "useCases": [
+        "creator distribution"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "flockstr",
+      "name": "Flockstr",
+      "url": "https://flockstr.com",
+      "description": "Event discovery and RSVPs for Nostr communities.",
+      "category": "portals-platforms",
+      "subcategory": "event platforms",
+      "features": [
+        "events"
+      ],
+      "supportedNips": [
+        "NIP-52"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.976,
+        "monthlyUsers": 14000,
+        "activityScore": 66,
+        "trend30d": [
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67
+        ]
+      },
+      "trustScore": 74,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 3.9
+        }
+      ],
+      "tags": [
+        "events"
+      ],
+      "operator": "Flockstr",
+      "alternatives": [
+        "custom pages"
+      ],
+      "useCases": [
+        "meetups"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "nostr-tools",
+      "name": "nostr-tools",
+      "url": "https://github.com/nbd-wtf/nostr-tools",
+      "description": "Core JS library for Nostr applications.",
+      "category": "developer-tools",
+      "subcategory": "libraries",
+      "features": [
+        "event utils",
+        "relay pools"
+      ],
+      "supportedNips": [
+        "NIP-01",
+        "NIP-19",
+        "NIP-57"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.999,
+        "monthlyUsers": 120000,
+        "activityScore": 97,
+        "trend30d": [
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98
+        ]
+      },
+      "trustScore": 93,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.9
+        }
+      ],
+      "tags": [
+        "library",
+        "javascript"
+      ],
+      "operator": "nbd-wtf",
+      "alternatives": [
+        "rust-nostr"
+      ],
+      "useCases": [
+        "app development"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "rust-nostr",
+      "name": "rust-nostr",
+      "url": "https://github.com/rust-nostr/nostr",
+      "description": "Rust SDK for clients and services.",
+      "category": "developer-tools",
+      "subcategory": "sdks",
+      "features": [
+        "rust sdk"
+      ],
+      "supportedNips": [
+        "NIP-01",
+        "NIP-11"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.999,
+        "monthlyUsers": 22000,
+        "activityScore": 82,
+        "trend30d": [
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82
+        ]
+      },
+      "trustScore": 90,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.6
+        }
+      ],
+      "tags": [
+        "sdk",
+        "rust"
+      ],
+      "operator": "rust-nostr",
+      "alternatives": [
+        "go-nostr"
+      ],
+      "useCases": [
+        "backend services"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "strfry",
+      "name": "strfry",
+      "url": "https://github.com/hoytech/strfry",
+      "description": "High-performance relay implementation.",
+      "category": "developer-tools",
+      "subcategory": "testing tools",
+      "features": [
+        "relay benchmarks"
+      ],
+      "supportedNips": [
+        "NIP-01",
+        "NIP-11",
+        "NIP-42"
+      ],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 0.998,
+        "monthlyUsers": 40000,
+        "activityScore": 88,
+        "trend30d": [
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89
+        ]
+      },
+      "trustScore": 91,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.8
+        }
+      ],
+      "tags": [
+        "relay",
+        "performance"
+      ],
+      "operator": "hoytech",
+      "alternatives": [
+        "nostr-rs-relay"
+      ],
+      "useCases": [
+        "relay ops"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    },
+    {
+      "id": "awesome-nostr",
+      "name": "awesome-nostr",
+      "url": "https://github.com/aljazceru/awesome-nostr",
+      "description": "Curated map of Nostr ecosystem projects.",
+      "category": "developer-tools",
+      "subcategory": "documentation sites",
+      "features": [
+        "curated index"
+      ],
+      "supportedNips": [],
+      "pricing": "free",
+      "status": "active",
+      "metrics": {
+        "uptime": 1,
+        "monthlyUsers": 45000,
+        "activityScore": 85,
+        "trend30d": [
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86
+        ]
+      },
+      "trustScore": 88,
+      "reviews": [
+        {
+          "source": "community",
+          "rating": 4.7
+        }
+      ],
+      "tags": [
+        "docs",
+        "catalog"
+      ],
+      "operator": "community",
+      "alternatives": [
+        "nostr.watch"
+      ],
+      "useCases": [
+        "project discovery"
+      ],
+      "lastUpdated": "2026-02-27T05:14:21.440Z",
+      "discoveryDate": "2026-02-27T05:14:21.440Z"
+    }
+  ]
+}
