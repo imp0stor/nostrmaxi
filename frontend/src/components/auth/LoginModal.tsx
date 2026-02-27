@@ -11,6 +11,7 @@ interface LoginModalProps {
 }
 
 type LoginMethod = 'extension' | 'lnurl' | 'nsec' | 'nostr_connect';
+type MobileLoginOption = '' | 'nostr_connect' | 'alby' | 'nos2x' | 'nostrcast' | 'window_nostr' | 'lnurl' | 'nsec';
 
 const LAST_SIGNER_STORAGE_KEY = 'nostrmaxi_last_signer';
 
@@ -28,6 +29,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   } = useAuth();
   const { status: nostrConnectStatus, error: nostrConnectError, connectionUri, start: startNostrConnect, cancel: cancelNostrConnect, reset: resetNostrConnect } = useNostrConnect();
   const [method, setMethod] = useState<LoginMethod | null>(null);
+  const [mobileMethod, setMobileMethod] = useState<MobileLoginOption>('');
   const [lnurlData, setLnurlData] = useState<{ lnurl: string; k1: string } | null>(null);
   const [providers, setProviders] = useState<NostrProviderOption[]>([]);
   const [activeProvider, setActiveProvider] = useState<NostrProviderId | null>(null);
@@ -37,8 +39,22 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
   const hasExtension = availableProviders.length > 0;
   const multipleSigners = availableProviders.length > 1;
 
+  const providerLabel = {
+    alby: 'Alby Extension',
+    nos2x: 'nos2x Extension',
+    nostrcast: 'NostrCast Keychain',
+    window_nostr: 'Browser NIP-07 Signer',
+  } satisfies Record<NostrProviderId, string>;
+
+  const isProviderAvailable = useCallback(
+    (providerId: NostrProviderId) => providers.some((provider) => provider.id === providerId && provider.isAvailable),
+    [providers]
+  );
+
   useEffect(() => {
     if (!isOpen) return;
+
+    setMobileMethod('');
 
     const savedSigner = typeof window !== 'undefined'
       ? (localStorage.getItem(LAST_SIGNER_STORAGE_KEY) as NostrProviderId | null)
@@ -123,26 +139,53 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
   const handleBack = useCallback(() => {
     setMethod(null);
+    setMobileMethod('');
     setLnurlData(null);
     setNsecInput('');
     cancelNostrConnect();
     clearError();
   }, [cancelNostrConnect, clearError]);
 
+  const handleMobileMethodChange = useCallback((value: MobileLoginOption) => {
+    setMobileMethod(value);
+
+    if (value === 'nostr_connect') {
+      void handleNostrConnectLogin();
+      return;
+    }
+
+    if (value === 'lnurl') {
+      void handleLnurlLogin();
+      return;
+    }
+
+    if (value === 'nsec') {
+      setMethod('nsec');
+      clearError();
+      return;
+    }
+
+    if (value === 'alby' || value === 'nos2x' || value === 'nostrcast' || value === 'window_nostr') {
+      if (isProviderAvailable(value)) {
+        void handleExtensionLogin(value);
+      }
+    }
+  }, [clearError, handleExtensionLogin, handleLnurlLogin, handleNostrConnectLogin, isProviderAvailable]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-nostr-dark rounded-xl max-w-md w-full p-6 relative">
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-3 md:p-4">
+      <div className="bg-nostr-dark rounded-xl max-w-md w-full p-4 md:p-6 relative max-h-[90vh] overflow-y-auto">
         <button onClick={() => { cancelNostrConnect(); onClose(); }} className="absolute top-4 right-4 text-gray-400 hover:text-white">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
 
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-white mb-2">Login with Nostr</h2>
-          <p className="text-gray-400">Authenticate using signer app (NIP-46), extension, LNURL, or nsec fallback</p>
+        <div className="text-center mb-4 md:mb-6 pr-8">
+          <h2 className="text-xl md:text-2xl font-bold text-white mb-2">Login with Nostr</h2>
+          <p className="text-sm md:text-base text-gray-400">Authenticate using signer app (NIP-46), extension, LNURL, or nsec fallback</p>
         </div>
 
         {error && (
@@ -150,86 +193,117 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
         )}
 
         {!method && (
-          <div className="space-y-3">
-            <button
-              onClick={() => void handleNostrConnectLogin()}
-              disabled={isLoading}
-              className="w-full p-4 rounded-lg border border-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all flex items-center gap-4"
-            >
-              <div className="w-12 h-12 bg-emerald-500/20 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <>
+            <div className="md:hidden space-y-3">
+              <label htmlFor="mobile-login-method" className="block text-sm text-cyan-200">
+                Choose login method
+              </label>
+              <div className="relative">
+                <select
+                  id="mobile-login-method"
+                  value={mobileMethod}
+                  onChange={(e) => handleMobileMethodChange(e.target.value as MobileLoginOption)}
+                  className="w-full min-h-[44px] rounded-lg border border-cyan-500/30 bg-slate-900 px-4 py-3 pr-10 text-white focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                >
+                  <option value="">Choose login method...</option>
+                  <option value="nostr_connect">Connect with Signer App</option>
+                  <option value="alby" disabled={!isProviderAvailable('alby')}>{providerLabel.alby}{!isProviderAvailable('alby') ? ' (not detected)' : ''}</option>
+                  <option value="nos2x" disabled={!isProviderAvailable('nos2x')}>{providerLabel.nos2x}{!isProviderAvailable('nos2x') ? ' (not detected)' : ''}</option>
+                  <option value="nostrcast" disabled={!isProviderAvailable('nostrcast')}>{providerLabel.nostrcast}{!isProviderAvailable('nostrcast') ? ' (not detected)' : ''}</option>
+                  <option value="window_nostr" disabled={!isProviderAvailable('window_nostr')}>{providerLabel.window_nostr}{!isProviderAvailable('window_nostr') ? ' (not detected)' : ''}</option>
+                  <option value="lnurl">LNURL Auth</option>
+                  <option value="nsec">nsec / Private Key</option>
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-cyan-300" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                 </svg>
               </div>
-              <div className="flex-1 text-left">
-                <div className="font-semibold text-white">Connect with Signer App</div>
-                <div className="text-sm text-gray-400">Best for mobile (Amber, Alby, etc.)</div>
-              </div>
-            </button>
+              <p className="text-xs text-gray-400">Signer extensions not detected on this device are disabled.</p>
+            </div>
 
-            {multipleSigners && (
-              <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-200">
-                Multiple Nostr signers detected. Choose one explicit signer button below.
-              </div>
-            )}
+            <div className="hidden md:block">
+              <div className="space-y-3">
+                <button
+                  onClick={() => void handleNostrConnectLogin()}
+                  disabled={isLoading}
+                  className="w-full p-4 rounded-lg border border-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all flex items-center gap-4"
+                >
+                  <div className="w-12 h-12 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-semibold text-white">Connect with Signer App</div>
+                    <div className="text-sm text-gray-400">Best for mobile (Amber, Alby, etc.)</div>
+                  </div>
+                </button>
 
-            {providers.map((provider) => (
-              <button
-                key={provider.id}
-                onClick={() => void handleExtensionLogin(provider.id)}
-                disabled={isLoading || !provider.isAvailable}
-                className={`w-full p-4 rounded-lg border border-nostr-purple ${provider.isAvailable ? 'bg-nostr-purple/10 hover:bg-nostr-purple/20' : 'bg-gray-900/60'} transition-all text-left`}
-              >
-                <div className="font-semibold text-white">Login with {provider.label}</div>
-                <div className="text-xs text-gray-400 mt-1">{provider.source}</div>
-                {provider.warning && <div className="text-xs text-yellow-300 mt-1">{provider.warning}</div>}
-                {!provider.isAvailable && provider.unavailableReason && (
-                  <div className="text-xs text-amber-300 mt-1">{provider.unavailableReason}</div>
+                {multipleSigners && (
+                  <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-200">
+                    Multiple Nostr signers detected. Choose one explicit signer button below.
+                  </div>
                 )}
-              </button>
-            ))}
 
-            {!hasExtension && (
-              <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 text-sm text-gray-300">
-                No NIP-07 signer detected.
-              </div>
-            )}
+                {providers.map((provider) => (
+                  <button
+                    key={provider.id}
+                    onClick={() => void handleExtensionLogin(provider.id)}
+                    disabled={isLoading || !provider.isAvailable}
+                    className={`w-full p-4 rounded-lg border border-nostr-purple ${provider.isAvailable ? 'bg-nostr-purple/10 hover:bg-nostr-purple/20' : 'bg-gray-900/60'} transition-all text-left`}
+                  >
+                    <div className="font-semibold text-white">Login with {provider.label}</div>
+                    <div className="text-xs text-gray-400 mt-1">{provider.source}</div>
+                    {provider.warning && <div className="text-xs text-yellow-300 mt-1">{provider.warning}</div>}
+                    {!provider.isAvailable && provider.unavailableReason && (
+                      <div className="text-xs text-amber-300 mt-1">{provider.unavailableReason}</div>
+                    )}
+                  </button>
+                ))}
 
-            <button
-              onClick={handleLnurlLogin}
-              disabled={isLoading}
-              className="w-full p-4 rounded-lg border border-nostr-orange bg-nostr-orange/10 hover:bg-nostr-orange/20 transition-all flex items-center gap-4"
-            >
-              <div className="w-12 h-12 bg-nostr-orange/20 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-nostr-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-              <div className="flex-1 text-left">
-                <div className="font-semibold text-white">Lightning Wallet</div>
-                <div className="text-sm text-gray-400">Scan QR with your wallet</div>
-              </div>
-            </button>
+                {!hasExtension && (
+                  <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3 text-sm text-gray-300">
+                    No NIP-07 signer detected.
+                  </div>
+                )}
 
-            <button
-              onClick={() => {
-                setMethod('nsec');
-                clearError();
-              }}
-              disabled={isLoading}
-              className="w-full p-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 hover:bg-yellow-500/20 transition-all flex items-center gap-4"
-            >
-              <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
-                <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0-1.657 1.343-3 3-3h0a3 3 0 013 3v2a3 3 0 01-3 3h-6a3 3 0 01-3-3v-2a3 3 0 013-3h0m3-6v6" />
-                </svg>
+                <button
+                  onClick={handleLnurlLogin}
+                  disabled={isLoading}
+                  className="w-full p-4 rounded-lg border border-nostr-orange bg-nostr-orange/10 hover:bg-nostr-orange/20 transition-all flex items-center gap-4"
+                >
+                  <div className="w-12 h-12 bg-nostr-orange/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-nostr-orange" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-semibold text-white">Lightning Wallet</div>
+                    <div className="text-sm text-gray-400">Scan QR with your wallet</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setMethod('nsec');
+                    clearError();
+                  }}
+                  disabled={isLoading}
+                  className="w-full p-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 hover:bg-yellow-500/20 transition-all flex items-center gap-4"
+                >
+                  <div className="w-12 h-12 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0-1.657 1.343-3 3-3h0a3 3 0 013 3v2a3 3 0 01-3 3h-6a3 3 0 01-3-3v-2a3 3 0 013-3h0m3-6v6" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="font-semibold text-white">Use nsec (fallback)</div>
+                    <div className="text-sm text-gray-400">Only if extension login fails</div>
+                  </div>
+                </button>
               </div>
-              <div className="flex-1 text-left">
-                <div className="font-semibold text-white">Use nsec (fallback)</div>
-                <div className="text-sm text-gray-400">Only if extension login fails</div>
-              </div>
-            </button>
-          </div>
+            </div>
+          </>
         )}
 
         {method === 'lnurl' && lnurlData && (
