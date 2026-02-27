@@ -230,49 +230,79 @@ export class NostrConnectClient {
       this.rejectConnected = reject;
     });
 
+    console.log('[NostrConnect] Setting up subscription on relays:', this.relays);
+    console.log('[NostrConnect] Client pubkey:', this.clientPubkey);
+    
     this.subCloser = this.pool.subscribeMany(
       this.relays,
-      {
-        kinds: [NOSTR_CONNECT_KIND],
-        '#p': [this.clientPubkey],
-        since: Math.floor(Date.now() / 1000) - 15,
-      },
+      [
+        {
+          kinds: [NOSTR_CONNECT_KIND],
+          '#p': [this.clientPubkey],
+          since: Math.floor(Date.now() / 1000) - 60, // Extend lookback to 60 seconds
+        },
+      ],
       {
         onevent: (event) => {
+          console.log('[NostrConnect] Received event:', event.kind, 'from:', event.pubkey?.slice(0, 8));
           void this.handleIncomingEvent(event as NostrEvent);
+        },
+        oneose: () => {
+          console.log('[NostrConnect] End of stored events received');
         },
       }
     );
   }
 
   private async handleIncomingEvent(event: NostrEvent): Promise<void> {
-    if (!this.clientSecretHex) return;
+    if (!this.clientSecretHex) {
+      console.log('[NostrConnect] Ignoring event - no client secret');
+      return;
+    }
 
     try {
+      console.log('[NostrConnect] Attempting to decrypt event from:', event.pubkey?.slice(0, 8));
       const decrypted = await nip04.decrypt(this.clientSecretHex, event.pubkey, event.content);
-      const payload = JSON.parse(decrypted) as { id?: string; result?: unknown; error?: string | { message?: string } };
+      console.log('[NostrConnect] Decrypted payload:', decrypted?.slice(0, 100));
+      const payload = JSON.parse(decrypted) as { id?: string; result?: unknown; error?: string | { message?: string }; method?: string };
 
       if (!this.signerPubkey) {
+        console.log('[NostrConnect] Signer connected! Pubkey:', event.pubkey?.slice(0, 16));
         this.signerPubkey = event.pubkey;
         this.resolveConnected?.(event.pubkey);
       }
 
-      if (!payload.id) return;
+      // Handle incoming method calls (signer initiated)
+      if (payload.method) {
+        console.log('[NostrConnect] Received method call:', payload.method);
+        return;
+      }
+
+      if (!payload.id) {
+        console.log('[NostrConnect] No payload id, ignoring');
+        return;
+      }
 
       const entry = this.pending.get(payload.id);
-      if (!entry) return;
+      if (!entry) {
+        console.log('[NostrConnect] No pending request for id:', payload.id);
+        return;
+      }
 
       clearTimeout(entry.timeout);
       this.pending.delete(payload.id);
 
       if (payload.error) {
         const message = typeof payload.error === 'string' ? payload.error : payload.error.message;
+        console.log('[NostrConnect] Signer returned error:', message);
         entry.reject(new Error(message || 'Signer rejected request'));
         return;
       }
 
+      console.log('[NostrConnect] Signer returned result for:', payload.id);
       entry.resolve(payload.result);
-    } catch {
+    } catch (err) {
+      console.log('[NostrConnect] Failed to process event:', (err as Error)?.message);
       // Ignore events that are not decryptable for this session.
     }
   }
