@@ -117,8 +117,13 @@ export class NostrConnectClient {
   getConnectionUri(): string {
     const params = new URLSearchParams();
     this.relays.forEach((relay) => params.append('relay', relay));
+    // Use 'name', 'url', 'image' params for Primal compatibility (not just 'metadata')
+    if (this.metadata.name) params.set('name', this.metadata.name);
+    if (this.metadata.url) params.set('url', this.metadata.url);
+    if (this.metadata.icons?.[0]) params.set('image', this.metadata.icons[0]);
     params.set('metadata', JSON.stringify(this.metadata));
-    return `nostr+connect://${this.clientPubkey}?${params.toString()}`;
+    // Use nostrconnect:// (no + sign) for Primal compatibility
+    return `nostrconnect://${this.clientPubkey}?${params.toString()}`;
   }
 
   async waitForSigner(timeoutMs = 90000): Promise<string> {
