@@ -7,16 +7,16 @@ import type { NostrProfile } from '../types';
 import { QuotedEventCard } from './QuotedEventCard';
 import { truncateNpub } from '../lib/nostr';
 import { SpotifyEmbedCard } from './SpotifyEmbedCard';
-
-interface LinkPreview {
-  url: string;
-  title?: string;
-  description?: string;
-  image?: string;
-  audio?: string;
-  siteName?: string;
-  domain: string;
-}
+import { YouTubeEmbed } from './YouTubeEmbed';
+import { VimeoEmbed } from './VimeoEmbed';
+import { LinkPreviewCard } from './LinkPreviewCard';
+import { TwitterEmbed } from './TwitterEmbed';
+import { GitHubRepoCard } from './GitHubRepoCard';
+import { WavlakeEmbedCard } from './WavlakeEmbedCard';
+import { PlatformIframeEmbed } from './PlatformIframeEmbed';
+import type { LinkPreview } from '../lib/richEmbeds';
+import { extractGitHubRepo, extractTweetId } from '../lib/richEmbeds';
+import { MarkdownContent } from './MarkdownContent';
 
 const previewCache = new Map<string, LinkPreview>();
 
@@ -34,7 +34,19 @@ async function fetchPreview(url: string): Promise<LinkPreview> {
   return preview;
 }
 
-export function InlineContent({ tokens, quotedEvents, quotedProfiles }: { tokens: ContentToken[]; quotedEvents: Map<string, FeedItem>; quotedProfiles: Map<string, NostrProfile | null> }) {
+export function InlineContent({
+  tokens,
+  quotedEvents,
+  quotedProfiles,
+  quotedLoadingIds = new Set<string>(),
+  quotedFailedIds = new Set<string>(),
+}: {
+  tokens: ContentToken[];
+  quotedEvents: Map<string, FeedItem>;
+  quotedProfiles: Map<string, NostrProfile | null>;
+  quotedLoadingIds?: Set<string>;
+  quotedFailedIds?: Set<string>;
+}) {
   const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
@@ -67,7 +79,7 @@ export function InlineContent({ tokens, quotedEvents, quotedProfiles }: { tokens
         if (token.type === 'text') {
           const text = token.text.trim();
           if (!text) return null;
-          return <p key={`t-${i}`} className="text-gray-100 whitespace-pre-wrap leading-relaxed">{text}</p>;
+          return <MarkdownContent key={`t-${i}`} text={text} />;
         }
 
         if (token.type === 'profile') {
@@ -106,13 +118,14 @@ export function InlineContent({ tokens, quotedEvents, quotedProfiles }: { tokens
         }
 
         if (token.type === 'video') {
+          if (token.video.type === 'youtube') return <YouTubeEmbed key={`vid-${token.video.url}-${i}`} video={token.video} />;
+          if (token.video.type === 'vimeo') return <VimeoEmbed key={`vid-${token.video.url}-${i}`} video={token.video} />;
+          if (token.video.type !== 'direct') {
+            return <PlatformIframeEmbed key={`vid-platform-${token.video.url}-${i}`} title={`${token.video.type} embed`} embedUrl={token.video.embedUrl} sourceUrl={token.video.url} aspect="video" />;
+          }
           return (
             <div key={`vid-${token.video.url}-${i}`} className="overflow-hidden rounded-md border border-blue-900/70 bg-[#060a1a]">
-              {token.video.type === 'direct' ? (
-                <video controls preload="metadata" className="w-full max-h-[26rem] bg-black"><source src={token.video.url} /></video>
-              ) : (
-                <div className="aspect-video bg-black"><iframe src={token.video.embedUrl} title="Embedded video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen className="w-full h-full" /></div>
-              )}
+              <video controls preload="metadata" className="w-full max-h-[26rem] bg-black"><source src={token.video.url} /></video>
             </div>
           );
         }
@@ -125,9 +138,16 @@ export function InlineContent({ tokens, quotedEvents, quotedProfiles }: { tokens
 
           const sourceUrl = token.audio.sourceUrl || token.audio.url;
           const preview = previews[sourceUrl];
+          if (token.audio.provider === 'wavlake') {
+            return <WavlakeEmbedCard key={`aud-wavlake-${token.audio.url}-${i}`} audio={token.audio} preview={preview} />;
+          }
+
+          if (['soundcloud', 'appleMusic', 'bandcamp', 'mixcloud'].includes(token.audio.provider || '')) {
+            return <PlatformIframeEmbed key={`aud-platform-${token.audio.url}-${i}`} title={`${token.audio.provider} player`} embedUrl={token.audio.embedUrl} sourceUrl={sourceUrl} aspect="audio" />;
+          }
+
           const playable = token.audio.provider === 'direct' ? token.audio.url : (preview?.audio || undefined);
-          const title = preview?.title || (token.audio.provider === 'wavlake' ? 'Wavlake Track' : 'Audio Clip');
-          const description = preview?.description || (token.audio.provider === 'wavlake' ? 'Audio available on Wavlake.' : undefined);
+          const title = preview?.title || 'Audio Clip';
           return (
             <div key={`aud-${token.audio.url}-${i}`} className="rounded-md border border-purple-900/70 bg-[#0a0920] p-3 space-y-2">
               <div className="flex items-center justify-between gap-3">
@@ -137,33 +157,25 @@ export function InlineContent({ tokens, quotedEvents, quotedProfiles }: { tokens
                 </div>
                 <a href={sourceUrl} target="_blank" rel="noreferrer" className="rounded-md border border-purple-400/40 bg-purple-500/10 px-2 py-1 text-xs text-purple-100 hover:bg-purple-500/20">Open link</a>
               </div>
-              {description ? <p className="text-xs text-purple-200/80">{description}</p> : null}
-              {playable ? (
-                <audio controls preload="metadata" className="w-full"><source src={playable} /></audio>
-              ) : (
-                <p className="text-xs text-purple-200/70">Inline playback unavailable; open the source link to play.</p>
-              )}
+              {preview?.description ? <p className="text-xs text-purple-200/80">{preview.description}</p> : null}
+              {playable ? <audio controls preload="metadata" className="w-full"><source src={playable} /></audio> : <p className="text-xs text-purple-200/70">Inline playback unavailable; open the source link to play.</p>}
             </div>
           );
         }
 
         if (token.type === 'quote') {
-          const event = token.eventId ? quotedEvents.get(token.eventId) : undefined;
+          const eventId = token.eventId || token.ref;
+          const event = eventId ? quotedEvents.get(eventId) : undefined;
           const profile = event ? quotedProfiles.get(event.pubkey) || undefined : undefined;
-          return <QuotedEventCard key={`quote-${token.ref}-${i}`} event={event} profile={profile} compact />;
+          const loadingQuote = eventId ? quotedLoadingIds.has(eventId) : false;
+          const failedQuote = eventId ? quotedFailedIds.has(eventId) : !event;
+          return <QuotedEventCard key={`quote-${token.ref}-${i}`} event={event} profile={profile} loading={loadingQuote && !event} unavailable={failedQuote && !event} compact />;
         }
 
+        if (extractTweetId(token.url)) return <TwitterEmbed key={`link-twitter-${token.url}-${i}`} url={token.url} />;
+        if (extractGitHubRepo(token.url)) return <GitHubRepoCard key={`link-gh-${token.url}-${i}`} url={token.url} />;
         const preview = previews[token.url];
-        return (
-          <a key={`link-${token.url}-${i}`} href={token.url} target="_blank" rel="noreferrer" className="block rounded-md border border-cyan-900/80 bg-[#080d22] hover:border-cyan-300/90 transition-colors">
-            {preview?.image ? <img src={preview.image} loading="lazy" alt="Link preview" className="w-full h-40 object-cover" /> : null}
-            <div className="p-3 space-y-1">
-              <p className="text-[11px] uppercase tracking-wider text-cyan-400">{preview?.siteName || preview?.domain || getDomain(token.url)}</p>
-              <p className="text-sm font-semibold text-cyan-100 line-clamp-2">{preview?.title || token.url}</p>
-              {preview?.description ? <p className="text-sm text-blue-100/80 line-clamp-2">{preview.description}</p> : <p className="text-xs text-cyan-300/80 break-all">{token.url}</p>}
-            </div>
-          </a>
-        );
+        return <LinkPreviewCard key={`link-${token.url}-${i}`} url={token.url} preview={preview} />;
       })}
 
       {lightbox ? <button type="button" className="fixed inset-0 z-50 bg-black/90 p-6" onClick={() => setLightbox(null)} aria-label="Close media viewer"><img src={lightbox} alt="Expanded media" className="w-full h-full object-contain" /></button> : null}

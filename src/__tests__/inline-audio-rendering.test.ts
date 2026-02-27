@@ -24,4 +24,24 @@ describe('inline audio component rendering contract', () => {
     expect(source).toContain('Open on Spotify');
     expect(source).toContain('<iframe');
   });
+
+  test('rich media routes spotify audio tokens through spotify embed component', () => {
+    const source = readFileSync(join(process.cwd(), 'frontend/src/components/RichMedia.tsx'), 'utf8');
+
+    expect(source).toContain("audio.provider === 'spotify'");
+    expect(source).toContain('<SpotifyEmbedCard');
+  });
+
+  test('inline and rich media use platform iframe embeds for non-spotify providers and social video platforms', () => {
+    const inlineSource = readFileSync(join(process.cwd(), 'frontend/src/components/InlineContent.tsx'), 'utf8');
+    const richSource = readFileSync(join(process.cwd(), 'frontend/src/components/RichMedia.tsx'), 'utf8');
+
+    expect(inlineSource).toContain('PlatformIframeEmbed');
+    expect(inlineSource).toContain("['soundcloud', 'appleMusic', 'bandcamp', 'mixcloud']");
+    expect(inlineSource).toContain("token.video.type !== 'direct'");
+
+    expect(richSource).toContain('PlatformIframeEmbed');
+    expect(richSource).toContain("['soundcloud', 'appleMusic', 'bandcamp', 'mixcloud']");
+    expect(richSource).toContain("video.type !== 'direct'");
+  });
 });
