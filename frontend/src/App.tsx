@@ -103,23 +103,25 @@ export default function App() {
     };
   }, [isAuthenticated, user, showIdentityMenu]);
 
+  const navClass = (path: string) => `nav-link ${location.pathname === path ? 'nav-link-active' : ''}`;
+
   return (
-    <div className="min-h-screen flex flex-col cyber-grid bg-[#0a0e27]">
-      <nav className="border-b border-cyan-900/60 bg-[#060914]/95 sticky top-0 z-40 backdrop-blur">
+    <div className="swordfish-shell min-h-screen flex flex-col cyber-grid bg-swordfish-bg text-swordfish-text">
+      <nav className="border-b border-swordfish-muted/40 bg-swordfish-bg/95 sticky top-0 z-40 backdrop-blur">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 text-cyan-300 font-bold tracking-wider"><span>⚡</span><span>NostrMaxi</span></Link>
+          <Link to="/" className="flex items-center gap-2 text-swordfish-accent font-bold tracking-[0.08em]"><span>⚡</span><span>NostrMaxi</span></Link>
           <div className="flex items-center gap-4 text-sm">
-            <Link to="/feed" className="text-blue-200 hover:text-cyan-300">Feed</Link>
-            <Link to="/discover" className="text-blue-200 hover:text-cyan-300">Discover</Link>
-            {isAuthenticated && <Link to="/lists" className="text-blue-200 hover:text-cyan-300">Lists</Link>}
-            {isAuthenticated && <Link to="/marketplace" className="text-blue-200 hover:text-cyan-300">Marketplace</Link>}
-            {isAuthenticated && <Link to="/dashboard" className="text-blue-200 hover:text-cyan-300">Manage</Link>}
-            {isAuthenticated && <Link to="/analytics" className="text-blue-200 hover:text-cyan-300">Analytics</Link>}
-            {isAuthenticated && <Link to="/ecosystem" className="text-blue-200 hover:text-cyan-300">Ecosystem</Link>}
-            {isAuthenticated && <Link to="/profile/me" className="text-blue-200 hover:text-cyan-300">Profile</Link>}
-            {isAuthenticated && <Link to="/settings" className="text-blue-200 hover:text-cyan-300">Settings</Link>}
-            {isAuthenticated && <Link to="/pricing" className="text-fuchsia-200 hover:text-fuchsia-100">Get Your NIP-05</Link>}
-            {isLoading ? <span className="text-gray-500">…</span> : isAuthenticated && user ? (
+            <Link to="/feed" className={navClass('/feed')}>Feed</Link>
+            <Link to="/discover" className={navClass('/discover')}>Discover</Link>
+            {isAuthenticated && <Link to="/lists" className={navClass('/lists')}>Lists</Link>}
+            {isAuthenticated && <Link to="/marketplace" className={navClass('/marketplace')}>Marketplace</Link>}
+            {isAuthenticated && <Link to="/dashboard" className={navClass('/dashboard')}>Manage</Link>}
+            {isAuthenticated && <Link to="/analytics" className={navClass('/analytics')}>Analytics</Link>}
+            {isAuthenticated && <Link to="/ecosystem" className={navClass('/ecosystem')}>Ecosystem</Link>}
+            {isAuthenticated && <Link to="/profile/me" className={navClass('/profile/me')}>Profile</Link>}
+            {isAuthenticated && <Link to="/settings" className={navClass('/settings')}>Settings</Link>}
+            {isAuthenticated && <Link to="/pricing" className={navClass('/pricing')}>Get Your NIP-05</Link>}
+            {isLoading ? <span className="text-swordfish-muted cy-loading">…</span> : isAuthenticated && user ? (
               <div className="relative">
                 <button
                   onClick={() => setShowIdentityMenu((v) => !v)}
@@ -184,7 +186,7 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer className="border-t border-cyan-900/60 py-6 text-center text-xs text-gray-500">NostrMaxi // cyber social + identity</footer>
+      <footer className="border-t border-swordfish-muted/40 py-6 text-center text-xs text-swordfish-muted">NostrMaxi // cyber social + identity</footer>
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </div>
   );
