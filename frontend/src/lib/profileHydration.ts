@@ -5,7 +5,7 @@
  * Queries multiple relays to build complete dataset.
  */
 
-import { SimplePool } from 'nostr-tools';
+import { queryEventsCached } from './eventCache';
 import type { NostrEvent } from '../types';
 
 export interface HydrationResult {
@@ -56,46 +56,48 @@ export async function hydrateUserProfile(options: HydrationOptions): Promise<Hyd
     zapLimit = 1500,
   } = options;
 
-  const pool = new SimplePool();
+  // Check if local relay should be used (based on window config)
+  const enableLocalRelay = typeof window !== 'undefined' && 
+    (window as any).__NOSTRMAXI_LOCAL_RELAY_ENABLED__ === true;
 
   try {
     // Batch 1: User's own content (authored by user)
     const [profiles, notes, contacts, lists, relayList] = await Promise.all([
       // Profile history (kind 0) - all versions
-      pool.querySync(relays, {
+      queryEventsCached([{
         kinds: [0],
         authors: [pubkey],
-        limit: 50, // Keep recent profile changes
-      } as any),
+        limit: 50,
+      }], { sourceRelays: relays, enableLocalRelay }),
 
       // User's notes (kind 1)
-      pool.querySync(relays, {
+      queryEventsCached([{
         kinds: [1],
         authors: [pubkey],
         since,
         limit: noteLimit,
-      } as any),
+      }], { sourceRelays: relays, enableLocalRelay }),
 
       // Follow lists (kind 3) - get latest
-      pool.querySync(relays, {
+      queryEventsCached([{
         kinds: [3],
         authors: [pubkey],
-        limit: 5, // Recent follow list changes
-      } as any),
+        limit: 5,
+      }], { sourceRelays: relays, enableLocalRelay }),
 
       // User's lists (kind 30000/30001)
-      pool.querySync(relays, {
+      queryEventsCached([{
         kinds: [30000, 30001],
         authors: [pubkey],
         limit: 100,
-      } as any),
+      }], { sourceRelays: relays, enableLocalRelay }),
 
       // Relay list (kind 10002)
-      pool.querySync(relays, {
+      queryEventsCached([{
         kinds: [10002],
         authors: [pubkey],
         limit: 5,
-      } as any),
+      }], { sourceRelays: relays, enableLocalRelay }),
     ]);
 
     // Batch 2: Engagement user received (tagged with user's pubkey or event ids)
@@ -108,72 +110,72 @@ export async function hydrateUserProfile(options: HydrationOptions): Promise<Hyd
       noteIdChunks.push(noteIds.slice(i, i + NOTE_CHUNK_SIZE));
     }
 
-    // Query engagement in parallel batches
+    // Query engagement in parallel batches using cached queries
     const engagementBatches = await Promise.all([
       // Reactions to user's notes
       ...noteIdChunks.map((chunk) =>
-        pool.querySync(relays, {
+        queryEventsCached([{
           kinds: [7],
           '#e': chunk,
           since,
           limit: Math.ceil(reactionLimit / noteIdChunks.length),
-        } as any)
+        }], { sourceRelays: relays, enableLocalRelay })
       ),
 
       // Reactions to user's profile (tagged with #p)
-      pool.querySync(relays, {
+      queryEventsCached([{
         kinds: [7],
         '#p': [pubkey],
         since,
         limit: reactionLimit,
-      } as any),
+      }], { sourceRelays: relays, enableLocalRelay }),
 
       // Zaps to user's notes
       ...noteIdChunks.map((chunk) =>
-        pool.querySync(relays, {
+        queryEventsCached([{
           kinds: [9735],
           '#e': chunk,
           since,
           limit: Math.ceil(zapLimit / noteIdChunks.length),
-        } as any)
+        }], { sourceRelays: relays, enableLocalRelay })
       ),
 
       // Zaps to user's profile
-      pool.querySync(relays, {
+      queryEventsCached([{
         kinds: [9735],
         '#p': [pubkey],
         since,
         limit: zapLimit,
-      } as any),
+      }], { sourceRelays: relays, enableLocalRelay }),
 
       // Reposts of user's notes
       ...noteIdChunks.map((chunk) =>
-        pool.querySync(relays, {
+        queryEventsCached([{
           kinds: [6],
           '#e': chunk,
           since,
           limit: 200,
-        } as any)
+        }], { sourceRelays: relays, enableLocalRelay })
       ),
 
       // Replies to user's notes (kind 1 with 'e' tag)
       ...noteIdChunks.map((chunk) =>
-        pool.querySync(relays, {
+        queryEventsCached([{
           kinds: [1],
           '#e': chunk,
           since,
           limit: 300,
-        } as any)
+        }], { sourceRelays: relays, enableLocalRelay })
       ),
 
       // Quotes of user's notes (kind 1 with 'q' tag)
       ...noteIdChunks.map((chunk) =>
-        pool.querySync(relays, {
+        queryEventsCached([{
           kinds: [1],
           '#q': chunk,
           since,
           limit: 200,
-        } as any)
+        }], { sourceRelays: relays, enableLocalRelay })
       ),
     ]);
 
@@ -213,8 +215,9 @@ export async function hydrateUserProfile(options: HydrationOptions): Promise<Hyd
       replies,
       quotes,
     };
-  } finally {
-    pool.close(relays);
+  } catch (error) {
+    console.error('Profile hydration failed:', error);
+    throw error;
   }
 }
 
