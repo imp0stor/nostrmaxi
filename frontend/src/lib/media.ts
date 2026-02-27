@@ -12,7 +12,7 @@ export interface ParsedMedia {
 
 export interface VideoRef {
   url: string;
-  type: 'youtube' | 'vimeo' | 'direct';
+  type: 'youtube' | 'vimeo' | 'twitch' | 'rumble' | 'odysee' | 'instagram' | 'tiktok' | 'direct';
   embedUrl?: string;
   thumbnail?: string;
 }
@@ -20,7 +20,7 @@ export interface VideoRef {
 export interface AudioRef {
   url: string;
   sourceUrl?: string;
-  provider?: 'direct' | 'wavlake' | 'spotify';
+  provider?: 'direct' | 'wavlake' | 'spotify' | 'soundcloud' | 'appleMusic' | 'bandcamp' | 'mixcloud';
   trackId?: string;
   spotifyType?: 'track' | 'album' | 'episode' | 'playlist' | 'show';
   spotifyId?: string;
@@ -42,6 +42,9 @@ const AUDIO_EXT = /\.(mp3|wav|m4a|aac|flac|opus|oga)(\?.*)?$/i;
 const MARKDOWN_IMAGE_RE = /!\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/gi;
 const NOSTR_REF_RE = /(?:nostr:)?(note1[0-9a-z]+|nevent1[0-9a-z]+|npub1[0-9a-z]+|nprofile1[0-9a-z]+)/gi;
 const INLINE_RE = /((?:nostr:)?(?:note1|nevent1|npub1|nprofile1)[0-9a-z]+|https?:\/\/[^\s<>()]+[^\s<>().,!?])/gi;
+const MD_LINK_IMAGE_RE = /!?\[[^\]]+\]\((https?:\/\/[^\s)]+)\)/gi;
+const MD_CODE_BLOCK_RE = /```[\s\S]*?```/g;
+const MD_INLINE_CODE_RE = /`[^`\n]+`/g;
 
 function unique<T>(arr: T[]): T[] { return [...new Set(arr)]; }
 
@@ -81,16 +84,54 @@ function toVideoRef(url: string): VideoRef | null {
   try {
     const u = new URL(normalized);
     const host = u.hostname.toLowerCase().replace(/^www\./, '');
-    if (host.includes('youtube.com') || host.includes('youtu.be')) {
-      const id = host.includes('youtu.be') ? u.pathname.replace('/', '') : (u.searchParams.get('v') || '');
+    const pathParts = u.pathname.split('/').filter(Boolean);
+
+    if (host.includes('youtube.com') || host.includes('youtu.be') || host.includes('music.youtube.com')) {
+      const id = host.includes('youtu.be') ? pathParts[0] : (u.searchParams.get('v') || pathParts[pathParts.indexOf('shorts') + 1] || '');
       if (!id) return null;
       return { url: normalized, type: 'youtube', embedUrl: `https://www.youtube.com/embed/${id}`, thumbnail: `https://img.youtube.com/vi/${id}/hqdefault.jpg` };
     }
+
     if (host.includes('vimeo.com')) {
-      const id = u.pathname.split('/').filter(Boolean).pop();
+      const id = pathParts.pop();
       if (!id || !/^\d+$/.test(id)) return null;
       return { url: normalized, type: 'vimeo', embedUrl: `https://player.vimeo.com/video/${id}` };
     }
+
+    if (host.includes('twitch.tv')) {
+      const clip = u.searchParams.get('clip') || (pathParts[0] === 'clip' ? pathParts[1] : undefined);
+      const vod = pathParts[0] === 'videos' ? pathParts[1] : undefined;
+      if (clip) return { url: normalized, type: 'twitch', embedUrl: `https://clips.twitch.tv/embed?clip=${clip}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}` };
+      if (vod) return { url: normalized, type: 'twitch', embedUrl: `https://player.twitch.tv/?video=${vod}&parent=${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}` };
+    }
+
+    if (host.includes('rumble.com')) {
+      const slug = pathParts
+        .map((part) => part.replace(/\.html?$/i, ''))
+        .find((part) => /^v[a-z0-9-]+$/i.test(part));
+      const id = (slug ? slug.split('-')[0] : undefined) || u.searchParams.get('v');
+      if (id) return { url: normalized, type: 'rumble', embedUrl: `https://rumble.com/embed/${id}` };
+    }
+
+    if (host.includes('odysee.com') || host.includes('lbry.tv')) {
+      const claim = `${u.pathname}${u.search}`.replace(/^\//, '');
+      if (claim) return { url: normalized, type: 'odysee', embedUrl: `https://odysee.com/$/embed/${claim}` };
+    }
+
+    if (host.includes('instagram.com')) {
+      const kind = pathParts[0];
+      const id = pathParts[1];
+      if ((kind === 'p' || kind === 'reel' || kind === 'tv') && id) {
+        return { url: normalized, type: 'instagram', embedUrl: `https://www.instagram.com/${kind}/${id}/embed/captioned` };
+      }
+    }
+
+    if (host.includes('tiktok.com')) {
+      const idx = pathParts.indexOf('video');
+      const id = idx >= 0 ? pathParts[idx + 1] : undefined;
+      if (id) return { url: normalized, type: 'tiktok', embedUrl: `https://www.tiktok.com/embed/v2/${id}` };
+    }
+
     if (VIDEO_EXT.test(u.pathname)) return { url: normalized, type: 'direct' };
     return null;
   } catch { return null; }
@@ -113,15 +154,77 @@ function toAudioRef(url: string): AudioRef | null {
       const parts = path.split('/').filter(Boolean);
       if (parts[0] === 'track' && parts[1]) {
         const canonicalUrl = `https://wavlake.com/track/${parts[1]}`;
-        return { url: canonicalUrl, sourceUrl: normalized, provider: 'wavlake', trackId: parts[1] };
+        return { url: canonicalUrl, sourceUrl: normalized, provider: 'wavlake', trackId: parts[1], embedUrl: `https://embed.wavlake.com/track/${parts[1]}` };
       }
+    }
+
+    if (host === 'soundcloud.com' && path.split('/').filter(Boolean).length >= 2) {
+      return {
+        url: normalized,
+        sourceUrl: normalized,
+        provider: 'soundcloud',
+        embedUrl: `https://w.soundcloud.com/player/?url=${encodeURIComponent(normalized)}&color=%23a855f7&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false`,
+      };
+    }
+
+    if (host === 'music.apple.com') {
+      return {
+        url: normalized,
+        sourceUrl: normalized,
+        provider: 'appleMusic',
+        embedUrl: `https://embed.music.apple.com${u.pathname}${u.search}`,
+      };
+    }
+
+    if (host.endsWith('bandcamp.com')) {
+      const albumMatch = u.pathname.match(/\/album\/([^/?#]+)/i);
+      const trackMatch = u.pathname.match(/\/track\/([^/?#]+)/i);
+      const embedHost = `https://${host}`;
+      if (albumMatch) {
+        return {
+          url: normalized,
+          sourceUrl: normalized,
+          provider: 'bandcamp',
+          embedUrl: `${embedHost}/EmbeddedPlayer/album=${encodeURIComponent(albumMatch[1])}/size=large/bgcol=18181b/linkcol=c4b5fd/tracklist=false/artwork=small/transparent=true/`,
+        };
+      }
+      if (trackMatch) {
+        return {
+          url: normalized,
+          sourceUrl: normalized,
+          provider: 'bandcamp',
+          embedUrl: `${embedHost}/EmbeddedPlayer/track=${encodeURIComponent(trackMatch[1])}/size=large/bgcol=18181b/linkcol=c4b5fd/tracklist=false/artwork=small/transparent=true/`,
+        };
+      }
+    }
+
+    if (host === 'mixcloud.com' && path.split('/').filter(Boolean).length >= 2) {
+      const encodedPath = encodeURIComponent(path.endsWith('/') ? path : `${path}/`);
+      return {
+        url: normalized,
+        sourceUrl: normalized,
+        provider: 'mixcloud',
+        embedUrl: `https://www.mixcloud.com/widget/iframe/?hide_cover=1&light=0&feed=${encodedPath}`,
+      };
     }
 
     if (host === 'open.spotify.com') {
       const parts = path.split('/').filter(Boolean);
-      const kind = parts[0];
-      const id = parts[1];
-      if (id && ['track', 'album', 'episode', 'playlist', 'show'].includes(kind)) {
+      const spotifyKinds = ['track', 'album', 'episode', 'playlist', 'show'] as const;
+      let kind = parts[0];
+      let id = parts[1];
+
+      // Handle locale-prefixed and embed URLs, e.g.:
+      // /intl-de/track/{id}, /embed/episode/{id}
+      if (kind?.startsWith('intl-')) {
+        kind = parts[1];
+        id = parts[2];
+      } else if (kind === 'embed') {
+        kind = parts[1];
+        id = parts[2];
+      }
+
+      if (id && spotifyKinds.includes(kind as (typeof spotifyKinds)[number])) {
         const canonicalUrl = `https://open.spotify.com/${kind}/${id}`;
         return {
           url: canonicalUrl,
@@ -172,6 +275,25 @@ function classifyUrl(url: string): ContentToken {
   return { type: 'link', url };
 }
 
+function markdownProtectedRanges(content: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+
+  for (const re of [MD_LINK_IMAGE_RE, MD_CODE_BLOCK_RE, MD_INLINE_CODE_RE]) {
+    re.lastIndex = 0;
+    for (const match of content.matchAll(re)) {
+      const start = match.index ?? -1;
+      if (start < 0) continue;
+      ranges.push({ start, end: start + match[0].length });
+    }
+  }
+
+  return ranges.sort((a, b) => a.start - b.start);
+}
+
+function isProtectedIndex(index: number, ranges: Array<{ start: number; end: number }>): boolean {
+  return ranges.some((range) => index >= range.start && index < range.end);
+}
+
 function parseInlineTokens(content: string): ContentToken[] {
   const tokens: ContentToken[] = [];
   const seenEmbedUrls = new Set<string>();
@@ -179,10 +301,13 @@ function parseInlineTokens(content: string): ContentToken[] {
   const seenProfileRefs = new Set<string>();
 
   let cursor = 0;
+  const protectedRanges = markdownProtectedRanges(content);
   INLINE_RE.lastIndex = 0;
   for (const match of content.matchAll(INLINE_RE)) {
     const raw = match[0];
     const idx = match.index ?? 0;
+
+    if (isProtectedIndex(idx, protectedRanges)) continue;
 
     if (idx > cursor) tokens.push({ type: 'text', text: content.slice(cursor, idx) });
 
