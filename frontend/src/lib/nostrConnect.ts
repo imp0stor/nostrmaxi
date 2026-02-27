@@ -1,0 +1,236 @@
+import { SimplePool, finalizeEvent, generateSecretKey, getPublicKey, type UnsignedEvent } from 'nostr-tools';
+import * as nip04 from 'nostr-tools/nip04';
+import type { NostrEvent } from '../types';
+
+const DEFAULT_RELAYS = ['wss://relay.nsec.app', 'wss://relay.damus.io'];
+const NOSTR_CONNECT_KIND = 24133;
+
+type PendingRequest = {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
+export interface NostrConnectMetadata {
+  name: string;
+  url?: string;
+  description?: string;
+  icons?: string[];
+}
+
+export interface NostrConnectInitOptions {
+  relays?: string[];
+  metadata?: NostrConnectMetadata;
+}
+
+export class NostrConnectClient {
+  private pool: SimplePool | null = null;
+  private relays: string[] = DEFAULT_RELAYS;
+  private metadata: NostrConnectMetadata = { name: 'NostrMaxi' };
+
+  private clientSecretHex = '';
+  private clientSecret: Uint8Array = new Uint8Array(0);
+  private clientPubkey = '';
+  private signerPubkey: string | null = null;
+
+  private connectedPromise: Promise<string> | null = null;
+  private resolveConnected: ((pubkey: string) => void) | null = null;
+  private rejectConnected: ((error: Error) => void) | null = null;
+
+  private pending = new Map<string, PendingRequest>();
+  private subCloser: { close: (reason?: string) => void } | null = null;
+
+  initialize(options?: NostrConnectInitOptions): string {
+    this.cleanup();
+
+    this.pool = new SimplePool();
+    this.relays = options?.relays?.length ? options.relays : DEFAULT_RELAYS;
+    this.metadata = options?.metadata ?? this.metadata;
+
+    this.clientSecret = generateSecretKey();
+    this.clientSecretHex = Array.from(this.clientSecret).map((b) => b.toString(16).padStart(2, '0')).join('');
+    this.clientPubkey = getPublicKey(this.clientSecret);
+
+    this.connectedPromise = new Promise<string>((resolve, reject) => {
+      this.resolveConnected = resolve;
+      this.rejectConnected = reject;
+    });
+
+    this.subCloser = this.pool.subscribeMany(
+      this.relays,
+      {
+        kinds: [NOSTR_CONNECT_KIND],
+        '#p': [this.clientPubkey],
+        since: Math.floor(Date.now() / 1000) - 15,
+      },
+      {
+        onevent: (event) => {
+          void this.handleIncomingEvent(event as NostrEvent);
+        },
+      }
+    );
+
+    return this.getConnectionUri();
+  }
+
+  getConnectionUri(): string {
+    const params = new URLSearchParams();
+    this.relays.forEach((relay) => params.append('relay', relay));
+    params.set('metadata', JSON.stringify(this.metadata));
+    return `nostr+connect://${this.clientPubkey}?${params.toString()}`;
+  }
+
+  async waitForSigner(timeoutMs = 90000): Promise<string> {
+    if (!this.connectedPromise) {
+      throw new Error('Nostr Connect not initialized');
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('No signer connected in time. Please retry or use fallback login.'));
+      }, timeoutMs);
+
+      this.connectedPromise!
+        .then((pubkey) => {
+          clearTimeout(timeout);
+          resolve(pubkey);
+        })
+        .catch((error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
+    });
+  }
+
+  async getUserPubkey(timeoutMs = 45000): Promise<string> {
+    await this.waitForSigner(timeoutMs);
+    const result = await this.sendRequest('get_public_key', []);
+
+    if (typeof result !== 'string' || !/^[a-f0-9]{64}$/i.test(result)) {
+      throw new Error('Signer did not return a valid public key');
+    }
+
+    return result;
+  }
+
+  async signEvent(unsignedEvent: Omit<NostrEvent, 'id' | 'sig'>, timeoutMs = 45000): Promise<NostrEvent> {
+    await this.waitForSigner(timeoutMs);
+
+    const result = await this.sendRequest('sign_event', [JSON.stringify(unsignedEvent)], timeoutMs);
+
+    let parsed: unknown = result;
+    if (typeof result === 'string') {
+      parsed = JSON.parse(result) as unknown;
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Signer returned malformed sign_event response');
+    }
+
+    const event = parsed as NostrEvent;
+    if (!event.id || !event.sig || !event.pubkey) {
+      throw new Error('Signer response missing event signature fields');
+    }
+
+    return event;
+  }
+
+  cleanup(): void {
+    this.subCloser?.close('nostr-connect-cleanup');
+    this.subCloser = null;
+
+    if (this.pool) {
+      this.pool.close(this.relays);
+      this.pool = null;
+    }
+
+    this.pending.forEach((entry) => {
+      clearTimeout(entry.timeout);
+      entry.reject(new Error('Nostr Connect session closed'));
+    });
+    this.pending.clear();
+
+    this.rejectConnected?.(new Error('Nostr Connect session closed'));
+
+    this.connectedPromise = null;
+    this.resolveConnected = null;
+    this.rejectConnected = null;
+
+    this.signerPubkey = null;
+    this.clientPubkey = '';
+    this.clientSecretHex = '';
+    this.clientSecret = new Uint8Array(0);
+  }
+
+  private async handleIncomingEvent(event: NostrEvent): Promise<void> {
+    if (!this.clientSecretHex) return;
+
+    try {
+      const decrypted = await nip04.decrypt(this.clientSecretHex, event.pubkey, event.content);
+      const payload = JSON.parse(decrypted) as { id?: string; result?: unknown; error?: string | { message?: string } };
+
+      if (!this.signerPubkey) {
+        this.signerPubkey = event.pubkey;
+        this.resolveConnected?.(event.pubkey);
+      }
+
+      if (!payload.id) return;
+
+      const entry = this.pending.get(payload.id);
+      if (!entry) return;
+
+      clearTimeout(entry.timeout);
+      this.pending.delete(payload.id);
+
+      if (payload.error) {
+        const message = typeof payload.error === 'string' ? payload.error : payload.error.message;
+        entry.reject(new Error(message || 'Signer rejected request'));
+        return;
+      }
+
+      entry.resolve(payload.result);
+    } catch {
+      // Ignore events that are not decryptable for this session.
+    }
+  }
+
+  private async sendRequest(method: string, params: unknown[], timeoutMs = 30000): Promise<unknown> {
+    if (!this.pool) {
+      throw new Error('Nostr Connect is not initialized');
+    }
+
+    if (!this.signerPubkey) {
+      throw new Error('Signer not connected yet');
+    }
+
+    const id = crypto.randomUUID();
+    const payload = JSON.stringify({ id, method, params });
+    const encrypted = await nip04.encrypt(this.clientSecretHex, this.signerPubkey, payload);
+
+    const unsigned: UnsignedEvent = {
+      kind: NOSTR_CONNECT_KIND,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [['p', this.signerPubkey]],
+      content: encrypted,
+      pubkey: this.clientPubkey,
+    };
+
+    const signed = finalizeEvent(unsigned, this.clientSecret);
+
+    const promise = new Promise<unknown>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Signer timed out (${method})`));
+      }, timeoutMs);
+
+      this.pending.set(id, { resolve, reject, timeout });
+    });
+
+    const publishResults = await Promise.allSettled(this.pool.publish(this.relays, signed));
+    if (!publishResults.some((result) => result.status === 'fulfilled')) {
+      throw new Error('Failed to publish signer request to configured relays');
+    }
+
+    return promise;
+  }
+}

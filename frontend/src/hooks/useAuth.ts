@@ -16,6 +16,7 @@ import {
 } from '../lib/nostr';
 import type { User } from '../types';
 import { requestIdentityRefresh } from '../lib/identityRefresh';
+import type { NostrEvent } from '../types';
 
 const LAST_SIGNER_STORAGE_KEY = 'nostrmaxi_last_signer';
 
@@ -32,6 +33,10 @@ interface AuthState {
   loginWithNsec: (nsec: string) => Promise<boolean>;
   loginWithLnurl: () => Promise<{ lnurl: string; k1: string } | null>;
   pollLnurlLogin: (k1: string) => Promise<boolean>;
+  loginWithNostrConnect: (
+    pubkey: string,
+    signAuthEvent: (event: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent>
+  ) => Promise<boolean>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   clearError: () => void;
@@ -205,6 +210,42 @@ export const useAuth = create<AuthState>((set, get) => ({
 
       return false; // Keep polling
     } catch (error) {
+      return false;
+    }
+  },
+
+  loginWithNostrConnect: async (pubkey: string, signAuthEvent) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      if (!pubkey || !/^[a-f0-9]{64}$/i.test(pubkey)) {
+        set({ error: 'Signer returned an invalid public key.', isLoading: false });
+        return false;
+      }
+
+      const challengeResponse = await api.getChallenge(pubkey);
+      const challenge = challengeResponse?.challenge;
+      if (!challenge || typeof challenge !== 'string') {
+        set({ error: 'Authentication challenge was not returned by the server. Please retry in a moment.', isLoading: false });
+        return false;
+      }
+
+      const unsignedEvent = createAuthChallengeEvent(pubkey, challenge);
+      const signedEvent = await signAuthEvent(unsignedEvent);
+
+      const { token, user } = await api.verifyChallenge(signedEvent);
+      api.setToken(token);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('nostrmaxi_nsec_hex');
+        localStorage.setItem(LAST_SIGNER_STORAGE_KEY, 'window_nostr');
+      }
+
+      set({ user, isAuthenticated: true, isLoading: false });
+      requestIdentityRefresh(user.pubkey);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nostr Connect login failed';
+      set({ error: message, isLoading: false });
       return false;
     }
   },

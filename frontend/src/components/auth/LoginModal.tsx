@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { getSignerChoices, type NostrProviderId, type NostrProviderOption } from '../../lib/nostr';
 import { LnurlQrCode } from './LnurlQrCode';
+import { QRCodeConnect } from './QRCodeConnect';
+import { useNostrConnect } from '../../hooks/useNostrConnect';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type LoginMethod = 'extension' | 'lnurl' | 'nsec';
+type LoginMethod = 'extension' | 'lnurl' | 'nsec' | 'nostr_connect';
 
 const LAST_SIGNER_STORAGE_KEY = 'nostrmaxi_last_signer';
 
@@ -24,6 +26,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     isAuthenticated,
     signerDebugMarker,
   } = useAuth();
+  const { status: nostrConnectStatus, error: nostrConnectError, connectionUri, start: startNostrConnect, cancel: cancelNostrConnect, reset: resetNostrConnect } = useNostrConnect();
   const [method, setMethod] = useState<LoginMethod | null>(null);
   const [lnurlData, setLnurlData] = useState<{ lnurl: string; k1: string } | null>(null);
   const [providers, setProviders] = useState<NostrProviderOption[]>([]);
@@ -72,9 +75,10 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
   useEffect(() => {
     if (isAuthenticated) {
+      cancelNostrConnect();
       onClose();
     }
-  }, [isAuthenticated, onClose]);
+  }, [isAuthenticated, onClose, cancelNostrConnect]);
 
   useEffect(() => {
     if (!lnurlData) return;
@@ -110,19 +114,27 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
     await loginWithNsec(nsecInput);
   }, [loginWithNsec, nsecInput, clearError]);
 
+  const handleNostrConnectLogin = useCallback(async () => {
+    setMethod('nostr_connect');
+    clearError();
+    resetNostrConnect();
+    await startNostrConnect();
+  }, [clearError, resetNostrConnect, startNostrConnect]);
+
   const handleBack = useCallback(() => {
     setMethod(null);
     setLnurlData(null);
     setNsecInput('');
+    cancelNostrConnect();
     clearError();
-  }, [clearError]);
+  }, [cancelNostrConnect, clearError]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-nostr-dark rounded-xl max-w-md w-full p-6 relative">
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white">
+        <button onClick={() => { cancelNostrConnect(); onClose(); }} className="absolute top-4 right-4 text-gray-400 hover:text-white">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -130,7 +142,7 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold text-white mb-2">Login with Nostr</h2>
-          <p className="text-gray-400">Authenticate with your npub using NIP-07 or LNURL</p>
+          <p className="text-gray-400">Authenticate using signer app (NIP-46), extension, LNURL, or nsec fallback</p>
         </div>
 
         {error && (
@@ -139,6 +151,22 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
 
         {!method && (
           <div className="space-y-3">
+            <button
+              onClick={() => void handleNostrConnectLogin()}
+              disabled={isLoading}
+              className="w-full p-4 rounded-lg border border-emerald-500/60 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all flex items-center gap-4"
+            >
+              <div className="w-12 h-12 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                <svg className="w-6 h-6 text-emerald-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <div className="flex-1 text-left">
+                <div className="font-semibold text-white">Connect with Signer App</div>
+                <div className="text-sm text-gray-400">Best for mobile (Amber, Alby, etc.)</div>
+              </div>
+            </button>
+
             {multipleSigners && (
               <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-sm text-yellow-200">
                 Multiple Nostr signers detected. Choose one explicit signer button below.
@@ -210,6 +238,15 @@ export function LoginModal({ isOpen, onClose }: LoginModalProps) {
             <p className="mt-4 text-gray-400 text-sm">Scan with your Lightning wallet to login</p>
             <button onClick={handleBack} className="mt-4 text-nostr-purple hover:underline text-sm">← Back to login options</button>
           </div>
+        )}
+
+        {method === 'nostr_connect' && connectionUri && (
+          <QRCodeConnect
+            uri={connectionUri}
+            status={nostrConnectStatus}
+            error={nostrConnectError}
+            onBack={handleBack}
+          />
         )}
 
         {method === 'nsec' && (
