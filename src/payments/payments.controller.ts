@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Body, Headers, Req, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Headers, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { PaymentsService, SubscriptionTier } from './payments.service';
+import { PaymentProviderType } from './providers';
+import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
 import { AuthService } from '../auth/auth.service';
 import { Request } from 'express';
-import { PaymentProviderType } from './providers';
 
 @ApiTags('payments')
 @Controller('api/v1/payments')
@@ -13,6 +14,14 @@ export class PaymentsController {
     private authService: AuthService,
   ) {}
 
+  private async resolvePubkey(req: Request, authHeader: string, method: string): Promise<string> {
+    const fromGuard = (req as any).pubkey;
+    if (fromGuard) return fromGuard;
+
+    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+    return this.authService.verifyAuth(authHeader, method, url);
+  }
+
   @Get('tiers')
   @ApiOperation({ summary: 'Get available subscription tiers and pricing' })
   @ApiResponse({ status: 200, description: 'List of subscription tiers' })
@@ -21,19 +30,15 @@ export class PaymentsController {
   }
 
   @Post('invoice')
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create Lightning invoice for subscription' })
-  @ApiResponse({ status: 201, description: 'Invoice created' })
-  @ApiResponse({ status: 400, description: 'Invalid tier' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
   async createInvoice(
-    @Headers('authorization') authHeader: string,
+    @Headers('authorization') _authHeader: string,
     @Req() req: Request,
     @Body() body: { tier: SubscriptionTier; applyWotDiscount?: boolean; billingCycle?: 'monthly' | 'annual' | 'lifetime' },
   ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
-    
+    const pubkey = await this.resolvePubkey(req, _authHeader, 'POST');
+
     return this.paymentsService.createInvoice(
       pubkey,
       body.tier,
@@ -44,15 +49,11 @@ export class PaymentsController {
 
   @Get('invoice/:id')
   @ApiOperation({ summary: 'Check invoice payment status' })
-  @ApiResponse({ status: 200, description: 'Invoice status' })
-  @ApiResponse({ status: 404, description: 'Invoice not found' })
   async checkInvoice(@Param('id') id: string) {
     return this.paymentsService.checkInvoiceStatus(id);
   }
 
   @Post('webhook')
-  @ApiOperation({ summary: 'Payment webhook handler (called by providers)' })
-  @ApiResponse({ status: 200, description: 'Webhook processed' })
   async handleWebhook(
     @Body() body: any,
     @Headers('btcpay-sig') btcpaySignature?: string,
@@ -62,39 +63,31 @@ export class PaymentsController {
   ) {
     const signature = btcpaySignature || lnbitsSignature;
     const providerType = (providerQuery || providerHeader) as PaymentProviderType | undefined;
-
     return this.paymentsService.handleWebhook(body, signature, providerType);
   }
 
   @Get('history')
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get payment history' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiResponse({ status: 200, description: 'Payment history' })
   async getHistory(
-    @Headers('authorization') authHeader: string,
+    @Headers('authorization') _authHeader: string,
     @Req() req: Request,
     @Query('limit') limit?: string,
   ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'GET', url);
-    
+    const pubkey = await this.resolvePubkey(req, _authHeader, 'GET');
     return this.paymentsService.getPaymentHistory(pubkey, limit ? parseInt(limit) : 20);
   }
 
   @Get('receipt/:paymentId')
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get payment receipt' })
-  @ApiResponse({ status: 200, description: 'Payment receipt' })
-  @ApiResponse({ status: 404, description: 'Receipt not found' })
   async getReceipt(
-    @Headers('authorization') authHeader: string,
+    @Headers('authorization') _authHeader: string,
     @Req() req: Request,
     @Param('paymentId') paymentId: string,
   ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'GET', url);
-    
+    const pubkey = await this.resolvePubkey(req, _authHeader, 'GET');
     return this.paymentsService.getReceipt(pubkey, paymentId);
   }
 }

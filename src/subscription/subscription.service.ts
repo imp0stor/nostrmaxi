@@ -1,12 +1,14 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService, TierInfo, SubscriptionTier } from '../payments/payments.service';
+import { WebhooksService } from '../webhooks/webhooks.service';
 
 @Injectable()
 export class SubscriptionService {
   constructor(
     private prisma: PrismaService,
     private paymentsService: PaymentsService,
+    private webhooks: WebhooksService,
   ) {}
 
   /**
@@ -129,12 +131,20 @@ export class SubscriptionService {
       },
     });
 
-    return {
+    const result = {
       scheduled: true,
       currentTier: user.subscription.tier,
       willDowngradeAt: user.subscription.expiresAt,
       message: 'Your subscription will be downgraded to Free at the end of your billing period.',
     };
+
+    await this.webhooks.emit('subscription.changed', {
+      action: 'downgrade_scheduled',
+      pubkey,
+      ...result,
+    });
+
+    return result;
   }
 
   /**
@@ -170,11 +180,20 @@ export class SubscriptionService {
       },
     });
 
-    return {
+    const result = {
       cancelled: true,
       expiresAt: user.subscription.expiresAt,
       message: 'Your subscription has been cancelled. You will retain access until your current period ends.',
     };
+
+    await this.webhooks.emit('subscription.changed', {
+      action: 'cancelled',
+      pubkey,
+      tier: user.subscription.tier,
+      ...result,
+    });
+
+    return result;
   }
 
   /**
@@ -213,11 +232,19 @@ export class SubscriptionService {
       },
     });
 
-    return {
+    const result = {
       reactivated: true,
       tier: user.subscription.tier,
       expiresAt: user.subscription.expiresAt,
     };
+
+    await this.webhooks.emit('subscription.changed', {
+      action: 'reactivated',
+      pubkey,
+      ...result,
+    });
+
+    return result;
   }
 
   /**
@@ -248,20 +275,11 @@ export class SubscriptionService {
           },
         });
 
-        // Deactivate extra NIP-05s
-        const userNip05s = await this.prisma.nip05.findMany({
+        // NIP-05 is paid-only. Deactivate all active NIP-05 identities on downgrade to FREE.
+        await this.prisma.nip05.updateMany({
           where: { userId: sub.userId, isActive: true },
-          orderBy: { createdAt: 'asc' },
+          data: { isActive: false },
         });
-
-        // Keep only 1 for free tier
-        if (userNip05s.length > 1) {
-          const toDeactivate = userNip05s.slice(1);
-          await this.prisma.nip05.updateMany({
-            where: { id: { in: toDeactivate.map((n) => n.id) } },
-            data: { isActive: false },
-          });
-        }
 
         await this.prisma.auditLog.create({
           data: {
@@ -270,6 +288,13 @@ export class SubscriptionService {
             entityId: sub.id,
             details: { previousTier: sub.tier },
           },
+        });
+
+        await this.webhooks.emit('subscription.changed', {
+          action: 'expired_to_free',
+          pubkey: sub.user.pubkey,
+          previousTier: sub.tier,
+          currentTier: 'FREE',
         });
       }
     }

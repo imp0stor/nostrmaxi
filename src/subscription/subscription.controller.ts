@@ -1,17 +1,15 @@
-import { Controller, Get, Post, Body, Headers, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Param } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
 import { SubscriptionTier } from '../payments/payments.service';
-import { AuthService } from '../auth/auth.service';
-import { Request } from 'express';
+import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { nip19 } from 'nostr-tools';
 
 @ApiTags('subscriptions')
 @Controller('api/v1/subscription')
 export class SubscriptionController {
-  constructor(
-    private subscriptionService: SubscriptionService,
-    private authService: AuthService,
-  ) {}
+  constructor(private subscriptionService: SubscriptionService) {}
 
   @Get('tiers')
   @ApiOperation({ summary: 'Get available subscription tiers' })
@@ -21,69 +19,59 @@ export class SubscriptionController {
   }
 
   @Get()
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current subscription status' })
   @ApiResponse({ status: 200, description: 'Current subscription details' })
-  async getCurrent(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
-  ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'GET', url);
+  async getCurrent(@CurrentUser() pubkey: string) {
+    return this.subscriptionService.getCurrentSubscription(pubkey);
+  }
+
+  @Get('/list/:npub')
+  @ApiOperation({ summary: 'Get subscription status for a given npub/pubkey' })
+  @ApiResponse({ status: 200, description: 'Subscription details' })
+  async getForNpub(@Param('npub') npub: string) {
+    const pubkey = npub.startsWith('npub1') ? (nip19.decode(npub).data as string) : npub;
     return this.subscriptionService.getCurrentSubscription(pubkey);
   }
 
   @Post('upgrade')
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Upgrade subscription (creates payment invoice)' })
   @ApiResponse({ status: 201, description: 'Payment invoice created' })
   @ApiResponse({ status: 400, description: 'Invalid tier' })
   async upgrade(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
+    @CurrentUser() pubkey: string,
     @Body() body: { tier: SubscriptionTier; applyWotDiscount?: boolean },
   ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
     return this.subscriptionService.upgrade(pubkey, body.tier, body.applyWotDiscount ?? true);
   }
 
   @Post('downgrade')
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Schedule downgrade to free tier at end of billing period' })
   @ApiResponse({ status: 200, description: 'Downgrade scheduled' })
-  async downgrade(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
-  ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
+  async downgrade(@CurrentUser() pubkey: string) {
     return this.subscriptionService.downgrade(pubkey);
   }
 
   @Post('cancel')
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel subscription' })
   @ApiResponse({ status: 200, description: 'Subscription cancelled' })
-  async cancel(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
-  ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
+  async cancel(@CurrentUser() pubkey: string) {
     return this.subscriptionService.cancel(pubkey);
   }
 
   @Post('reactivate')
+  @UseGuards(NostrJwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reactivate a cancelled subscription' })
   @ApiResponse({ status: 200, description: 'Subscription reactivated' })
-  async reactivate(
-    @Headers('authorization') authHeader: string,
-    @Req() req: Request,
-  ) {
-    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-    const pubkey = await this.authService.verifyAuth(authHeader, 'POST', url);
+  async reactivate(@CurrentUser() pubkey: string) {
     return this.subscriptionService.reactivate(pubkey);
   }
 }

@@ -12,50 +12,58 @@ const FALLBACK_TIERS: TierInfo[] = [
   {
     tier: 'FREE',
     name: 'Free',
-    description: 'Get started with one verified identity.',
+    description: 'Use the social app for free. Upgrade only when you want a managed NIP-05.',
     priceUsd: 0,
     priceSats: 0,
-    features: ['1 NIP-05 identity', 'Community support'],
+    features: ['Feed + discovery', 'Post, reply, repost', 'Community support'],
+    nip05Limit: 0,
+    customDomain: false,
+    analytics: false,
+    apiAccess: false,
+    blossomPolicy: 'external-default',
+    blossomStorageMb: 0,
+  },
+  {
+    tier: 'PRO',
+    name: 'NIP-05 Pro',
+    description: 'Single-user NIP-05 + Lightning address on your timeline.',
+    priceUsd: 500,
+    priceSats: 17000,
+    features: ['1 managed NIP-05 identity', '1 managed Lightning address', 'Fast activation + support'],
     nip05Limit: 1,
     customDomain: false,
     analytics: false,
     apiAccess: false,
-  },
-  {
-    tier: 'PRO',
-    name: 'Pro',
-    description: 'For individual creators and serious users.',
-    priceUsd: 900,
-    priceSats: 30000,
-    features: ['10 NIP-05 identities', 'Priority support', 'Usage analytics'],
-    nip05Limit: 10,
-    customDomain: true,
-    analytics: true,
-    apiAccess: false,
+    blossomPolicy: 'managed-paid',
+    blossomStorageMb: 1024,
   },
   {
     tier: 'BUSINESS',
     name: 'Business',
-    description: 'For teams and production deployments.',
+    description: 'Hidden from checkout (legacy tier).',
     priceUsd: 2900,
     priceSats: 95000,
-    features: ['100 NIP-05 identities', 'Team workflows', 'API access'],
+    features: ['Legacy tier'],
     nip05Limit: 100,
     customDomain: true,
     analytics: true,
     apiAccess: true,
+    blossomPolicy: 'managed-paid',
+    blossomStorageMb: 5120,
   },
   {
     tier: 'LIFETIME',
-    name: 'Lifetime Pro',
-    description: 'One-time payment for permanent Pro access.',
-    priceUsd: 19900,
-    priceSats: 650000,
-    features: ['All Pro features forever', 'No recurring billing'],
-    nip05Limit: 10,
-    customDomain: true,
-    analytics: true,
+    name: 'NIP-05 Lifetime',
+    description: 'One payment. Keep your NIP-05 + Lightning identity active permanently.',
+    priceUsd: 4900,
+    priceSats: 165000,
+    features: ['Single-user identity forever', 'No monthly renewals', 'Priority migration support'],
+    nip05Limit: 1,
+    customDomain: false,
+    analytics: false,
     apiAccess: false,
+    blossomPolicy: 'managed-paid',
+    blossomStorageMb: 1024,
     isLifetime: true,
   },
 ];
@@ -85,7 +93,7 @@ export function PricingPage() {
   }, []);
 
   const handleSelectTier = (tier: SubscriptionTier, cycle: BillingCycle = billingCycle) => {
-    if (tier === 'FREE') return;
+    if (tier === 'FREE' || tier === 'BUSINESS') return;
     const resolvedTier = cycle === 'lifetime' ? 'LIFETIME' : tier;
     setSelectedTier(resolvedTier);
     setSelectedBilling(cycle);
@@ -116,15 +124,11 @@ export function PricingPage() {
   };
 
   const visibleTiers = tiers.filter((tier) => {
-    if (billingCycle === 'lifetime') {
-      return tier.tier === 'LIFETIME' || tier.tier === 'FREE';
-    }
-    return tier.tier !== 'LIFETIME';
+    if (tier.tier === 'BUSINESS') return false;
+    if (billingCycle === 'lifetime') return tier.tier === 'LIFETIME' || tier.tier === 'FREE';
+    if (billingCycle === 'annual' || billingCycle === 'monthly') return tier.tier === 'FREE' || tier.tier === 'PRO';
+    return false;
   });
-
-  const proTier = tiers.find((tier) => tier.tier === 'PRO');
-  const businessTier = tiers.find((tier) => tier.tier === 'BUSINESS');
-  const lifetimeTier = tiers.find((tier) => tier.tier === 'LIFETIME');
 
   if (isLoading) {
     return (
@@ -138,24 +142,22 @@ export function PricingPage() {
     <div className="py-12">
       <div className="text-center mb-10">
         <div className="inline-flex items-center gap-2 rounded-full bg-nostr-purple/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-nostr-purple">
-          Enterprise-grade NIP-05 Identity Platform
+          Your Nostr Identity
         </div>
-        <h1 className="text-4xl font-bold text-white mt-4 mb-4">
-          Pricing that scales from solo to enterprise
-        </h1>
+        <h1 className="text-4xl font-bold text-white mt-4 mb-4">Simple NIP-05 pricing for individuals</h1>
         <p className="text-gray-400 max-w-2xl mx-auto">
-          Issue verified Nostr identities, manage domains, and activate analytics in minutes.
-          Pay with Lightning for instant activation and zero vendor lock-in.
+          Pick your registration length: monthly, annual, or lifetime. No team bundles, no enterprise upsells—just
+          one verified Nostr identity that works everywhere.
         </p>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 mb-10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
           {[
-            { step: '01', label: 'Choose plan' },
+            { step: '01', label: 'Choose length' },
             { step: '02', label: 'Connect Nostr' },
-            { step: '03', label: 'Pay with Lightning' },
-            { step: '04', label: 'Go live instantly' },
+            { step: '03', label: 'Pay Lightning' },
+            { step: '04', label: 'Use NIP-05 now' },
           ].map((item) => (
             <div key={item.step} className="bg-nostr-dark rounded-lg p-4 border border-gray-800">
               <p className="text-xs text-gray-500">{item.step}</p>
@@ -185,7 +187,7 @@ export function PricingPage() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto px-4">
+      <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto px-4">
         {visibleTiers.map((tier) => {
           const isCurrentTier = user?.tier === tier.tier;
           const isPopular = tier.tier === 'PRO' && billingCycle !== 'lifetime';
@@ -201,12 +203,12 @@ export function PricingPage() {
             >
               {isPopular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-nostr-purple text-white text-xs font-bold px-3 py-1 rounded-full">
-                  Most Popular
+                  Best Value
                 </div>
               )}
 
               {(tier.isLifetime || billingCycle === 'lifetime') && tier.tier !== 'FREE' && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-nostr-orange text-white text-xs font-bold px-3 py-1 rounded-full">
+                <div className="absolute -top-3 right-4 bg-nostr-orange text-white text-xs font-bold px-3 py-1 rounded-full">
                   One-Time
                 </div>
               )}
@@ -215,13 +217,9 @@ export function PricingPage() {
               <p className="text-gray-400 text-sm mb-4">{tier.description}</p>
 
               <div className="mb-6">
-                <span className="text-4xl font-bold text-white">
-                  {formatPrice(tier, billingCycle)}
-                </span>
+                <span className="text-4xl font-bold text-white">{formatPrice(tier, billingCycle)}</span>
                 {tier.priceSats > 0 && (
-                  <span className="text-gray-400 text-sm ml-2">
-                    ≈ {formatSats(tier.priceSats, billingCycle)}
-                  </span>
+                  <span className="text-gray-400 text-sm ml-2">≈ {formatSats(tier.priceSats, billingCycle)}</span>
                 )}
                 {billingCycle === 'annual' && tier.priceUsd > 0 && (
                   <div className="text-xs text-green-400 mt-2">2 months free included</div>
@@ -277,77 +275,40 @@ export function PricingPage() {
         })}
       </div>
 
-      <div className="mt-16 max-w-5xl mx-auto px-4">
+      <div className="mt-12 max-w-3xl mx-auto px-4">
         <div className="bg-nostr-dark rounded-xl border border-gray-800 p-6">
-          <h2 className="text-2xl font-bold text-white mb-4">Annual & Lifetime Pricing Matrix</h2>
-          <div className="grid grid-cols-4 gap-4 text-sm text-gray-400">
-            <div></div>
-            <div className="text-white font-semibold">Pro</div>
-            <div className="text-white font-semibold">Business</div>
-            <div className="text-white font-semibold">Lifetime Pro</div>
-
-            <div className="text-white font-semibold">Monthly</div>
-            <div>{proTier ? formatPrice(proTier, 'monthly') : '$9/mo'}</div>
-            <div>{businessTier ? formatPrice(businessTier, 'monthly') : '$29/mo'}</div>
-            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
-
-            <div className="text-white font-semibold">Annual</div>
-            <div>{proTier ? formatPrice(proTier, 'annual') : '$90/yr'}</div>
-            <div>{businessTier ? formatPrice(businessTier, 'annual') : '$290/yr'}</div>
-            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
-
-            <div className="text-white font-semibold">Lifetime</div>
-            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
-            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
-            <div>{lifetimeTier ? formatPrice(lifetimeTier, 'lifetime') : '$199 one-time'}</div>
-          </div>
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <button
-              onClick={() => handleSelectTier('PRO', 'annual')}
-              className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white"
-            >
-              Choose Pro Annual
-            </button>
-            <button
-              onClick={() => handleSelectTier('BUSINESS', 'annual')}
-              className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white"
-            >
-              Choose Business Annual
-            </button>
-            <button
-              onClick={() => handleSelectTier('LIFETIME', 'lifetime')}
-              className="px-4 py-2 rounded-lg bg-nostr-purple hover:bg-nostr-purple/80 text-white"
-            >
-              Choose Lifetime
-            </button>
-          </div>
+          <h2 className="text-xl font-bold text-white mb-3">Competitive benchmark</h2>
+          <p className="text-sm text-gray-300 mb-3">
+            Public NIP-05 providers commonly price in the ~6,875 to 12,500 sat range for standard names (length-based)
+            and around 9,000 sats/year for budget annual options. NostrMaxi keeps monthly and annual individual pricing
+            close to market while adding managed Lightning and instant activation.
+          </p>
+          <p className="text-xs text-gray-500">
+            Sources reviewed: nip-05.com, nostrplebs.com, nostrich.house (accessed 2026-02-26).
+          </p>
         </div>
       </div>
 
       <div className="mt-16 max-w-3xl mx-auto px-4">
-        <h2 className="text-2xl font-bold text-white text-center mb-8">
-          Frequently Asked Questions
-        </h2>
+        <h2 className="text-2xl font-bold text-white text-center mb-8">Frequently Asked Questions</h2>
         <div className="space-y-4">
           <div className="bg-nostr-dark rounded-lg p-4">
             <h3 className="font-semibold text-white mb-2">What is NIP-05?</h3>
             <p className="text-gray-400 text-sm">
-              NIP-05 verifies your Nostr identity with a domain name (like an email address).
-              It makes your profile easier to find and proves you control the identity.
+              NIP-05 verifies your Nostr identity with a domain name (like an email address). It makes your profile
+              easier to find and proves that your identity is real.
             </p>
           </div>
           <div className="bg-nostr-dark rounded-lg p-4">
             <h3 className="font-semibold text-white mb-2">How do I pay?</h3>
             <p className="text-gray-400 text-sm">
-              We accept Lightning payments only. Scan the QR code with any Lightning wallet to pay instantly.
-              No KYC required, no chargebacks.
+              Lightning only. Scan the invoice, pay, and your NIP-05 is active right away.
             </p>
           </div>
           <div className="bg-nostr-dark rounded-lg p-4">
-            <h3 className="font-semibold text-white mb-2">What about enterprise teams?</h3>
+            <h3 className="font-semibold text-white mb-2">Can I register for longer than one month?</h3>
             <p className="text-gray-400 text-sm">
-              Business plans include multi-identity support, analytics, API access, and priority routing.
-              Contact us for volume pricing and onboarding support.
+              Yes—choose monthly, annual, or lifetime at checkout.
             </p>
           </div>
         </div>

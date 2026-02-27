@@ -11,6 +11,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { createMockPrismaService } from './mocks/prisma.mock';
 import { generateTestKeypair, createNip98AuthHeader, mockLnbitsInvoice } from './helpers/test-utils';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { WebhooksService } from '../webhooks/webhooks.service';
 import { nip19 } from 'nostr-tools';
 import * as crypto from 'crypto';
 
@@ -64,6 +65,10 @@ describe('Payment Webhook Handling', () => {
               return config[key] ?? defaultValue;
             }),
           },
+        },
+        {
+          provide: WebhooksService,
+          useValue: { emit: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
