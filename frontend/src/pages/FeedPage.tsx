@@ -9,8 +9,8 @@ import { InlineContent } from '../components/InlineContent';
 import { resolveQuotedEvents } from '../lib/quotes';
 import { fetchProfilesBatchCached } from '../lib/profileCache';
 import { aggregateZaps, buildZapButtonLabel, createPendingZap, formatZapIndicator, getDefaultZapAmountOptions, getZapPreferences, loadZapReceipts, mergePendingIntoAggregates, sendZap, subscribeToZaps, type PendingZap, type ZapAggregate } from '../lib/zaps';
-import { MuteWordsSettings } from '../components/MuteWordsSettings';
-import { evaluateMute, loadMuteSettings, publishMuteSettingsToNostr, saveMuteSettings, syncMuteSettingsFromNostr, upsertMuteRule, type MuteSettings } from '../lib/muteWords';
+import { evaluateMute } from '../lib/muteWords';
+import { useMuteSettings } from '../hooks/useMuteSettings';
 import { CONTENT_TYPE_LABELS, detectContentTypes, extractLiveStreamMeta, type ContentType } from '../lib/contentTypes';
 import { LiveStreamCard } from '../components/LiveStreamCard';
 
@@ -72,8 +72,7 @@ export function FeedPage() {
   const [newFeedIncludeReplies, setNewFeedIncludeReplies] = useState(true);
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [pendingZaps, setPendingZaps] = useState<PendingZap[]>([]);
-  const [muteSettings, setMuteSettings] = useState<MuteSettings>(() => loadMuteSettings(user?.pubkey));
-  const [showMuted, setShowMuted] = useState(false);
+  const { settings: muteSettings, syncNow: syncMuteSettings } = useMuteSettings(user?.pubkey);
   const [liveAlerts, setLiveAlerts] = useState<string[]>([]);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const observerRef = useRef<HTMLDivElement | null>(null);
@@ -106,12 +105,12 @@ export function FeedPage() {
 
   const filteredFeed = useMemo(() => {
     return feed.filter((item) => {
-      if (!showMuted && mutedByEventId.get(item.id)) return false;
+      if (mutedByEventId.get(item.id)) return false;
       if (activeFilters.size === 0) return true;
       const detected = detectContentTypes(item);
       return Array.from(activeFilters).some((f) => detected.has(f));
     });
-  }, [feed, activeFilters, mutedByEventId, showMuted]);
+  }, [feed, activeFilters, mutedByEventId]);
 
   const activeCustomFeed = useMemo(
     () => userCustomFeeds.find((feedDef) => feedDef.id === activeCustomFeedId) || null,
@@ -124,12 +123,11 @@ export function FeedPage() {
   );
 
   useEffect(() => {
-    setMuteSettings(loadMuteSettings(user?.pubkey));
+    if (!user?.pubkey) return;
+    void syncMuteSettings();
+    // run on identity change only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.pubkey]);
-
-  useEffect(() => {
-    saveMuteSettings(muteSettings, user?.pubkey);
-  }, [muteSettings, user?.pubkey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -179,10 +177,10 @@ export function FeedPage() {
     try {
       const nextCursor = reset ? undefined : cursor;
       const result = activeCustomFeed
-        ? await loadFeedForCustomDefinition(user.pubkey, activeCustomFeed, nextCursor)
+        ? await loadFeedForCustomDefinition(user.pubkey, activeCustomFeed, nextCursor, undefined, muteSettings)
         : (feedMode === 'following' && activeCustomFeedId === 'bookmarks')
           ? {
-            items: await loadBookmarkFeed(user.pubkey),
+            items: await loadBookmarkFeed(user.pubkey, undefined, muteSettings),
             nextCursor: undefined,
             diagnostics: {
               mode: 'following' as FeedMode,
@@ -197,7 +195,7 @@ export function FeedPage() {
             mode: feedMode,
             cursor: nextCursor,
             limit: reset ? 45 : 35,
-          });
+          }, undefined, muteSettings);
       setFeed((prev) => {
         if (reset) return result.items;
         const seen = new Set(prev.map((item) => item.id));
@@ -226,7 +224,7 @@ export function FeedPage() {
 
   useEffect(() => {
     void refresh();
-  }, [user?.pubkey, feedMode, activeCustomFeedId, activeCustomFeed?.id]);
+  }, [user?.pubkey, feedMode, activeCustomFeedId, activeCustomFeed?.id, muteSettings]);
 
   useEffect(() => {
     const target = observerRef.current;
@@ -418,29 +416,6 @@ export function FeedPage() {
     setSearchParams(params, { replace: true });
   };
 
-  const syncMuteNow = async () => {
-    if (!user?.pubkey) return;
-    if (muteSettings.privacyMode !== 'local') {
-      const ok = await publishMuteSettingsToNostr(muteSettings, user.pubkey, signEvent, publishEvent);
-      if (!ok) {
-        alert('Failed to publish mute settings to Nostr');
-        return;
-      }
-    }
-    const remote = await syncMuteSettingsFromNostr(user.pubkey);
-    if (remote) setMuteSettings((prev) => ({ ...prev, ...remote }));
-  };
-
-  const quickMuteFromPost = (item: FeedItem) => {
-    const phrase = prompt('Mute word/phrase (blank cancels):', '');
-    if (!phrase?.trim()) return;
-    setMuteSettings((prev) => upsertMuteRule(prev, {
-      value: phrase.trim(),
-      mode: 'substring',
-      scopes: ['content', 'hashtags', 'urls', 'displayNames'],
-      caseSensitive: false,
-    }));
-  };
 
   const onCreateCustomFeed = async () => {
     if (!user?.pubkey || !newFeedTitle.trim()) return;
@@ -608,13 +583,9 @@ export function FeedPage() {
           ) : null}
         </div>
 
-        <MuteWordsSettings settings={muteSettings} onChange={setMuteSettings} onSync={syncMuteNow} />
-
         <div className="cy-card p-4 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-sm text-cyan-200">{hiddenCount} posts hidden by mute rules</p>
-          <button className="cy-btn-secondary text-xs" onClick={() => setShowMuted((v) => !v)}>
-            {showMuted ? 'Hide muted posts' : 'Reveal muted posts'}
-          </button>
+          <p className="text-sm text-cyan-200">{hiddenCount} posts hidden by profile mute rules</p>
+          <Link to="/settings" className="cy-btn-secondary text-xs">Manage muted words</Link>
         </div>
 
         {liveAlerts.length > 0 ? (
@@ -688,7 +659,6 @@ export function FeedPage() {
                   <button className="cy-chip" onClick={() => onAction('repost', item)} disabled={busyId === `repost-${item.id}`}>Repost</button>
                   <button className="cy-chip" onClick={() => onAction('reply', item)} disabled={busyId === `reply-${item.id}`}>Reply</button>
                   <button className="cy-chip" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
-                  <button className="cy-chip" onClick={() => quickMuteFromPost(item)}>Mute phrase…</button>
                 </div>
               </div>
             </article>

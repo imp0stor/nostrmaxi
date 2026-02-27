@@ -1,6 +1,7 @@
 import { SimplePool, nip19 } from 'nostr-tools';
 import type { NostrEvent, NostrProfile } from '../types';
 import { fetchProfileCached, fetchProfilesBatchCached } from './profileCache';
+import { evaluateMute, type MuteSettings } from './muteWords';
 
 const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
@@ -111,6 +112,14 @@ async function checkRelayStatuses(relays: string[]): Promise<RelayStatus[]> {
 
 const FEED_KINDS = [1, 30023, 30311, 30017, 30018, 9735];
 
+function applyMuteFilterForFeed(items: FeedItem[], muteSettings?: MuteSettings): FeedItem[] {
+  if (!muteSettings?.enabled || muteSettings.rules.length === 0) return items;
+  return items.filter((item) => {
+    const displayName = item.profile?.display_name || item.profile?.name || item.profile?.nip05;
+    return !evaluateMute({ event: item, displayName }, muteSettings).muted;
+  });
+}
+
 export function findNextCursor(items: NostrEvent[]): number | undefined {
   if (items.length === 0) return undefined;
   return Math.min(...items.map((item) => item.created_at)) - 1;
@@ -135,7 +144,7 @@ export function interactionScoreForEvent(event: NostrEvent, interactions: NostrE
   return score;
 }
 
-export async function loadFeedWithDiagnostics(pubkey: string, query: FeedQuery, relays: string[] = DEFAULT_RELAYS): Promise<FeedResult> {
+export async function loadFeedWithDiagnostics(pubkey: string, query: FeedQuery, relays: string[] = DEFAULT_RELAYS, muteSettings?: MuteSettings): Promise<FeedResult> {
   const pool = new SimplePool();
   try {
     const limit = Math.min(100, Math.max(15, query.limit ?? 25));
@@ -197,18 +206,19 @@ export async function loadFeedWithDiagnostics(pubkey: string, query: FeedQuery, 
       : new Map<string, NostrProfile | null>();
 
     const items = events.map((event) => ({ ...event, profile: profiles.get(event.pubkey) || undefined }));
+    const filteredItems = applyMuteFilterForFeed(items, muteSettings);
     const relayStatuses = await checkRelayStatuses(relays);
     const nextCursor = findNextCursor(events);
 
     return {
-      items,
+      items: filteredItems,
       nextCursor,
       diagnostics: {
         mode: query.mode,
         followingCount: following.length,
         authorCount: query.mode === 'firehose' ? 0 : followingAuthors.length,
         relayStatuses,
-        eventCount: items.length,
+        eventCount: filteredItems.length,
         hasMore: items.length >= limit,
       },
     };
@@ -217,8 +227,8 @@ export async function loadFeedWithDiagnostics(pubkey: string, query: FeedQuery, 
   }
 }
 
-export async function loadFeed(pubkey: string, relays: string[] = DEFAULT_RELAYS): Promise<FeedItem[]> {
-  const result = await loadFeedWithDiagnostics(pubkey, { mode: 'following', limit: 30 }, relays);
+export async function loadFeed(pubkey: string, relays: string[] = DEFAULT_RELAYS, muteSettings?: MuteSettings): Promise<FeedItem[]> {
+  const result = await loadFeedWithDiagnostics(pubkey, { mode: 'following', limit: 30 }, relays, muteSettings);
   return result.items;
 }
 
@@ -800,7 +810,7 @@ export async function publishCustomFeed(
   return Boolean(result?.success);
 }
 
-export async function loadBookmarkFeed(pubkey: string, relays: string[] = DEFAULT_RELAYS): Promise<FeedItem[]> {
+export async function loadBookmarkFeed(pubkey: string, relays: string[] = DEFAULT_RELAYS, muteSettings?: MuteSettings): Promise<FeedItem[]> {
   const pool = new SimplePool();
   try {
     const bookmarkEvents = await pool.querySync(relays, { kinds: [10003, 30003], authors: [pubkey], limit: 50 });
@@ -811,9 +821,9 @@ export async function loadBookmarkFeed(pubkey: string, relays: string[] = DEFAUL
     const events = await pool.querySync(relays, { kinds: FEED_KINDS, ids: eventIds, limit: eventIds.length } as any);
     const authors = unique(events.map((e) => e.pubkey));
     const profiles = await fetchProfilesBatchCached(authors, relays);
-    return events
+    return applyMuteFilterForFeed(events
       .sort((a, b) => b.created_at - a.created_at)
-      .map((event) => ({ ...event, profile: profiles.get(event.pubkey) || undefined }));
+      .map((event) => ({ ...event, profile: profiles.get(event.pubkey) || undefined })), muteSettings);
   } finally {
     pool.close(relays);
   }
@@ -824,8 +834,9 @@ export async function loadFeedForCustomDefinition(
   definition: CustomFeedDefinition,
   cursor?: number,
   relays: string[] = DEFAULT_RELAYS,
+  muteSettings?: MuteSettings,
 ): Promise<FeedResult> {
-  const base = await loadFeedWithDiagnostics(pubkey, { mode: 'firehose', cursor, limit: 70 }, relays);
+  const base = await loadFeedWithDiagnostics(pubkey, { mode: 'firehose', cursor, limit: 70 }, relays, muteSettings);
   const filtered = base.items.filter((item) => matchesCustomFeed(item, definition)).slice(0, 40);
   return {
     items: filtered,

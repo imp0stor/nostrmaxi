@@ -1,5 +1,6 @@
 import { SimplePool } from 'nostr-tools';
 import { SOCIAL_RELAYS, loadFollowers, loadFollowing, loadProfileActivity } from './social';
+import { parseZapReceipt } from './zaps';
 import type { NostrEvent } from '../types';
 
 export interface TimePoint { label: string; value: number; secondary?: number; }
@@ -9,6 +10,13 @@ export type AnalyticsScope = 'global' | 'wot';
 export interface AnalyticsDashboardData {
   generatedAt: string;
   scope: AnalyticsScope;
+  summary?: {
+    totalZapsReceived: number;
+    totalSatsReceived: number;
+    totalReactions: number;
+    totalReplies: number;
+    totalPosts: number;
+  };
   profile: {
     followerGrowth: TimePoint[];
     engagementRate: TimePoint[];
@@ -76,6 +84,7 @@ export function computeAnalyticsFromEvents(params: {
   const reactionsByDay = new Map<string, number>();
   const repliesByDay = new Map<string, number>();
   const zapsByDay = new Map<string, number>();
+  const zapSatsByDay = new Map<string, number>();
   const mentionsByDay = new Map<string, number>();
 
   const reactionTypeCounts: Record<string, number> = {};
@@ -84,13 +93,14 @@ export function computeAnalyticsFromEvents(params: {
   const engagementByType = { text: 0, image: 0, video: 0 };
   const hourScores = new Array<number>(24).fill(0);
 
-  const postMetrics = new Map<string, { reactions: number; replies: number; reposts: number; zaps: number; createdAt: number; preview: string }>();
+  const postMetrics = new Map<string, { reactions: number; replies: number; reposts: number; zaps: number; zapSats: number; createdAt: number; preview: string }>();
   for (const note of notes) {
     postMetrics.set(note.id, {
       reactions: 0,
       replies: 0,
       reposts: 0,
       zaps: 0,
+      zapSats: 0,
       createdAt: note.created_at,
       preview: textPreview(note.content, `Post ${note.id.slice(0, 8)}`),
     });
@@ -148,11 +158,19 @@ export function computeAnalyticsFromEvents(params: {
     }
 
     if (evt.kind === 9735) {
-      zapsByDay.set(day, (zapsByDay.get(day) || 0) + 1);
-      eTargets.forEach((id) => {
-        const metric = postMetrics.get(id);
-        if (metric) metric.zaps += 1;
-      });
+      const parsed = parseZapReceipt(evt as NostrEvent);
+      if (parsed) {
+        zapsByDay.set(day, (zapsByDay.get(day) || 0) + 1);
+        zapSatsByDay.set(day, (zapSatsByDay.get(day) || 0) + parsed.amountSat);
+        
+        eTargets.forEach((id) => {
+          const metric = postMetrics.get(id);
+          if (metric) {
+            metric.zaps += 1;
+            metric.zapSats += parsed.amountSat;
+          }
+        });
+      }
     }
   }
 
@@ -182,7 +200,13 @@ export function computeAnalyticsFromEvents(params: {
   });
 
   const topPosts = Array.from(postMetrics.entries())
-    .map(([id, m]) => ({ id, preview: m.preview, zaps: m.zaps, reactions: m.reactions, score: (m.zaps * 5) + (m.reactions * 2) + (m.replies * 2) + (m.reposts * 3) }))
+    .map(([id, m]) => ({ 
+      id, 
+      preview: m.preview, 
+      zaps: m.zapSats, // Use sat amount for display
+      reactions: m.reactions, 
+      score: (m.zapSats * 0.1) + (m.zaps * 2) + (m.reactions * 2) + (m.replies * 2) + (m.reposts * 3) // Weight sats heavily
+    }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
@@ -244,7 +268,11 @@ export function computeAnalyticsFromEvents(params: {
 
   const networkGrowth = last21.map((d, idx) => ({ label: d.label, value: Math.round(following.length * (0.5 + idx / 22)) }));
 
-  const zaps = last21.map((d, idx) => ({ label: d.label, value: zapsByDay.get(d.key) || 0, secondary: Math.max(0, Math.round((zapsByDay.get(d.key) || 0) * (0.75 + Math.sin(idx / 4) * 0.1))) }));
+  const zaps = last21.map((d) => ({ 
+    label: d.label, 
+    value: zapsByDay.get(d.key) || 0, // Count
+    secondary: zapSatsByDay.get(d.key) || 0 // Total sats
+  }));
 
   const reactionsByType = Object.entries(reactionTypeCounts)
     .map(([type, value]) => ({ type, value }))
@@ -282,9 +310,23 @@ export function computeAnalyticsFromEvents(params: {
       score: Number((relay.uptime - relay.latency / 250).toFixed(1)),
     }));
 
+  // Compute summary totals
+  const totalZapsReceived = Array.from(zapsByDay.values()).reduce((sum, count) => sum + count, 0);
+  const totalSatsReceived = Array.from(zapSatsByDay.values()).reduce((sum, sats) => sum + sats, 0);
+  const totalReactions = Array.from(reactionsByDay.values()).reduce((sum, count) => sum + count, 0);
+  const totalReplies = Array.from(repliesByDay.values()).reduce((sum, count) => sum + count, 0);
+  const totalPosts = notes.length;
+
   return {
     generatedAt: new Date().toISOString(),
     scope,
+    summary: {
+      totalZapsReceived,
+      totalSatsReceived,
+      totalReactions,
+      totalReplies,
+      totalPosts,
+    },
     profile: { followerGrowth, engagementRate, topPosts, reachEstimate, profileViews },
     content: {
       postPerformance,

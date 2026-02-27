@@ -6,12 +6,13 @@ interface Props {
   settings: MuteSettings;
   onChange: (next: MuteSettings) => void;
   onSync?: () => Promise<void>;
+  syncStatus?: 'idle' | 'syncing' | 'ok' | 'error';
 }
 
 const SCOPES: MuteScope[] = ['content', 'hashtags', 'urls', 'displayNames'];
 const MODES: MuteMatchMode[] = ['substring', 'whole-word', 'regex'];
 
-export function MuteWordsSettings({ settings, onChange, onSync }: Props) {
+export function MuteWordsSettings({ settings, onChange, onSync, syncStatus = 'idle' }: Props) {
   const [value, setValue] = useState('');
   const [mode, setMode] = useState<MuteMatchMode>('substring');
   const [scopes, setScopes] = useState<MuteScope[]>(['content']);
@@ -83,6 +84,9 @@ export function MuteWordsSettings({ settings, onChange, onSync }: Props) {
       </div>
 
       <div className="flex items-center gap-3 flex-wrap text-sm">
+        <span className={`text-xs ${syncStatus === 'ok' ? 'text-emerald-300' : syncStatus === 'error' ? 'text-red-300' : 'text-cyan-400'}`}>
+          Sync: {syncStatus === 'syncing' ? 'Syncing…' : syncStatus === 'ok' ? 'Up to date' : syncStatus === 'error' ? 'Failed' : 'Idle'}
+        </span>
         <label className="flex items-center gap-2"><input type="checkbox" checked={settings.strictReplies} onChange={(e) => onChange({ ...settings, strictReplies: e.target.checked })} /> Strict replies</label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={settings.strictQuotes} onChange={(e) => onChange({ ...settings, strictQuotes: e.target.checked })} /> Strict quotes</label>
         <select className="cy-input max-w-[220px]" value={settings.privacyMode} onChange={(e) => onChange({ ...settings, privacyMode: e.target.value as MuteSettings['privacyMode'] })}>

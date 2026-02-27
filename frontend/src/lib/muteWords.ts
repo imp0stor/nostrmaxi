@@ -194,41 +194,56 @@ export function evaluateMute(target: MuteTarget, settings: MuteSettings): MuteEv
 }
 
 function toTags(rule: MuteRule): string[][] {
-  return [
-    ['word', rule.value],
-    ['mode', rule.mode],
-    ['scope', rule.scopes.join(',')],
-    ['case', rule.caseSensitive ? '1' : '0'],
-    ...(rule.expiresAt ? [['expires', String(rule.expiresAt)]] : []),
-    ['rid', rule.id],
-  ];
+  return [[
+    'word',
+    rule.value,
+    rule.mode,
+    rule.scopes.join(','),
+    rule.caseSensitive ? '1' : '0',
+    rule.expiresAt ? String(rule.expiresAt) : '',
+    rule.id,
+  ]];
+}
+
+function parseScopes(raw: string | undefined): MuteScope[] {
+  const candidates = (raw || 'content').split(',').map((scope) => scope.trim());
+  const valid = candidates.filter((scope): scope is MuteScope => (
+    scope === 'content' || scope === 'hashtags' || scope === 'urls' || scope === 'displayNames'
+  ));
+  return valid.length > 0 ? valid : ['content'];
 }
 
 function fromEvent(event: NostrEvent): MuteSettings {
   const entries: MuteRule[] = [];
-  let idx = 0;
-  while (idx < event.tags.length) {
-    const tag = event.tags[idx];
-    if (tag?.[0] !== 'word') {
-      idx += 1;
-      continue;
-    }
-    const value = tag[1] || '';
-    const mode = (event.tags[idx + 1]?.[0] === 'mode' ? event.tags[idx + 1][1] : 'substring') as MuteMatchMode;
-    const scopes = (event.tags[idx + 2]?.[0] === 'scope' ? event.tags[idx + 2][1] : 'content').split(',') as MuteScope[];
-    const caseSensitive = event.tags[idx + 3]?.[0] === 'case' ? event.tags[idx + 3][1] === '1' : false;
-    const expiresAt = event.tags[idx + 4]?.[0] === 'expires' ? Number(event.tags[idx + 4][1]) : undefined;
-    const ridTag = event.tags.find((t) => t[0] === 'rid' && t[1]);
+  let fallbackIndex = 0;
+
+  for (const tag of event.tags) {
+    if (tag?.[0] !== 'word' || !tag[1]) continue;
+
+    // Preferred compact format (single tag per mute rule)
+    const compactMode = (tag[2] === 'substring' || tag[2] === 'whole-word' || tag[2] === 'regex') ? tag[2] as MuteMatchMode : undefined;
+    const compactScopes = parseScopes(tag[3]);
+    const compactCaseSensitive = tag[4] === '1';
+    const compactExpires = tag[5] ? Number(tag[5]) : undefined;
+    const compactRuleId = tag[6] || `remote-${fallbackIndex}`;
+
+    // Legacy fallback format (separate mode/scope/case/expires/rid tags)
+    const mode = compactMode || (event.tags.find((t) => t[0] === 'mode' && t[1])?.[1] as MuteMatchMode | undefined) || 'substring';
+    const scopes = compactMode ? compactScopes : parseScopes(event.tags.find((t) => t[0] === 'scope' && t[1])?.[1]);
+    const caseSensitive = compactMode ? compactCaseSensitive : event.tags.some((t) => t[0] === 'case' && t[1] === '1');
+    const expiresAtRaw = compactMode ? compactExpires : Number(event.tags.find((t) => t[0] === 'expires' && t[1])?.[1]);
+    const ridTag = compactMode ? compactRuleId : (event.tags.find((t) => t[0] === 'rid' && t[1])?.[1] || `remote-${fallbackIndex}`);
+
     entries.push({
-      id: ridTag?.[1] || `remote-${idx}`,
-      value,
+      id: ridTag,
+      value: tag[1],
       mode,
       scopes,
       caseSensitive,
-      expiresAt: Number.isFinite(expiresAt) ? expiresAt : undefined,
+      expiresAt: Number.isFinite(expiresAtRaw) ? expiresAtRaw : undefined,
       createdAt: event.created_at,
     });
-    idx += 1;
+    fallbackIndex += 1;
   }
 
   return {
