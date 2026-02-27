@@ -18,9 +18,13 @@ services:
       - RELAY_SYNC_SOURCE_RELAYS=${RELAY_SYNC_SOURCE_RELAYS:-wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol,wss://relay.primal.net}
       - RELAY_SYNC_STRATEGY=${RELAY_SYNC_STRATEGY:-wot}
       - RELAY_SYNC_INTERVAL_MS=${RELAY_SYNC_INTERVAL_MS:-300000}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -51,6 +55,10 @@ services:
       - ./prisma:/app/prisma:ro
     profiles:
       - dev
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
 
   db:
     image: postgres:16-alpine
