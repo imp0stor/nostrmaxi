@@ -3,7 +3,7 @@ FROM node:20
 WORKDIR /app
 
 # Install dependencies
-COPY package*.json ./
+COPY package.json ./
 # Remove local file-linked package that is unavailable in production image context.
 RUN npm install -g npm@9 \
   && npm pkg delete dependencies.@strangesignal/nostr-auth \
