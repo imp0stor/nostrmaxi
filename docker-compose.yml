@@ -12,6 +12,7 @@ services:
       - NIP05_DEFAULT_DOMAIN=nostrmaxi.local
       - NIP05_DEFAULT_RELAYS=wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol
       - ADMIN_PUBKEYS=${ADMIN_PUBKEYS:-}
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production-please-rotate}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
       - RELAY_SYNC_ENABLED=${RELAY_SYNC_ENABLED:-true}
       - LOCAL_RELAY_URL=${LOCAL_RELAY_URL:-ws://10.1.10.143:7777}
