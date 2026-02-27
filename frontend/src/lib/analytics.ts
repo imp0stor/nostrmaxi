@@ -6,7 +6,7 @@ import type { NostrEvent } from '../types';
 
 export interface TimePoint { label: string; value: number; secondary?: number; }
 
-export type AnalyticsScope = 'global' | 'wot';
+export type AnalyticsScope = 'individual' | 'following' | 'wot' | 'global';
 
 export interface AnalyticsDashboardData {
   generatedAt: string;
@@ -396,6 +396,21 @@ async function loadGlobalEvents(relays: string[] = SOCIAL_RELAYS): Promise<Nostr
   }
 }
 
+async function loadFollowingEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
+  const pool = new SimplePool();
+  try {
+    const following = await loadFollowing(pubkey, relays);
+    const authors = [pubkey, ...following].slice(0, 200);
+    if (!authors.length) return [];
+
+    const since = Math.floor(Date.now() / 1000) - (21 * DAY);
+    const events = await pool.querySync(relays, { kinds: [1, 6, 7, 9735], authors, limit: 1800, since } as any);
+    return events as NostrEvent[];
+  } finally {
+    pool.close(relays);
+  }
+}
+
 async function loadWotEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
   const pool = new SimplePool();
   try {
@@ -423,29 +438,60 @@ async function loadWotEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): 
   }
 }
 
-export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsScope = 'global'): Promise<AnalyticsDashboardData> {
-  // Hydrate comprehensive profile data
-  const hydrated = await hydrateUserProfileCached({ pubkey });
-
-  // Combine all hydrated events
-  const allEvents: NostrEvent[] = [
-    ...hydrated.notes,
-    ...hydrated.reactions,
-    ...hydrated.zaps,
-    ...hydrated.reposts,
-    ...hydrated.replies,
-    ...hydrated.quotes,
-  ];
-
+export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsScope = 'individual'): Promise<AnalyticsDashboardData> {
   // Get followers/following from contacts
   const [followers, following] = await Promise.all([
     loadFollowers(pubkey),
     loadFollowing(pubkey),
   ]);
 
-  // If scope is WoT, also load WoT events
-  const wotEvents = scope === 'wot' ? await loadWotEvents(pubkey) : [];
-  const finalEvents = scope === 'wot' && wotEvents.length > 0 ? wotEvents : allEvents;
+  let finalEvents: NostrEvent[];
+
+  switch (scope) {
+    case 'individual': {
+      // User's own content only
+      const hydrated = await hydrateUserProfileCached({ pubkey });
+      finalEvents = [
+        ...hydrated.notes,
+        ...hydrated.reactions,
+        ...hydrated.zaps,
+        ...hydrated.reposts,
+        ...hydrated.replies,
+        ...hydrated.quotes,
+      ];
+      break;
+    }
+
+    case 'following': {
+      // User + people they follow
+      finalEvents = await loadFollowingEvents(pubkey);
+      break;
+    }
+
+    case 'wot': {
+      // User + WoT (1st + 2nd hop follows)
+      finalEvents = await loadWotEvents(pubkey);
+      break;
+    }
+
+    case 'global': {
+      // All public content
+      finalEvents = await loadGlobalEvents();
+      break;
+    }
+
+    default:
+      // Fallback to individual
+      const hydrated = await hydrateUserProfileCached({ pubkey });
+      finalEvents = [
+        ...hydrated.notes,
+        ...hydrated.reactions,
+        ...hydrated.zaps,
+        ...hydrated.reposts,
+        ...hydrated.replies,
+        ...hydrated.quotes,
+      ];
+  }
 
   return computeAnalyticsFromEvents({ pubkey, events: finalEvents, followers, following, scope });
 }

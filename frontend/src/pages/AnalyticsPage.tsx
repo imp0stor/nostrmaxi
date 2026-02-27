@@ -9,7 +9,23 @@ import { Avatar } from '../components/Avatar';
 const SCOPE_STORAGE_KEY = 'nostrmaxi.analytics.scope';
 
 function scopeLabel(scope: AnalyticsScope): string {
-  return scope === 'wot' ? 'WoT (Your Network)' : 'Global (All Nostr)';
+  switch (scope) {
+    case 'individual': return 'Individual (You Only)';
+    case 'following': return 'Following (People You Follow)';
+    case 'wot': return 'WoT (Your Network)';
+    case 'global': return 'Global (All Nostr)';
+    default: return 'Unknown';
+  }
+}
+
+function scopeInsight(scope: AnalyticsScope): string {
+  switch (scope) {
+    case 'individual': return 'Your personal analytics: posts, engagement, growth, and reach.';
+    case 'following': return 'Trending among people you follow: discover what your network is sharing.';
+    case 'wot': return 'Trending in your extended network: trusted follows + 2nd degree voices.';
+    case 'global': return 'Trending globally: full Nostr stream and broad network momentum.';
+    default: return '';
+  }
 }
 
 function Sparkline({ points, color = '#00d4ff' }: { points: number[]; color?: string }) {
@@ -28,7 +44,10 @@ export function AnalyticsPage() {
   const { user } = useAuth();
   const [scope, setScope] = useState<AnalyticsScope>(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem(SCOPE_STORAGE_KEY) : null;
-    return stored === 'wot' ? 'wot' : 'global';
+    if (stored === 'individual' || stored === 'following' || stored === 'wot' || stored === 'global') {
+      return stored;
+    }
+    return 'individual';
   });
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any | null>(null);
@@ -61,10 +80,7 @@ export function AnalyticsPage() {
     fetchProfilesBatchCached(pubkeys).then(setZapperProfiles);
   }, [data]);
 
-  const insight = useMemo(() => {
-    if (scope === 'wot') return 'Trending in your network: trusted follows + 2nd degree voices.';
-    return 'Trending globally: full Nostr stream and broad network momentum.';
-  }, [scope]);
+  const insight = useMemo(() => scopeInsight(scope), [scope]);
 
   if (!user) return null;
 
@@ -77,14 +93,18 @@ export function AnalyticsPage() {
             <h1 className="cy-title">Nostr Intelligence Dashboard</h1>
             <p className="text-blue-200 mt-2">{insight}</p>
           </div>
-          <div className="inline-flex border border-cyan-800">
-            {(['global', 'wot'] as AnalyticsScope[]).map((s) => (
+          <div className="inline-flex border border-cyan-800 rounded-lg overflow-hidden">
+            {(['individual', 'following', 'wot', 'global'] as AnalyticsScope[]).map((s) => (
               <button
                 key={s}
                 onClick={() => setScope(s)}
-                className={`px-4 py-2 text-sm transition ${scope === s ? 'bg-cyan-500/20 text-cyan-100 shadow-[0_0_20px_rgba(0,212,255,0.35)]' : 'text-blue-200 hover:text-cyan-200'}`}
+                className={`px-4 py-2 text-sm transition border-r border-cyan-800 last:border-r-0 ${
+                  scope === s 
+                    ? 'bg-cyan-500/20 text-cyan-100 shadow-[0_0_20px_rgba(0,212,255,0.35)]' 
+                    : 'text-blue-200 hover:text-cyan-200 hover:bg-cyan-500/10'
+                }`}
               >
-                {s === 'global' ? 'Global' : 'WoT'}
+                {s === 'individual' ? 'You' : s === 'following' ? 'Following' : s === 'wot' ? 'WoT' : 'Global'}
               </button>
             ))}
           </div>
