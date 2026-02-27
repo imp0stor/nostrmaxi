@@ -581,8 +581,10 @@ export function FeedPage() {
 
       <section className="space-y-4">
         <ConfigAccordion
+          id="feed-content-filters"
           title="Content Filters"
           subtitle="Narrow the timeline by post type"
+          summary="Filter chips for media, replies, reposts, and link-heavy content"
           defaultOpen={false}
           rightSlot={<button className="cy-btn-secondary text-xs" onClick={clearFilters}>Reset</button>}
         >

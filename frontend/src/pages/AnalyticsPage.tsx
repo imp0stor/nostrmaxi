@@ -88,8 +88,10 @@ export function AnalyticsPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       <ConfigAccordion
+        id="analytics-scope-controls"
         title="Analytics Scope & Controls"
         subtitle="Compact mode: expand only when you want to adjust scope/export options."
+        summary={<span>Current scope: <strong className="text-cyan-200">{scopeLabel(scope)}</strong></span>}
         defaultOpen={false}
         rightSlot={<span className="text-xs text-blue-300">Active: <strong className="text-cyan-200">{scopeLabel(scope)}</strong></span>}
       >

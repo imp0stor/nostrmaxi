@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
+import { CollapsibleSection } from './CollapsibleSection';
 
 type ConfigAccordionProps = {
   title: string;
@@ -6,27 +7,23 @@ type ConfigAccordionProps = {
   defaultOpen?: boolean;
   children: ReactNode;
   rightSlot?: ReactNode;
+  id?: string;
+  summary?: ReactNode;
 };
 
-export function ConfigAccordion({ title, subtitle, defaultOpen = false, children, rightSlot }: ConfigAccordionProps) {
-  const [open, setOpen] = useState(defaultOpen);
+const slugify = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
+export function ConfigAccordion({ title, subtitle, defaultOpen = false, children, rightSlot, id, summary }: ConfigAccordionProps) {
   return (
-    <section className="cy-card p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex-1 text-left"
-          aria-expanded={open}
-        >
-          <p className="cy-kicker">CONFIG</p>
-          <p className="text-cyan-100 font-semibold mt-1">{title} <span className="text-xs text-cyan-400">{open ? '▾' : '▸'}</span></p>
-          {subtitle ? <p className="text-xs text-blue-300 mt-1">{subtitle}</p> : null}
-        </button>
-        {rightSlot}
-      </div>
-      {open ? <div className="space-y-3">{children}</div> : null}
-    </section>
+    <CollapsibleSection
+      id={id || `config-${slugify(title)}`}
+      title={title}
+      subtitle={subtitle}
+      summary={summary}
+      defaultOpen={defaultOpen}
+      rightSlot={rightSlot}
+    >
+      {children}
+    </CollapsibleSection>
   );
 }

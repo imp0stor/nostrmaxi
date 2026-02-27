@@ -392,8 +392,10 @@ export function DiscoverPage() {
       </header>
 
       <ConfigAccordion
+        id="discover-filters-modes"
         title="Discover Filters & Modes"
         subtitle="Compact top controls — expand to tune users/relay/post discovery."
+        summary={<span>Active mode: {entityTab}</span>}
         defaultOpen={false}
         rightSlot={<span className="text-xs text-cyan-300">Mode: {entityTab}</span>}
       >

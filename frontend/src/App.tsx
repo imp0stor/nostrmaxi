@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { LoginModal } from './components/auth/LoginModal';
@@ -22,10 +22,13 @@ import { Avatar } from './components/Avatar';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
 import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
 
+type NavItem = { path: string; label: string; authed?: boolean };
+
 export default function App() {
   const { user, isAuthenticated, isLoading, initialize, logout } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [showIdentityMenu, setShowIdentityMenu] = useState(false);
+  const [showMobileNav, setShowMobileNav] = useState(false);
   const [primaryIdentity, setPrimaryIdentity] = useState<string>('');
   const location = useLocation();
   const navigate = useNavigate();
@@ -33,6 +36,11 @@ export default function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    setShowMobileNav(false);
+    setShowIdentityMenu(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
@@ -54,29 +62,10 @@ export default function App() {
 
       try {
         const resolution = await resolvePrimaryIdentityDetailed(user, { forceRefresh });
-        if (typeof console !== 'undefined') {
-          console.info('[app] loadIdentity resolved', {
-            pubkey: user.pubkey,
-            npub: user.npub,
-            forceRefresh,
-            source: resolution.source,
-            value: resolution.value,
-            externalNip05: resolution.externalNip05 ?? null,
-            managedNip05: resolution.managedNip05 ?? null,
-          });
-        }
         if (!cancelled) {
           setPrimaryIdentity(resolution.value || truncateNpub(user.npub, 4));
         }
-      } catch (error) {
-        if (typeof console !== 'undefined') {
-          console.error('[app] loadIdentity failed', {
-            pubkey: user.pubkey,
-            npub: user.npub,
-            forceRefresh,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+      } catch {
         if (!cancelled) {
           setPrimaryIdentity(truncateNpub(user.npub, 4));
         }
@@ -105,23 +94,41 @@ export default function App() {
 
   const navClass = (path: string) => `nav-link ${location.pathname === path ? 'nav-link-active' : ''}`;
 
+  const navItems = useMemo<NavItem[]>(() => [
+    { path: '/feed', label: 'Feed' },
+    { path: '/discover', label: 'Discover' },
+    { path: '/lists', label: 'Lists', authed: true },
+    { path: '/marketplace', label: 'Marketplace', authed: true },
+    { path: '/dashboard', label: 'Manage', authed: true },
+    { path: '/analytics', label: 'Analytics', authed: true },
+    { path: '/ecosystem', label: 'Ecosystem', authed: true },
+    { path: '/profile/me', label: 'Profile', authed: true },
+    { path: '/settings', label: 'Settings', authed: true },
+    { path: '/pricing', label: 'Get Your NIP-05', authed: true },
+  ], []);
+
   return (
     <div className="swordfish-shell min-h-screen flex flex-col cyber-grid bg-swordfish-bg text-swordfish-text">
-      <nav className="border-b border-swordfish-muted/40 bg-swordfish-bg/95 sticky top-0 z-40 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 text-swordfish-accent font-bold tracking-[0.08em]"><span>⚡</span><span>NostrMaxi</span></Link>
-          <div className="flex items-center gap-4 text-sm">
-            <Link to="/feed" className={navClass('/feed')}>Feed</Link>
-            <Link to="/discover" className={navClass('/discover')}>Discover</Link>
-            {isAuthenticated && <Link to="/lists" className={navClass('/lists')}>Lists</Link>}
-            {isAuthenticated && <Link to="/marketplace" className={navClass('/marketplace')}>Marketplace</Link>}
-            {isAuthenticated && <Link to="/dashboard" className={navClass('/dashboard')}>Manage</Link>}
-            {isAuthenticated && <Link to="/analytics" className={navClass('/analytics')}>Analytics</Link>}
-            {isAuthenticated && <Link to="/ecosystem" className={navClass('/ecosystem')}>Ecosystem</Link>}
-            {isAuthenticated && <Link to="/profile/me" className={navClass('/profile/me')}>Profile</Link>}
-            {isAuthenticated && <Link to="/settings" className={navClass('/settings')}>Settings</Link>}
-            {isAuthenticated && <Link to="/pricing" className={navClass('/pricing')}>Get Your NIP-05</Link>}
-            {isLoading ? <span className="text-swordfish-muted cy-loading">…</span> : isAuthenticated && user ? (
+      <nav className="border-b border-swordfish-muted/35 bg-swordfish-bg/70 sticky top-0 z-40 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 min-h-16 py-2 flex items-center justify-between gap-2">
+          <Link to="/" className="flex items-center gap-2 text-swordfish-accent font-bold tracking-[0.14em] text-sm sm:text-base">
+            <span>⚡</span><span>NostrMaxi</span>
+          </Link>
+
+          <button
+            className="md:hidden cy-chip"
+            onClick={() => setShowMobileNav((v) => !v)}
+            aria-expanded={showMobileNav}
+            aria-label="Toggle navigation"
+          >
+            {showMobileNav ? 'Close' : 'Menu'}
+          </button>
+
+          <div className="hidden md:flex items-center gap-2 lg:gap-3 text-sm">
+            {navItems.filter((i) => !i.authed || isAuthenticated).map((item) => (
+              <Link key={item.path} to={item.path} className={navClass(item.path)}>{item.label}</Link>
+            ))}
+            {isLoading ? <span className="text-swordfish-muted cy-loading px-2">…</span> : isAuthenticated && user ? (
               <div className="relative">
                 <button
                   onClick={() => setShowIdentityMenu((v) => !v)}
@@ -164,6 +171,24 @@ export default function App() {
             )}
           </div>
         </div>
+
+        {showMobileNav ? (
+          <div className="md:hidden border-t border-swordfish-muted/30 px-4 pb-3 animate-content-fade-cinematic">
+            <div className="grid grid-cols-2 gap-2 pt-3">
+              {navItems.filter((i) => !i.authed || isAuthenticated).map((item) => (
+                <Link key={item.path} to={item.path} className={navClass(item.path)}>{item.label}</Link>
+              ))}
+              {!isAuthenticated && !isLoading ? (
+                <button onClick={() => setShowLogin(true)} className="cy-btn col-span-2">Login</button>
+              ) : null}
+              {isAuthenticated && user ? (
+                <button className="cy-chip col-span-2 text-left" onClick={async () => { await logout(); }}>
+                  Logout ({primaryIdentity || truncateNpub(user.npub, 4)})
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </nav>
 
       <main className="flex-1">
@@ -186,7 +211,7 @@ export default function App() {
         </Routes>
       </main>
 
-      <footer className="border-t border-swordfish-muted/40 py-6 text-center text-xs text-swordfish-muted">NostrMaxi // cyber social + identity</footer>
+      <footer className="border-t border-swordfish-muted/30 py-6 text-center text-xs text-swordfish-muted tracking-[0.12em]">NostrMaxi // cinematic social + identity</footer>
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </div>
   );
