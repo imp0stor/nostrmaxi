@@ -12,6 +12,7 @@ import { CONTENT_TYPE_LABELS, type ContentType } from '../lib/contentTypes';
 import type { DiscoverCardDataLike } from '../types/discover';
 import { Avatar } from '../components/Avatar';
 import { useBeaconSearch } from '../lib/beaconSearch';
+import { ConfigAccordion } from '../components/ConfigAccordion';
 
 interface DiscoverCardData extends DiscoverUser, DiscoverCardDataLike {
   name: string;
@@ -371,7 +372,12 @@ export function DiscoverPage() {
         <p className="cy-muted mt-2">Suggested creators and operators based on reputation, activity, and graph overlap.</p>
       </header>
 
-      <section className="cy-card p-4 space-y-3">
+      <ConfigAccordion
+        title="Discover Filters & Modes"
+        subtitle="Compact top controls — expand to tune users/relay/post discovery."
+        defaultOpen={false}
+        rightSlot={<span className="text-xs text-cyan-300">Mode: {entityTab}</span>}
+      >
         <div className="flex flex-wrap gap-2">
           {([
             { key: 'users', label: 'Users' },
@@ -429,7 +435,7 @@ export function DiscoverPage() {
             </button>
           </>
         )}
-      </section>
+      </ConfigAccordion>
 
       <section className="cy-card p-4">
         <div className="max-h-[68vh] overflow-y-auto pr-1" onScroll={onGridScroll}>

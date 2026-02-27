@@ -5,6 +5,7 @@ import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
 import { encodeNpub, truncateNpub } from '../lib/nostr';
 import { fetchProfilesBatchCached, profileDisplayName } from '../lib/profileCache';
 import { Avatar } from '../components/Avatar';
+import { ConfigAccordion } from '../components/ConfigAccordion';
 
 const SCOPE_STORAGE_KEY = 'nostrmaxi.analytics.scope';
 
@@ -86,31 +87,33 @@ export function AnalyticsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-      <div className="cy-card p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="cy-kicker">ANALYTICS COMMAND CENTER</p>
-            <h1 className="cy-title">Nostr Intelligence Dashboard</h1>
-            <p className="text-blue-200 mt-2">{insight}</p>
-          </div>
-          <div className="inline-flex border border-cyan-800 rounded-lg overflow-hidden">
-            {(['individual', 'following', 'wot', 'global'] as AnalyticsScope[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => setScope(s)}
-                className={`px-4 py-2 text-sm transition border-r border-cyan-800 last:border-r-0 ${
-                  scope === s 
-                    ? 'bg-cyan-500/20 text-cyan-100 shadow-[0_0_20px_rgba(0,212,255,0.35)]' 
-                    : 'text-blue-200 hover:text-cyan-200 hover:bg-cyan-500/10'
-                }`}
-              >
-                {s === 'individual' ? 'You' : s === 'following' ? 'Following' : s === 'wot' ? 'WoT' : 'Global'}
-              </button>
-            ))}
-          </div>
+      <ConfigAccordion
+        title="Analytics Scope & Controls"
+        subtitle="Compact mode: expand only when you want to adjust scope/export options."
+        defaultOpen={false}
+        rightSlot={<span className="text-xs text-blue-300">Active: <strong className="text-cyan-200">{scopeLabel(scope)}</strong></span>}
+      >
+        <div>
+          <p className="cy-kicker">ANALYTICS COMMAND CENTER</p>
+          <h1 className="cy-title">Nostr Intelligence Dashboard</h1>
+          <p className="text-blue-200 mt-2">{insight}</p>
         </div>
-        <div className="mt-4 flex items-center justify-between text-xs text-blue-300">
-          <span>Active scope: <strong className="text-cyan-200">{scopeLabel(scope)}</strong></span>
+        <div className="inline-flex border border-cyan-800 rounded-lg overflow-hidden flex-wrap">
+          {(['individual', 'following', 'wot', 'global'] as AnalyticsScope[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => setScope(s)}
+              className={`px-4 py-2 text-sm transition border-r border-cyan-800 last:border-r-0 ${
+                scope === s
+                  ? 'bg-cyan-500/20 text-cyan-100 shadow-[0_0_20px_rgba(0,212,255,0.35)]'
+                  : 'text-blue-200 hover:text-cyan-200 hover:bg-cyan-500/10'
+              }`}
+            >
+              {s === 'individual' ? 'You' : s === 'following' ? 'Following' : s === 'wot' ? 'WoT' : 'Global'}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center justify-end text-xs text-blue-300">
           <button
             className="cy-btn-secondary"
             onClick={() => {
@@ -127,7 +130,7 @@ export function AnalyticsPage() {
             Export JSON
           </button>
         </div>
-      </div>
+      </ConfigAccordion>
 
       {loading && <div className="cy-card p-6 text-cyan-200">Loading analytics…</div>}
       {error && <div className="cy-card p-6 text-red-300">{error}</div>}
