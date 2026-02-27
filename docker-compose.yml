@@ -12,7 +12,12 @@ services:
       - NIP05_DEFAULT_DOMAIN=nostrmaxi.local
       - NIP05_DEFAULT_RELAYS=wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol
       - ADMIN_PUBKEYS=${ADMIN_PUBKEYS:-}
-      - CORS_ORIGINS=*
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - RELAY_SYNC_ENABLED=${RELAY_SYNC_ENABLED:-true}
+      - LOCAL_RELAY_URL=${LOCAL_RELAY_URL:-ws://10.1.10.143:7777}
+      - RELAY_SYNC_SOURCE_RELAYS=${RELAY_SYNC_SOURCE_RELAYS:-wss://relay.damus.io,wss://relay.nostr.band,wss://nos.lol,wss://relay.primal.net}
+      - RELAY_SYNC_STRATEGY=${RELAY_SYNC_STRATEGY:-wot}
+      - RELAY_SYNC_INTERVAL_MS=${RELAY_SYNC_INTERVAL_MS:-300000}
     depends_on:
       db:
         condition: service_healthy
@@ -53,8 +58,6 @@ services:
       POSTGRES_USER: nostrmaxi
       POSTGRES_PASSWORD: nostrmaxi
       POSTGRES_DB: nostrmaxi
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
