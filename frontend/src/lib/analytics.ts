@@ -1,6 +1,7 @@
 import { SimplePool } from 'nostr-tools';
 import { SOCIAL_RELAYS, loadFollowers, loadFollowing, loadProfileActivity } from './social';
 import { parseZapReceipt } from './zaps';
+import { hydrateUserProfileCached } from './profileHydration';
 import type { NostrEvent } from '../types';
 
 export interface TimePoint { label: string; value: number; secondary?: number; }
@@ -401,12 +402,28 @@ async function loadWotEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): 
 }
 
 export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsScope = 'global'): Promise<AnalyticsDashboardData> {
-  const [followers, following, events] = await Promise.all([
+  // Hydrate comprehensive profile data
+  const hydrated = await hydrateUserProfileCached({ pubkey });
+
+  // Combine all hydrated events
+  const allEvents: NostrEvent[] = [
+    ...hydrated.notes,
+    ...hydrated.reactions,
+    ...hydrated.zaps,
+    ...hydrated.reposts,
+    ...hydrated.replies,
+    ...hydrated.quotes,
+  ];
+
+  // Get followers/following from contacts
+  const [followers, following] = await Promise.all([
     loadFollowers(pubkey),
     loadFollowing(pubkey),
-    scope === 'global' ? loadGlobalEvents() : loadWotEvents(pubkey),
   ]);
 
-  const fallbackEvents = events.length > 0 ? events : await loadProfileActivity(pubkey);
-  return computeAnalyticsFromEvents({ pubkey, events: fallbackEvents, followers, following, scope });
+  // If scope is WoT, also load WoT events
+  const wotEvents = scope === 'wot' ? await loadWotEvents(pubkey) : [];
+  const finalEvents = scope === 'wot' && wotEvents.length > 0 ? wotEvents : allEvents;
+
+  return computeAnalyticsFromEvents({ pubkey, events: finalEvents, followers, following, scope });
 }
