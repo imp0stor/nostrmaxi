@@ -17,6 +17,7 @@ import { ConfigAccordion } from '../components/ConfigAccordion';
 import { FilterBar } from '../components/filters/FilterBar';
 import { useTagFilter } from '../hooks/useTagFilter';
 import { BookmarkButton } from '../components/bookmarks/BookmarkButton';
+import { usePinnedPost } from '../hooks/usePinnedPost';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -84,6 +85,7 @@ function getInitialMode(): FeedMode {
 
 export function FeedPage() {
   const { user, isAuthenticated } = useAuth();
+  const { pinnedPost, pinPost } = usePinnedPost(user?.pubkey);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [feedFilters, setFeedFilters] = useState<FeedFilterState>(() => {
     if (typeof window === 'undefined') return DEFAULT_FEED_FILTERS;
@@ -420,6 +422,22 @@ export function FeedPage() {
     if (ok) await refresh();
   };
 
+  const onPin = async (item: FeedItem) => {
+    if (!user?.pubkey) return;
+    if (item.pubkey !== user.pubkey) return;
+    if (pinnedPost?.eventId && pinnedPost.eventId !== item.id) {
+      const confirmed = confirm('This will replace your current pinned post. Continue?');
+      if (!confirmed) return;
+    }
+
+    try {
+      await pinPost({ id: item.id, pubkey: item.pubkey });
+      alert('Pinned to profile.');
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to pin post');
+    }
+  };
+
   const onZap = async (item: FeedItem) => {
     if (!user?.pubkey) return;
     const options = getDefaultZapAmountOptions();
@@ -732,6 +750,7 @@ export function FeedPage() {
                   <button className="cy-chip" onClick={() => onAction('repost', item)} disabled={busyId === `repost-${item.id}`}>Repost</button>
                   <button className="cy-chip" onClick={() => onAction('reply', item)} disabled={busyId === `reply-${item.id}`}>Reply</button>
                   <button className="cy-chip" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
+                  {item.pubkey === user?.pubkey ? <button className="cy-chip" onClick={() => onPin(item)}>📌 Pin to Profile</button> : null}
                   <BookmarkButton eventId={item.id} pubkey={user?.pubkey} />
                 </div>
               </div>

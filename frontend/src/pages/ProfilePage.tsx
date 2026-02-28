@@ -12,6 +12,8 @@ import { InlineContent } from '../components/InlineContent';
 import { aggregateZaps, buildZapButtonLabel, formatZapIndicator, getDefaultZapAmountOptions, getZapPreferences, loadZapReceipts, sendZap, subscribeToZaps, type ZapAggregate } from '../lib/zaps';
 import { ExternalIdentityPanel } from '../components/profile/ExternalIdentityPanel';
 import { useExternalIdentities } from '../hooks/useExternalIdentities';
+import { usePinnedPost } from '../hooks/usePinnedPost';
+import { usePublicLists } from '../hooks/usePublicLists';
 
 type PanelMode = 'followers' | 'following' | null;
 type PanelSort = 'name' | 'followers' | 'following';
@@ -47,6 +49,9 @@ export function ProfilePage() {
     if (npub.startsWith('npub')) return decodeNpub(npub) || npub;
     return npub;
   }, [npub, user?.pubkey]);
+
+  const { pinnedPost } = usePinnedPost(targetPubkey);
+  const { lists: curatedLists } = usePublicLists(user?.pubkey, targetPubkey);
 
   const {
     identities: externalIdentities,
@@ -266,6 +271,23 @@ export function ProfilePage() {
         <div className="mt-4 flex items-center gap-2 flex-wrap">
           <span className="cy-chip">{formatZapIndicator(profileZapTotal)}</span>
           <button type="button" className="cy-chip" onClick={onZapProfile} disabled={targetPubkey === user.pubkey || zapBusy}>{targetPubkey === user.pubkey ? '⚡ Zap profile' : buildZapButtonLabel(zapBusy)}</button>
+        </div>
+      </div>
+
+      <div className="cy-card p-5 space-y-4">
+        <div>
+          <h2 className="text-cyan-100 font-semibold">📌 Pinned Post</h2>
+          {pinnedPost?.eventId ? (
+            <p className="text-sm text-cyan-300/90 break-all mt-1">{pinnedPost.eventId}</p>
+          ) : <p className="text-sm text-cyan-300/70 mt-1">No pinned post</p>}
+        </div>
+        <div>
+          <h3 className="text-cyan-100 font-semibold">📚 Curated Lists</h3>
+          {curatedLists.length === 0 ? <p className="text-sm text-cyan-300/70 mt-1">No public lists yet.</p> : (
+            <ul className="mt-2 space-y-1 text-sm text-cyan-200">
+              {curatedLists.slice(0, 5).map((list) => <li key={list.id}>• {list.title} ({list.eventIds.length} posts)</li>)}
+            </ul>
+          )}
         </div>
       </div>
 
