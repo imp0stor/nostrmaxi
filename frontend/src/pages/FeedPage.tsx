@@ -16,6 +16,7 @@ import { LiveStreamCard } from '../components/LiveStreamCard';
 import { ConfigAccordion } from '../components/ConfigAccordion';
 import { FilterBar } from '../components/filters/FilterBar';
 import { useTagFilter } from '../hooks/useTagFilter';
+import { BookmarkButton } from '../components/bookmarks/BookmarkButton';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -726,11 +727,12 @@ export function FeedPage() {
                 <span className="cy-chip" title="Zap totals">
                   {formatZapIndicator(displayZapByEventId.get(item.id))}
                 </span>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap justify-end">
                   <button className="cy-chip" onClick={() => onAction('like', item)} disabled={busyId === `like-${item.id}`}>Like</button>
                   <button className="cy-chip" onClick={() => onAction('repost', item)} disabled={busyId === `repost-${item.id}`}>Repost</button>
                   <button className="cy-chip" onClick={() => onAction('reply', item)} disabled={busyId === `reply-${item.id}`}>Reply</button>
                   <button className="cy-chip" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
+                  <BookmarkButton eventId={item.id} pubkey={user?.pubkey} />
                 </div>
               </div>
             </article>

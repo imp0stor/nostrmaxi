@@ -18,6 +18,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
 import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
+import { BookmarksPage } from './pages/BookmarksPage';
 import { truncateNpub } from './lib/nostr';
 import { Avatar } from './components/Avatar';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
@@ -100,6 +101,7 @@ export default function App() {
     { path: '/discover', label: 'Discover' },
     { path: '/media-discovery', label: 'Media', authed: true },
     { path: '/lists', label: 'Lists', authed: true },
+    { path: '/bookmarks', label: 'Bookmarks', authed: true },
     { path: '/marketplace', label: 'Marketplace', authed: true },
     { path: '/dashboard', label: 'Manage', authed: true },
     { path: '/analytics', label: 'Analytics', authed: true },
@@ -202,6 +204,7 @@ export default function App() {
           <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
           <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
           <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
+          <Route path="/bookmarks" element={isAuthenticated ? <BookmarksPage /> : <Navigate to="/" replace />} />
           <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
           <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
           <Route path="/dashboard" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" replace />} />
