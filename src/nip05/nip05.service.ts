@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException, 
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { SimplePool } from 'nostr-tools';
+import { canDirectlyRegisterName } from '../config/name-pricing';
 
 // Tier limits for NIP-05 identities
 const TIER_NIP05_LIMITS: Record<string, number> = {
@@ -11,14 +12,6 @@ const TIER_NIP05_LIMITS: Record<string, number> = {
   LIFETIME: 1,
 };
 
-// ⭐ RESERVED NIP-05 NAMES
-const RESERVED_NAMES = new Set([
-  'admin', 'administrator', 'root', 'postmaster', 'noreply', 'no-reply',
-  'support', 'info', 'contact', 'webmaster', 'security', 'abuse',
-  'api', 'www', 'mail', 'ftp', 'smtp', 'pop', 'imap',
-  '_domainkey', '_dmarc', 'dmarc', 'autoconfig', 'autodiscover',
-  'help', 'sales', 'billing', 'feedback', 'hello', 'welcome'
-]);
 
 export interface Nip05Response {
   names: Record<string, string>;
@@ -139,9 +132,10 @@ export class Nip05Service {
       throw new BadRequestException('Local part cannot contain consecutive hyphens');
     }
     
-    // Reserved names check
-    if (RESERVED_NAMES.has(normalizedLocal)) {
-      throw new BadRequestException(`"${normalizedLocal}" is a reserved name`);
+    // Reserved/marketplace name policy check
+    const registrationPolicy = canDirectlyRegisterName(normalizedLocal);
+    if (!registrationPolicy.allowed) {
+      throw new BadRequestException(registrationPolicy.message);
     }
 
     // Check if already taken
@@ -253,7 +247,11 @@ export class Nip05Service {
         entity: 'Nip05',
         entityId: nip05.id,
         actorPubkey: pubkey,
-        details: { localPart: normalizedLocal, domain: targetDomain },
+        details: {
+          localPart: normalizedLocal,
+          domain: targetDomain,
+          pricing: JSON.parse(JSON.stringify(registrationPolicy.quote)),
+        },
       },
     });
 
@@ -262,6 +260,7 @@ export class Nip05Service {
       pubkey: user.pubkey,
       npub: user.npub,
       createdAt: nip05.createdAt,
+      pricing: registrationPolicy.quote,
     };
   }
 
