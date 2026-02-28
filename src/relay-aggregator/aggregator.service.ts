@@ -120,30 +120,31 @@ export class AggregatorService implements OnModuleInit, OnModuleDestroy {
     try {
       const since = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60; // 30 days
       
-      // Fetch profile
-      const profiles = await this.pool.querySync(SOURCE_RELAYS, {
-        kinds: [0],
+      // Fetch profile, follow list, relay list, mute list
+      const metadata = await this.pool.querySync(SOURCE_RELAYS, {
+        kinds: [0, 3, 10002, 10000, 10001],
         authors: [pubkey],
-        limit: 1,
+        limit: 10,
       });
       
-      // Fetch recent notes
-      const notes = await this.pool.querySync(SOURCE_RELAYS, {
-        kinds: [1],
+      // Fetch recent content (notes, reposts, articles)
+      const content = await this.pool.querySync(SOURCE_RELAYS, {
+        kinds: [1, 6, 16, 30023],
         authors: [pubkey],
         since,
-        limit: 50,
+        limit: 100,
       });
       
-      // Fetch follow list
-      const follows = await this.pool.querySync(SOURCE_RELAYS, {
-        kinds: [3],
-        authors: [pubkey],
-        limit: 1,
+      // Fetch reactions and zaps TO this user
+      const engagement = await this.pool.querySync(SOURCE_RELAYS, {
+        kinds: [7, 9735],
+        '#p': [pubkey],
+        since,
+        limit: 100,
       });
       
       // Sync all to local relay
-      const allEvents = [...profiles, ...notes, ...follows];
+      const allEvents = [...metadata, ...content, ...engagement];
       let synced = 0;
       
       for (const event of allEvents) {

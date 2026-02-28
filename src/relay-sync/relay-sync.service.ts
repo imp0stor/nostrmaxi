@@ -17,7 +17,30 @@ import { readdir, stat } from 'fs/promises';
 import { join, resolve } from 'path';
 
 const DEFAULT_LOCAL_RELAY = 'ws://10.1.10.143:7777';
-const SUPPORTED_KINDS = [0, 1, 3, 6, 7, 9735, 10002, 30023];
+// Comprehensive Nostr event kinds
+const SUPPORTED_KINDS = [
+  0,      // Profile metadata
+  1,      // Short text note
+  3,      // Follow list
+  5,      // Event deletion
+  6,      // Repost
+  7,      // Reaction
+  8,      // Badge award
+  16,     // Generic repost
+  1063,   // File metadata
+  1984,   // Report
+  9734,   // Zap request
+  9735,   // Zap receipt
+  10000,  // Mute list
+  10001,  // Pin list
+  10002,  // Relay list
+  30000,  // Categorized people list
+  30001,  // Categorized bookmark list
+  30008,  // Profile badges
+  30009,  // Badge definition
+  30023,  // Long-form content
+  30078,  // App-specific data
+];
 const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_BATCH_SLEEP_MS = 30_000;
 const DEFAULT_QUERY_LIMIT = 250;
