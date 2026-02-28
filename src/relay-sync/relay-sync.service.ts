@@ -1,7 +1,16 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { type Event as NostrEvent, SimplePool } from 'nostr-tools';
+import { type Event as NostrEvent, type SimplePool as SimplePoolType } from 'nostr-tools';
 import { PrismaService } from '../prisma/prisma.service';
+
+// Enable WebSocket for Node.js - must import SimplePool from same module as useWebSocketImplementation
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+const { useWebSocketImplementation, SimplePool } = require('nostr-tools/pool') as {
+  useWebSocketImplementation: (ws: unknown) => void;
+  SimplePool: new () => SimplePoolType;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+useWebSocketImplementation(require('ws'));
 import { PriorityService } from './priority.service';
 import { RateLimiterService } from './rate-limiter.service';
 import { readdir, stat } from 'fs/promises';

@@ -1,10 +1,13 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { SimplePool, type Event as NostrEvent } from 'nostr-tools';
+import { type Event as NostrEvent, type SimplePool as SimplePoolType } from 'nostr-tools';
 import { NoiseFilterService } from '../sync/noise-filter.service';
 
-// Enable WebSocket for Node.js
+// Enable WebSocket for Node.js - must import SimplePool from same module as useWebSocketImplementation
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-const { useWebSocketImplementation } = require('nostr-tools/pool');
+const { useWebSocketImplementation, SimplePool } = require('nostr-tools/pool') as {
+  useWebSocketImplementation: (ws: unknown) => void;
+  SimplePool: new () => SimplePoolType;
+};
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 useWebSocketImplementation(require('ws'));
 import { RetentionPolicy, SyncPriorityService, SyncTier } from '../sync/sync-priority.service';
@@ -37,7 +40,7 @@ const NOTABLE_PUBKEYS = [
 export class AggregatorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AggregatorService.name);
   private prioritySyncTimer: NodeJS.Timeout | null = null;
-  private pool: SimplePool;
+  private pool: SimplePoolType;
   private isRunning = false;
 
   constructor(

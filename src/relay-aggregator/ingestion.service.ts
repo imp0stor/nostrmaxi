@@ -1,6 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { SimplePool, type Event as NostrEvent } from 'nostr-tools';
+import { type Event as NostrEvent, type SimplePool as SimplePoolType } from 'nostr-tools';
+
+// Enable WebSocket for Node.js - must import SimplePool from same module
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+const { useWebSocketImplementation, SimplePool } = require('nostr-tools/pool') as {
+  useWebSocketImplementation: (ws: unknown) => void;
+  SimplePool: new () => SimplePoolType;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+useWebSocketImplementation(require('ws'));
 import { RetentionPolicy } from '../sync/sync-priority.service';
 
 @Injectable()

@@ -3,8 +3,17 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import type { Cache } from 'cache-manager';
-import { SimplePool, type Event as NostrEvent } from 'nostr-tools';
+import { type Event as NostrEvent, type SimplePool as SimplePoolType } from 'nostr-tools';
 import { PrismaService } from '../prisma/prisma.service';
+
+// Enable WebSocket for Node.js - must import SimplePool from same module
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+const { useWebSocketImplementation, SimplePool } = require('nostr-tools/pool') as {
+  useWebSocketImplementation: (ws: unknown) => void;
+  SimplePool: new () => SimplePoolType;
+};
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+useWebSocketImplementation(require('ws'));
 
 const LOCAL_RELAY = process.env.LOCAL_RELAY_URL || 'ws://10.1.10.143:7777';
 const LATEST_CACHE_KEY = 'analytics:network:latest';
