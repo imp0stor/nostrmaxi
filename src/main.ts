@@ -1,3 +1,8 @@
+// Enable WebSocket for nostr-tools in Node.js (must be before any nostr-tools imports)
+import { useWebSocketImplementation } from 'nostr-tools';
+import WebSocket from 'websocket-polyfill';
+useWebSocketImplementation(WebSocket);
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
