@@ -41,13 +41,14 @@ const SUPPORTED_KINDS = [
   30023,  // Long-form content
   30078,  // App-specific data
 ];
-const DEFAULT_BATCH_SIZE = 10;
-const DEFAULT_BATCH_SLEEP_MS = 30_000;
-const DEFAULT_QUERY_LIMIT = 250;
+const DEFAULT_BATCH_SIZE = 25;           // Users per batch (was 10)
+const DEFAULT_BATCH_SLEEP_MS = 8_000;    // 8s between batches (was 30s) - still polite
+const DEFAULT_QUERY_LIMIT = 500;         // Events per query (was 250)
 const EVENT_PUBLISH_BATCH = 50;
 const MAX_RELAY_SIZE_GB = 50;
 const WARNING_THRESHOLD_GB = 40;
 
+// More relays = spread load = more polite + better coverage
 const SEED_RELAYS = [
   'wss://relay.damus.io',
   'wss://relay.primal.net',
@@ -59,6 +60,12 @@ const SEED_RELAYS = [
   'wss://relay.current.fyi',
   'wss://offchain.pub',
   'wss://relay.nostr.net',
+  'wss://nostr.wine',
+  'wss://relay.nostr.bg',
+  'wss://nostr.oxtr.dev',
+  'wss://relay.nostrplebs.com',
+  'wss://nostr-pub.wellorder.net',
+  'wss://relay.nostrati.com',
 ];
 
 const NOTABLE_PUBKEYS = [
