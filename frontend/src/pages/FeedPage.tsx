@@ -554,17 +554,10 @@ export function FeedPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
       <header className="cy-card p-5">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="cy-kicker">SOCIAL FEED</p>
-            <h1 className="cy-title">Home Timeline</h1>
-          </div>
+        <div className="flex items-center justify-between gap-4 mb-3">
+          <p className="cy-kicker">SOCIAL FEED</p>
           <button className="cy-btn-secondary" onClick={refresh}>Refresh</button>
         </div>
-      </header>
-
-      <section className="cy-card p-5">
-        <p className="cy-kicker mb-2">FEED MODE</p>
         <div className="flex flex-wrap gap-2">
           {(Object.keys(FEED_MODE_LABELS) as FeedMode[]).map((mode) => (
             <button
@@ -579,7 +572,7 @@ export function FeedPage() {
             </button>
           ))}
         </div>
-      </section>
+      </header>
 
       <section className="cy-card p-5 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
