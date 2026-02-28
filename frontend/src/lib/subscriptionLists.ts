@@ -5,6 +5,7 @@ export const LIST_D_TAGS = {
   TOPIC_SUBSCRIPTIONS: 'topic-subscriptions',
   USER_SUBSCRIPTIONS: 'user-subscriptions',
   NOTIFICATION_PREFS: 'notification-prefs',
+  CUSTOM_FEEDS: 'custom-feeds',
 } as const;
 
 export interface FeedSubscriptions {

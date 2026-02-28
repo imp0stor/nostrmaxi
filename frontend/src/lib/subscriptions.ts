@@ -11,8 +11,15 @@ import {
   type TopicSubscriptions,
   type UserSubscriptions,
 } from './subscriptionLists';
+import type { CustomFeedDefinition } from './social';
 
 const DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol', 'wss://relay.primal.net'];
+
+interface CustomFeedList {
+  feeds: CustomFeedDefinition[];
+}
+
+const DEFAULT_CUSTOM_FEED_LIST: CustomFeedList = { feeds: [] };
 
 function getConversationKey(privateKey: Uint8Array): Uint8Array {
   const pubkey = getPublicKey(privateKey);
@@ -113,3 +120,11 @@ export const saveUserSubscriptions = (data: UserSubscriptions, pubkey: string, p
 
 export const saveNotificationPrefs = (data: NotificationPreferences, pubkey: string, privateKey: Uint8Array, relays?: string[]) =>
   saveEncryptedList(LIST_D_TAGS.NOTIFICATION_PREFS, data, pubkey, privateKey, relays);
+
+export const loadCustomFeedsList = async (pubkey: string, privateKey: Uint8Array, relays?: string[]): Promise<CustomFeedDefinition[]> => {
+  const data = await loadEncryptedList(LIST_D_TAGS.CUSTOM_FEEDS, DEFAULT_CUSTOM_FEED_LIST, pubkey, privateKey, relays);
+  return Array.isArray(data.feeds) ? data.feeds : [];
+};
+
+export const saveCustomFeedsList = (feeds: CustomFeedDefinition[], pubkey: string, privateKey: Uint8Array, relays?: string[]) =>
+  saveEncryptedList(LIST_D_TAGS.CUSTOM_FEEDS, { feeds }, pubkey, privateKey, relays);

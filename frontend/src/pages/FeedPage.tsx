@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { signEvent, publishEvent, truncateNpub } from '../lib/nostr';
-import { loadBookmarkFeed, loadDiscoverableCustomFeeds, loadFeedForCustomDefinition, loadFeedWithDiagnostics, loadFollowing, loadUserCustomFeeds, publishCustomFeed, publishKind1, reactToEvent, type CustomFeedDefinition, type FeedItem, type FeedDiagnostics, type FeedMode } from '../lib/social';
+import { loadBookmarkFeed, loadDiscoverableCustomFeeds, loadFeedForCustomDefinition, loadFeedWithDiagnostics, loadFollowing, publishCustomFeed, publishKind1, reactToEvent, type CustomFeedDefinition, type FeedItem, type FeedDiagnostics, type FeedMode } from '../lib/social';
 import { extractQuoteRefsFromTokens, parseMediaFromFeedItem } from '../lib/media';
 import { Avatar } from '../components/Avatar';
 import { InlineContent } from '../components/InlineContent';
@@ -20,6 +20,8 @@ import { BookmarkButton } from '../components/bookmarks/BookmarkButton';
 import { usePinnedPost } from '../hooks/usePinnedPost';
 import { useSubscriptions } from '../hooks/useSubscriptions';
 import { shouldNotify, shouldPlaySound } from '../lib/subscriptionMatcher';
+import { FeedDiscoveryModal } from '../components/feed/FeedDiscoveryModal';
+import { loadCustomFeedsList, saveCustomFeedsList } from '../lib/subscriptions';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -77,6 +79,15 @@ const DEFAULT_FEED_FILTERS: FeedFilterState = {
   withLinks: false,
 };
 
+const DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol', 'wss://relay.primal.net'];
+
+function hexToBytes(hex: string): Uint8Array | null {
+  if (!/^[a-f0-9]{64}$/i.test(hex)) return null;
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 32; i += 1) out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
 function parseFeedFilters(value: string | null): FeedFilterState {
   if (!value) return DEFAULT_FEED_FILTERS;
   try {
@@ -124,12 +135,7 @@ export function FeedPage() {
   const [activeCustomFeedId, setActiveCustomFeedId] = useState<string | null>(null);
   const [userCustomFeeds, setUserCustomFeeds] = useState<CustomFeedDefinition[]>([]);
   const [discoverableFeeds, setDiscoverableFeeds] = useState<CustomFeedDefinition[]>([]);
-  const [showCreateFeed, setShowCreateFeed] = useState(false);
-  const [newFeedTitle, setNewFeedTitle] = useState('');
-  const [newFeedDescription, setNewFeedDescription] = useState('');
-  const [newFeedTopics, setNewFeedTopics] = useState('');
-  const [newFeedAuthors, setNewFeedAuthors] = useState('');
-  const [newFeedIncludeReplies, setNewFeedIncludeReplies] = useState(true);
+  const [showFeedModal, setShowFeedModal] = useState(false);
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [pendingZaps, setPendingZaps] = useState<PendingZap[]>([]);
   const { filters: contentFilters, syncNow: syncContentFilters } = useContentFilters(user?.pubkey);
@@ -144,6 +150,25 @@ export function FeedPage() {
   });
 
   const canPost = useMemo(() => isAuthenticated && Boolean(user?.pubkey), [isAuthenticated, user?.pubkey]);
+  const privateKey = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    return hexToBytes(sessionStorage.getItem('nostrmaxi_nsec_hex') || '');
+  }, [user?.pubkey]);
+  const userFollowing = useMemo(() => Array.from(followingSet), [followingSet]);
+  const userInterests = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of feed.slice(0, 250)) {
+      for (const tag of item.tags || []) {
+        if (tag[0] !== 't' || !tag[1]) continue;
+        const normalized = tag[1].toLowerCase();
+        counts.set(normalized, (counts.get(normalized) || 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([topic]) => topic);
+  }, [feed]);
 
   const mutedByEventId = useMemo(() => {
     const map = new Map<string, boolean>();
@@ -286,20 +311,20 @@ export function FeedPage() {
   useEffect(() => {
     if (!user?.pubkey) return;
     const loadCustomFeedState = async () => {
-      const [mine, discoverable, following] = await Promise.all([
-        loadUserCustomFeeds(user.pubkey),
+      const [saved, discoverable, following] = await Promise.all([
+        privateKey ? loadCustomFeedsList(user.pubkey, privateKey, DEFAULT_RELAYS) : Promise.resolve([]),
         loadDiscoverableCustomFeeds(),
         loadFollowing(user.pubkey),
       ]);
-      setUserCustomFeeds(mine);
+      setUserCustomFeeds(saved);
       setDiscoverableFeeds(discoverable.filter((feedDef) => feedDef.ownerPubkey !== user.pubkey));
       setFollowingSet(new Set(following));
-      if (activeCustomFeedId && !mine.some((feedDef) => feedDef.id === activeCustomFeedId)) {
+      if (activeCustomFeedId && !saved.some((feedDef) => feedDef.id === activeCustomFeedId)) {
         setActiveCustomFeedId(null);
       }
     };
     void loadCustomFeedState();
-  }, [user?.pubkey]);
+  }, [user?.pubkey, privateKey]);
 
   const loadPage = async (reset = false) => {
     if (!user?.pubkey) return;
@@ -559,35 +584,34 @@ export function FeedPage() {
   };
 
 
-  const onCreateCustomFeed = async () => {
-    if (!user?.pubkey || !newFeedTitle.trim()) return;
-    const id = newFeedTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40) || `feed-${Date.now()}`;
-    const hashtags = Array.from(new Set(newFeedTopics.split(',').map((x) => x.trim().replace(/^#/, '').toLowerCase()).filter(Boolean)));
-    const authors = Array.from(new Set(newFeedAuthors.split(',').map((x) => x.trim()).filter(Boolean)));
-    const ok = await publishCustomFeed({
-      id,
-      title: newFeedTitle.trim(),
-      description: newFeedDescription.trim(),
-      hashtags,
-      authors,
-      includeReplies: newFeedIncludeReplies,
-    }, user.pubkey, signEvent, publishEvent);
+  const onAddCustomFeed = async (feedDef: CustomFeedDefinition) => {
+    if (!user?.pubkey) return;
 
-    if (!ok) {
-      alert('Failed to publish custom feed list event.');
-      return;
+    const normalizedFeed: CustomFeedDefinition = {
+      ...feedDef,
+      hashtags: Array.from(new Set((feedDef.hashtags || []).map((tag) => tag.toLowerCase()))),
+      authors: Array.from(new Set(feedDef.authors || [])),
+    };
+
+    if (!feedDef.ownerPubkey || feedDef.ownerPubkey === user.pubkey) {
+      await publishCustomFeed(normalizedFeed, user.pubkey, signEvent, publishEvent);
     }
 
-    const nextFeeds = await loadUserCustomFeeds(user.pubkey);
-    setUserCustomFeeds(nextFeeds);
-    setActiveCustomFeedId(id);
+    setUserCustomFeeds((prev) => {
+      const next = prev.some((feed) => feed.id === normalizedFeed.id)
+        ? prev.map((feed) => (feed.id === normalizedFeed.id ? normalizedFeed : feed))
+        : [...prev, normalizedFeed];
+
+      if (privateKey) {
+        void saveCustomFeedsList(next, user.pubkey, privateKey, DEFAULT_RELAYS);
+      }
+
+      return next;
+    });
+
+    setActiveCustomFeedId(normalizedFeed.id);
     setFeedMode('following');
-    setShowCreateFeed(false);
-    setNewFeedTitle('');
-    setNewFeedDescription('');
-    setNewFeedTopics('');
-    setNewFeedAuthors('');
-    setNewFeedIncludeReplies(true);
+    setShowFeedModal(false);
   };
 
   if (!isAuthenticated || !user) {
@@ -609,8 +633,8 @@ export function FeedPage() {
           <p className="cy-kicker">SOCIAL FEED</p>
           <button className="cy-btn-secondary" onClick={refresh}>Refresh</button>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
-          {/* Default feed modes */}
           {(Object.keys(FEED_MODE_LABELS) as FeedMode[]).map((mode) => (
             <button
               key={mode}
@@ -623,91 +647,52 @@ export function FeedPage() {
               {FEED_MODE_LABELS[mode]}
             </button>
           ))}
-          
-          {/* Divider + Bookmarks + User's saved feeds */}
+
           <span className="text-gray-600 mx-1">|</span>
+
           <button
             className={`cy-chip text-sm ${activeCustomFeedId === 'bookmarks' ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
-            onClick={() => { setFeedMode('following'); setActiveCustomFeedId('bookmarks'); }}
+            onClick={() => {
+              setFeedMode('following');
+              setActiveCustomFeedId('bookmarks');
+            }}
           >
             📑 Bookmarks
           </button>
-          {userCustomFeeds.map((feedDef) => (
-            <button
-              key={feedDef.id}
-              className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
-              onClick={() => { setFeedMode('following'); setActiveCustomFeedId(feedDef.id); }}
-            >
-              {feedDef.title}
-            </button>
-          ))}
+
+          <button
+            className="cy-chip text-sm border-dashed border-gray-600 text-gray-400 hover:border-cyan-500 hover:text-cyan-400"
+            onClick={() => setShowFeedModal(true)}
+          >
+            + Feeds
+          </button>
         </div>
-      </header>
 
-      <ConfigAccordion
-        id="custom-feeds"
-        title="Discover & Create Feeds"
-        subtitle={`${discoverableFeeds.length} public feeds available`}
-        summary="Find public feeds or create your own"
-        defaultOpen={false}
-        rightSlot={<button className="cy-btn-secondary text-xs" onClick={() => setShowCreateFeed((v) => !v)}>{showCreateFeed ? 'Cancel' : '+ New'}</button>}
-      >
-        {/* Discover Public Feeds */}
-        {(() => {
-          // Filter out feeds with UUID-like or hex titles (garbage data)
-          const isValidTitle = (title: string) => {
-            if (!title || title.length < 2) return false;
-            // Reject if looks like UUID or hex string
-            if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(title)) return false;
-            if (/^[0-9a-f]{20,}$/i.test(title)) return false;
-            // Reject single word "mute" or similar noise
-            if (['mute', 'test', 'asdf'].includes(title.toLowerCase())) return false;
-            return true;
-          };
-          const validFeeds = discoverableFeeds.filter(f => isValidTitle(f.title));
-          
-          return validFeeds.length > 0 ? (
-            <div className="mb-4">
-              <p className="text-xs text-gray-400 mb-2">Discover Public Feeds</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {validFeeds.slice(0, 6).map((feedDef) => (
-                  <button
-                    key={`${feedDef.ownerPubkey}:${feedDef.id}`}
-                    className="text-left p-3 rounded-lg border border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800/50 transition-colors"
-                    onClick={() => {
-                      setUserCustomFeeds((prev) => prev.some((f) => f.id === feedDef.id) ? prev : [...prev, feedDef]);
-                      setActiveCustomFeedId(feedDef.id);
-                      setFeedMode('following');
-                    }}
-                  >
-                    <div className="font-medium text-sm text-cyan-100">{feedDef.title}</div>
-                    {feedDef.description && <div className="text-xs text-gray-400 mt-1 line-clamp-1">{feedDef.description}</div>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null;
-        })()}
-
-        {/* Create Feed Form */}
-        {showCreateFeed && (
-          <div className="border-t border-gray-700 pt-4 mt-4">
-            <p className="text-xs text-gray-400 mb-3">Create New Feed</p>
-            <div className="grid md:grid-cols-2 gap-3">
-              <input className="cy-input" placeholder="Feed title" value={newFeedTitle} onChange={(e) => setNewFeedTitle(e.target.value)} />
-              <input className="cy-input" placeholder="Description" value={newFeedDescription} onChange={(e) => setNewFeedDescription(e.target.value)} />
-              <input className="cy-input" placeholder="Topics (comma-separated hashtags)" value={newFeedTopics} onChange={(e) => setNewFeedTopics(e.target.value)} />
-              <input className="cy-input" placeholder="Authors (comma-separated pubkeys)" value={newFeedAuthors} onChange={(e) => setNewFeedAuthors(e.target.value)} />
-              <label className="flex items-center gap-2 text-sm text-cyan-100">
-                <input type="checkbox" checked={newFeedIncludeReplies} onChange={(e) => setNewFeedIncludeReplies(e.target.checked)} /> Include replies
-              </label>
-              <div className="flex justify-end">
-                <button className="cy-btn" onClick={onCreateCustomFeed}>Save Feed</button>
-              </div>
-            </div>
+        {userCustomFeeds.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-700/50">
+            {userCustomFeeds.map((feedDef) => (
+              <button
+                key={feedDef.id}
+                className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+                onClick={() => {
+                  setFeedMode('following');
+                  setActiveCustomFeedId(feedDef.id);
+                }}
+              >
+                {feedDef.title}
+              </button>
+            ))}
           </div>
         )}
-      </ConfigAccordion>
+      </header>
+
+      <FeedDiscoveryModal
+        open={showFeedModal}
+        onClose={() => setShowFeedModal(false)}
+        onAddFeed={onAddCustomFeed}
+        userProfile={{ interests: userInterests, following: userFollowing }}
+        discoverableFeeds={discoverableFeeds}
+      />
 
       <section className="cy-card p-5">
         <p className="cy-kicker mb-2">COMPOSER / KIND-1</p>
