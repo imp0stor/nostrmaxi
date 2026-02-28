@@ -1,6 +1,7 @@
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
+import { ScheduleModule } from '@nestjs/schedule';
 import { redisStore } from 'cache-manager-redis-yet';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
@@ -48,6 +49,7 @@ import { AppConfigModule } from './config/config.module';
       }),
     }),
     PrismaModule,
+    ScheduleModule.forRoot(),
     AppConfigModule,
     HealthModule,
     MetricsModule,

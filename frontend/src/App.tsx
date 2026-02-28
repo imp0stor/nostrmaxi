@@ -14,6 +14,7 @@ import { OnboardingPage } from './pages/OnboardingPage';
 import { MarketplacePage } from './pages/MarketplacePage';
 import { MarketplaceListingPage } from './pages/MarketplaceListingPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { NetworkAnalyticsPage } from './pages/NetworkAnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
@@ -137,6 +138,7 @@ export default function App() {
             <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
             <Route path="/dashboard" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" replace />} />
             <Route path="/analytics" element={isAuthenticated ? <AnalyticsPage /> : <Navigate to="/" replace />} />
+            <Route path="/network" element={isAuthenticated ? <NetworkAnalyticsPage /> : <Navigate to="/" replace />} />
             <Route path="/ecosystem" element={isAuthenticated ? <EcosystemCatalogPage /> : <Navigate to="/" replace />} />
             <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
             <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
