@@ -56,6 +56,8 @@ export interface OnboardingProfileState {
   nip05: string;
   nip05Verified: boolean;
   externalIdentities: ExternalIdentity[];
+  interests: string[];
+  customInterests: string[];
   skippedFields: Record<string, boolean>;
 }
 
@@ -105,6 +107,8 @@ const initialState: OnboardingState = {
     nip05: '',
     nip05Verified: false,
     externalIdentities: [],
+    interests: ['bitcoin', 'nostr', 'open-source'],
+    customInterests: [],
     skippedFields: {},
   },
   relays: { selected: [], suggestions: [] },
@@ -373,6 +377,8 @@ export function useOnboarding() {
         nip05: state.profile.nip05,
         nip05Verified: state.profile.nip05Verified,
         externalIdentities: state.profile.externalIdentities,
+        interests: state.profile.interests,
+        customInterests: state.profile.customInterests,
         skippedFields: state.profile.skippedFields,
       },
       relays: { selected: state.relays.selected },
@@ -418,6 +424,7 @@ export function useOnboarding() {
       Boolean(state.profile.lightningAddress.trim() || state.profile.skippedFields.lightningAddress),
       Boolean(state.profile.nip05.trim() || state.profile.skippedFields.nip05),
       Boolean(state.profile.externalIdentities.length || state.profile.skippedFields.externalIdentities),
+      Boolean(state.profile.interests.length || state.profile.skippedFields.interests),
     ];
 
     const completedCount = checks.filter(Boolean).length;

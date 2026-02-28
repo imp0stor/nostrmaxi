@@ -21,6 +21,8 @@ interface CompleteOnboardingPayload {
     nip05?: string;
     nip05Verified?: boolean;
     externalIdentities?: Array<{ platform: string; identity: string; proof: string }>;
+    interests?: string[];
+    customInterests?: string[];
     skippedFields?: Record<string, boolean>;
   };
   relays: {
@@ -91,6 +93,27 @@ export class OnboardingService {
       }),
     };
 
+    const interestTags = payload.profile?.interests || [];
+
+    const interestListEvent = {
+      kind: 30001,
+      tags: [
+        ['d', 'nostrmaxi-interests'],
+        ...interestTags.map((tag) => ['t', tag] as string[]),
+        ...interestTags.map((topic) => ['topic', topic] as string[]),
+      ],
+      content: JSON.stringify({ version: 1, customTags: payload.profile?.customInterests || [] }),
+    };
+
+    const hashtagFollowEvent = {
+      kind: 30001,
+      tags: [
+        ['d', 'hashtags'],
+        ...interestTags.map((tag) => ['t', tag] as string[]),
+      ],
+      content: '',
+    };
+
     return {
       success: true,
       message: 'Onboarding complete. Profile, follows, relays, and feed subscriptions prepared.',
@@ -102,6 +125,7 @@ export class OnboardingService {
           website: payload.profile?.website,
           nip05Verified: payload.profile?.nip05Verified,
           externalIdentityCount: payload.profile?.externalIdentities?.length || 0,
+          interestCount: payload.profile?.interests?.length || 0,
           skippedFields: payload.profile?.skippedFields || {},
         },
         relayCount: payload.relays.selected.length,
@@ -111,6 +135,14 @@ export class OnboardingService {
       },
       profileEvent,
       feedListEvent,
+      interestListEvent,
+      hashtagFollowEvent,
+      downstreamUsage: {
+        feedFiltering: 'Use hashtags from hashtagFollowEvent tags',
+        followSuggestions: 'Prioritize creators posting about selected interests',
+        discover: 'Boost content matching selected interest tags',
+        aiBio: 'Use linked accounts + interests + selected categories in prompt context',
+      },
     };
   }
 }

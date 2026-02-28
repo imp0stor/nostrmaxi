@@ -1,5 +1,6 @@
 import { AIBioHelper } from './AIBioHelper';
 import { ExternalAccountLink } from './ExternalAccountLink';
+import { OnboardingInterests } from './OnboardingInterests';
 import { ProfileImageUpload } from './ProfileImageUpload';
 import type { OnboardingProfileState, ExternalIdentity } from '../../hooks/useOnboarding';
 
@@ -82,7 +83,15 @@ export function OnboardingProfile({
           <button type="button" className="text-xs text-cyan-300 underline" onClick={() => onSkipField('bio')}>Skip</button>
         </div>
         <textarea className="cy-input min-h-24" value={profile.bio} onChange={(e) => onProfileChange({ bio: e.target.value })} placeholder="Write a short bio..." />
-        <AIBioHelper context={{ selectedCategories: selectedCategoryNames, selectedFeeds: selectedFeedNames, website: profile.website }} />
+        <AIBioHelper
+          context={{
+            selectedCategories: selectedCategoryNames,
+            selectedFeeds: selectedFeedNames,
+            interests: profile.interests,
+            website: profile.website,
+            externalIdentities: profile.externalIdentities,
+          }}
+        />
       </div>
 
       <div className="grid md:grid-cols-2 gap-3">
@@ -125,6 +134,13 @@ export function OnboardingProfile({
         onAdd={onAddExternalIdentity}
         onRemove={onRemoveExternalIdentity}
         onSkip={() => onSkipField('externalIdentities')}
+      />
+
+      <OnboardingInterests
+        selected={profile.interests}
+        custom={profile.customInterests}
+        onChange={({ interests, customInterests }) => onProfileChange({ interests, customInterests })}
+        onSkip={() => onSkipField('interests')}
       />
 
       <div className="flex justify-between gap-2 flex-wrap">
