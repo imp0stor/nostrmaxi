@@ -4,6 +4,7 @@ import { useMuteSettings } from '../hooks/useMuteSettings';
 import { MuteWordsSettings } from '../components/MuteWordsSettings';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { MutedWordsManager } from '../components/settings/MutedWordsManager';
+import { ContentFiltersManager } from '../components/settings/ContentFiltersManager';
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -36,23 +37,35 @@ export function SettingsPage() {
       </header>
 
       {tab === 'muted-words' ? (
-        <CollapsibleSection
-          id="settings-muted-words"
-          title="Muted Words Controls"
-          subtitle="Manage noise reduction for your feed"
-          summary={`Rules active: ${muteSettings.rules.length} • Sync: ${syncState}`}
-          defaultOpen={false}
-        >
-          <MutedWordsManager />
-          <div className="pt-4 border-t border-swordfish-muted/30">
-            <MuteWordsSettings
-              settings={muteSettings}
-              onChange={setMuteSettings}
-              onSync={runSync}
-              syncStatus={syncState}
-            />
-          </div>
-        </CollapsibleSection>
+        <>
+          <CollapsibleSection
+            id="settings-muted-words"
+            title="Muted Words Controls"
+            subtitle="Manage noise reduction for your feed"
+            summary={`Rules active: ${muteSettings.rules.length} • Sync: ${syncState}`}
+            defaultOpen={false}
+          >
+            <MutedWordsManager />
+            <div className="pt-4 border-t border-swordfish-muted/30">
+              <MuteWordsSettings
+                settings={muteSettings}
+                onChange={setMuteSettings}
+                onSync={runSync}
+                syncStatus={syncState}
+              />
+            </div>
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            id="settings-content-filters"
+            title="Encrypted Content Filters"
+            subtitle="Discover and manage all available filter types"
+            summary="Muted words, accounts, hashtags, and threads"
+            defaultOpen
+          >
+            <ContentFiltersManager />
+          </CollapsibleSection>
+        </>
       ) : null}
     </div>
   );

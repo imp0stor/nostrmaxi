@@ -110,18 +110,18 @@ export async function loadFilters(pubkey: string, privateKey: Uint8Array, relays
     } as any);
 
     const latest = [...(events as NostrEvent[])].sort((a, b) => b.created_at - a.created_at)[0];
-    if (!latest) return DEFAULT_CONTENT_FILTERS;
+    if (!latest) return { ...DEFAULT_CONTENT_FILTERS };
 
     const encryptedTag = latest.tags.find((t) => t[0] === 'encrypted' && t[1] === 'nip44');
     if (!encryptedTag) {
       const legacy = JSON.parse(latest.content || '{}') as Partial<ContentFilters>;
-      return normalize(legacy);
+      return normalize({ ...DEFAULT_CONTENT_FILTERS, ...legacy });
     }
 
     const conversationKey = getConversationKey(privateKey);
     const plaintext = nip44.v2.decrypt(latest.content, conversationKey);
     const parsed = JSON.parse(plaintext) as Partial<ContentFilters>;
-    return normalize(parsed);
+    return normalize({ ...DEFAULT_CONTENT_FILTERS, ...parsed });
   } finally {
     pool.close(relays);
   }

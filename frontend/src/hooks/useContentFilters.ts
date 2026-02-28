@@ -13,8 +13,9 @@ function hexToBytes(hex: string): Uint8Array | null {
 export type ContentFilterSyncState = 'idle' | 'syncing' | 'ok' | 'error';
 
 export function useContentFilters(pubkey?: string) {
-  const [filters, setFilters] = useState<ContentFilters>(() => loadLocalFilters(pubkey));
+  const [filters, setFilters] = useState<ContentFilters>(() => ({ ...DEFAULT_CONTENT_FILTERS, ...loadLocalFilters(pubkey) }));
   const [syncState, setSyncState] = useState<ContentFilterSyncState>('idle');
+  const [hasRemoteList, setHasRemoteList] = useState(false);
 
   const privateKey = useMemo(() => {
     if (typeof window === 'undefined') return null;
@@ -23,7 +24,8 @@ export function useContentFilters(pubkey?: string) {
   }, [pubkey]);
 
   useEffect(() => {
-    setFilters(loadLocalFilters(pubkey));
+    setFilters({ ...DEFAULT_CONTENT_FILTERS, ...loadLocalFilters(pubkey) });
+    setHasRemoteList(false);
     setSyncState('idle');
   }, [pubkey]);
 
@@ -36,7 +38,14 @@ export function useContentFilters(pubkey?: string) {
     setSyncState('syncing');
     try {
       const remote = await loadFilters(pubkey, privateKey, DEFAULT_RELAYS);
-      setFilters(remote || DEFAULT_CONTENT_FILTERS);
+      const merged = { ...DEFAULT_CONTENT_FILTERS, ...remote };
+      const hasContent = merged.mutedWords.length > 0 ||
+        merged.mutedPubkeys.length > 0 ||
+        merged.mutedThreads.length > 0 ||
+        merged.mutedHashtags.length > 0;
+
+      setHasRemoteList(hasContent);
+      setFilters(merged);
       setSyncState('ok');
       return true;
     } catch {
@@ -46,11 +55,24 @@ export function useContentFilters(pubkey?: string) {
   }, [pubkey, privateKey]);
 
   const saveNow = useCallback(async (next: ContentFilters) => {
-    setFilters(next);
+    const merged = { ...DEFAULT_CONTENT_FILTERS, ...next };
+    const hasContent = merged.mutedWords.length > 0 ||
+      merged.mutedPubkeys.length > 0 ||
+      merged.mutedThreads.length > 0 ||
+      merged.mutedHashtags.length > 0;
+
+    setFilters(merged);
     if (!privateKey) return false;
+
+    if (!hasContent) {
+      setSyncState('idle');
+      return true;
+    }
+
     setSyncState('syncing');
     try {
-      await saveFilters(next, privateKey, DEFAULT_RELAYS);
+      await saveFilters(merged, privateKey, DEFAULT_RELAYS);
+      setHasRemoteList(true);
       setSyncState('ok');
       return true;
     } catch {
@@ -59,5 +81,15 @@ export function useContentFilters(pubkey?: string) {
     }
   }, [privateKey]);
 
-  return { filters, setFilters, saveNow, syncNow, syncState, hasSignerKey: Boolean(privateKey) };
+  return {
+    filters,
+    setFilters,
+    saveNow,
+    saveFilters: saveNow,
+    syncNow,
+    syncState,
+    syncStatus: syncState,
+    hasRemoteList,
+    hasSignerKey: Boolean(privateKey),
+  };
 }
