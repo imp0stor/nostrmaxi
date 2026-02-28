@@ -52,7 +52,7 @@ export function FeedDiscoverTab({ feeds, userProfile, onAddFeed }: FeedDiscoverT
         <section>
           <h3 className="text-sm font-medium text-cyan-400 mb-3">✨ Recommended for You</h3>
           <div className="grid gap-3 sm:grid-cols-2">
-            {recommended.slice(0, 4).map((feed) => (
+            {recommended.map((feed) => (
               <FeedCard key={`${feed.ownerPubkey || 'local'}:${feed.id}`} feed={feed} onAdd={() => onAddFeed(feed)} />
             ))}
           </div>
@@ -62,7 +62,7 @@ export function FeedDiscoverTab({ feeds, userProfile, onAddFeed }: FeedDiscoverT
       <section>
         <h3 className="text-sm font-medium text-gray-400 mb-3">Browse Public Feeds</h3>
         <div className="grid gap-3 sm:grid-cols-2">
-          {popular.slice(0, 8).map((feed) => (
+          {popular.map((feed) => (
             <FeedCard key={`${feed.ownerPubkey || 'local'}:${feed.id}`} feed={feed} onAdd={() => onAddFeed(feed)} />
           ))}
         </div>
