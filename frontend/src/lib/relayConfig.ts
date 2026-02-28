@@ -15,19 +15,19 @@ export interface RelayConfig {
 const SERVER_RELAY_URL = 'wss://10.1.10.143:3401/relay';
 const DEFAULT_LOCAL_RELAY_URL = SERVER_RELAY_URL;
 
-// Expanded fallback relays - server relay first, then public relays
+// Expanded fallback relays - server relay first, then reliable public relays
 export const FALLBACK_RELAYS = [
   SERVER_RELAY_URL,  // Our local cache via WSS proxy - fast, no rate limits
   'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://purplepag.es',
+  'wss://relay.primal.net', 
+  'wss://relay.snort.social',
   'wss://nostr.wine',
   'wss://nostr-pub.wellorder.net',
   'wss://offchain.pub',
-  // Rate-limited relays at the end (nos.lol, nostr.band, snort.social often limit)
-  'wss://nos.lol',
-  'wss://relay.nostr.band',
-  'wss://relay.snort.social',
+  'wss://purplepag.es',
+  // Disabled - currently having issues (2026-02-28):
+  // 'wss://nos.lol',
+  // 'wss://relay.nostr.band',
 ];
 
 // Cache user relay lists
