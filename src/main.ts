@@ -1,6 +1,8 @@
 // Enable WebSocket for nostr-tools in Node.js (must be before any nostr-tools imports)
-import { useWebSocketImplementation } from 'nostr-tools/pool';
-import WebSocket from 'websocket-polyfill';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const WebSocket = require('websocket-polyfill');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { useWebSocketImplementation } = require('nostr-tools/pool');
 useWebSocketImplementation(WebSocket);
 
 import { NestFactory } from '@nestjs/core';
