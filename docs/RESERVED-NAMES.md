@@ -95,8 +95,88 @@ Behavior:
 - **Economic fairness:** scarce namespace is priced by scarcity and demand, not only first-come speed.
 - **User accessibility:** normal names remain inexpensive at base-tier pricing.
 
+## Expiring Ownership Model
+
+Names are leased, not permanently owned.
+
+### Default term
+- Default ownership term: **365 days**
+- Configurable bounds: 30 days to 10 years
+- Grace period: 30 days after expiration
+
+### Renewal
+- Renewal uses base price plus tier/category multipliers.
+- Grace-period renewals apply late penalty multiplier.
+- If grace window passes, the name can return to marketplace inventory.
+
+Implemented in `src/config/name-ownership.ts`:
+- `createOwnershipWindow(...)`
+- `getOwnershipStatus(...)`
+- `quoteRenewal(...)`
+- `canTransfer(...)`
+
+## Tradeable Name Tokens (Signed Deeds)
+
+NostrMaxi supports a signed off-chain deed model using Nostr events (no blockchain required).
+
+### Deed payload model
+A deed token contains:
+- `name`
+- `ownerPubkey`
+- `issuedAt`
+- `expiresAt`
+- `deedId`
+- `nonce`
+- `version`
+- owner signature
+
+### Transfer model
+1. Seller emits transfer intent payload
+2. Seller signs transfer payload
+3. Buyer countersigns transfer payload
+4. System verifies both signatures and updates active owner
+5. Transfer completion event is emitted
+
+This mirrors a cryptographic "gift card/title deed" concept where possession + signatures prove authorized transfer.
+
+Implemented in `src/types/name-deed.ts`:
+- deed payload and signed structures
+- transfer + countersign structures
+- marketplace listing type
+- canonical serialization helpers for signing
+- event template helpers
+
+## Signed Deed Event Format (Nostr)
+
+Proposed event kinds:
+- `39770` deed issued
+- `39771` transfer intent
+- `39772` transfer complete
+- `39773` listed for sale
+- `39774` sale complete
+- `39775` renewed
+
+Suggested tags:
+- `['t', 'name-deed']`
+- `['name', '<local-part>']`
+- `['deed', '<deedId>']`
+- `['owner', '<pubkey>']`
+- `['expires', '<iso8601>']`
+- `['v', 'v1']`
+
+## Marketplace Features (Design)
+
+- List names for sale with asking price (sats)
+- Fixed-price purchase for eligible listings
+- Auction flow for auction-only inventory
+- Seller + buyer countersigned transfer execution
+- Post-sale ownership update and deed re-issue to new owner
+- Renewal reminders and expiration lifecycle
+
 ## Files
 
 - `src/config/reserved-names.ts` — curated datasets + category metadata + multipliers
 - `src/config/name-pricing.ts` — pricing + eligibility logic
+- `src/config/name-ownership.ts` — lease/expiration + renewal/transfer policy
+- `src/types/name-deed.ts` — signed deed and event format types
 - `src/nip05/nip05.service.ts` — registration enforcement integration
