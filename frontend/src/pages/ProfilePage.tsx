@@ -85,14 +85,15 @@ export function ProfilePage() {
 
   useEffect(() => {
     const run = async () => {
-      if (!targetPubkey || !user?.pubkey) return;
-      const [p, a, flw, flr, viewerFollows] = await Promise.all([
+      if (!targetPubkey) return;
+      const promises: [Promise<any>, Promise<FeedItem[]>, Promise<string[]>, Promise<string[]>, Promise<string[]>] = [
         fetchProfile(targetPubkey),
         loadProfileActivity(targetPubkey, undefined, contentFilters),
         loadFollowing(targetPubkey),
         loadFollowers(targetPubkey),
-        loadFollowing(user.pubkey),
-      ]);
+        user?.pubkey ? loadFollowing(user.pubkey) : Promise.resolve([]),
+      ];
+      const [p, a, flw, flr, viewerFollows] = await Promise.all(promises);
       setProfile(p);
       setActivity(a);
       setFollowing(flw);
