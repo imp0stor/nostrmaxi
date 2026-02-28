@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar } from '../Avatar';
 import { truncateNpub } from '../../lib/nostr';
@@ -29,6 +30,30 @@ export function TopBar({
   onLogin,
   onCloseIdentityMenu,
 }: TopBarProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyNpub = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user?.npub) return;
+    try {
+      await navigator.clipboard.writeText(user.npub);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = user.npub;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-20 border-b border-swordfish-muted/35 bg-swordfish-bg/70 backdrop-blur-xl">
       <div className="h-16 px-4 flex items-center justify-between gap-3">
@@ -73,8 +98,8 @@ export function TopBar({
                   <div className="mt-3 text-xs text-gray-400">npub</div>
                   <div className="mt-1 flex items-center gap-2">
                     <code className="cy-mono text-xs text-cyan-200 flex-1 break-all">{user.npub}</code>
-                    <button className="cy-chip" onClick={async () => { try { await navigator.clipboard.writeText(user.npub); } catch { /* ignore */ } }}>
-                      Copy
+                    <button className={`cy-chip ${copied ? 'bg-green-600/30 text-green-300' : ''}`} onClick={handleCopyNpub}>
+                      {copied ? '✓ Copied' : 'Copy'}
                     </button>
                   </div>
                   <div className="mt-3 flex flex-col gap-2">
