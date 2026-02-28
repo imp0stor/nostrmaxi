@@ -36,6 +36,23 @@ describe('AuctionService', () => {
     jest.spyOn(Date, 'now').mockReturnValue(seconds * 1000);
   }
 
+  function trackPaidInvoice(
+    auctionId: string,
+    bidderPubkey: string,
+    amountSats: number,
+    bolt11: string,
+    paymentHash: string,
+  ) {
+    service.trackInvoice({
+      paymentHash,
+      auctionId,
+      bidderPubkey,
+      amountSats,
+      bolt11,
+      paid: true,
+    });
+  }
+
   it('parses bid from memo before zap amount and prefers sender P tag identity', () => {
     const parsed = parseZapReceiptToBid(
       {
@@ -114,6 +131,8 @@ describe('AuctionService', () => {
     const hash1 = createHash('sha256').update(Buffer.from(preimage1, 'hex')).digest('hex');
     const bolt11a = makeBolt11WithPaymentHash(hash1);
 
+    trackPaidInvoice(auction.id, aliceHex, 150000, bolt11a, hash1);
+
     const firstBid = await service.ingestZapBid(auction.id, {
       id: 'zap-1',
       pubkey: aliceHex,
@@ -134,6 +153,7 @@ describe('AuctionService', () => {
     const preimage2 = randomBytes(32).toString('hex');
     const hash2 = createHash('sha256').update(Buffer.from(preimage2, 'hex')).digest('hex');
     const bolt11b = makeBolt11WithPaymentHash(hash2);
+    trackPaidInvoice(auction.id, bobHex, 160000, bolt11b, hash2);
 
     await expect(
       service.ingestZapBid(auction.id, {
@@ -157,6 +177,7 @@ describe('AuctionService', () => {
     const preimage3 = randomBytes(32).toString('hex');
     const hash3 = createHash('sha256').update(Buffer.from(preimage3, 'hex')).digest('hex');
     const bolt11c = makeBolt11WithPaymentHash(hash3);
+    trackPaidInvoice(auction.id, carolHex, 200000, bolt11c, hash3);
 
     await service.ingestZapBid(auction.id, {
       id: 'zap-3',
@@ -253,6 +274,49 @@ describe('AuctionService', () => {
     expect(bid.bidAmountSats).toBe(180000);
   });
 
+  it('rejects bids for invoices that are still pending', async () => {
+    setNowSeconds(1700000010);
+
+    const { auction } = service.createAuction({
+      name: 'qz',
+      auctionPubkey: 'auction-pubkey',
+      startingPriceSats: 100000,
+      reservePriceSats: 300000,
+      startsAt: 1700000000,
+      endsAt: 1700000600,
+    });
+
+    const preimage = randomBytes(32).toString('hex');
+    const paymentHash = createHash('sha256').update(Buffer.from(preimage, 'hex')).digest('hex');
+    const bolt11 = makeBolt11WithPaymentHash(paymentHash);
+
+    service.trackInvoice({
+      paymentHash,
+      auctionId: auction.id,
+      bidderPubkey: aliceHex,
+      amountSats: 150000,
+      bolt11,
+      paid: false,
+    });
+
+    await expect(
+      service.ingestZapBid(auction.id, {
+        id: 'zap-pending-invoice',
+        pubkey: aliceHex,
+        kind: NOSTR_KIND_ZAP_RECEIPT,
+        created_at: 1700000200,
+        content: '150000',
+        tags: [
+          ['e', auction.eventId],
+          ['amount', String(150000 * 1000)],
+          ['P', aliceHex],
+          ['bolt11', bolt11],
+          ['preimage', preimage],
+        ],
+      }),
+    ).rejects.toThrow(/not yet marked paid/i);
+  });
+
   it('settles to highest bid if reserve met', async () => {
     setNowSeconds(1700000010);
     const { auction } = service.createAuction({
@@ -267,6 +331,7 @@ describe('AuctionService', () => {
     const preimage = randomBytes(32).toString('hex');
     const paymentHash = createHash('sha256').update(Buffer.from(preimage, 'hex')).digest('hex');
     const bolt11 = makeBolt11WithPaymentHash(paymentHash);
+    trackPaidInvoice(auction.id, aliceHex, 550000, bolt11, paymentHash);
 
     await service.ingestZapBid(auction.id, {
       id: 'zap-a',

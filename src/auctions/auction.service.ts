@@ -171,7 +171,12 @@ export class AuctionService {
       throw new BadRequestException(parsed.reason || 'Unable to parse bid from zap receipt');
     }
 
-    const paymentVerification = await this.verifyZapPayment(zapReceipt, auction.id, parsed.bid.bidderPubkey);
+    const paymentVerification = await this.verifyZapPayment(
+      zapReceipt,
+      auction.id,
+      parsed.bid.bidderPubkey,
+      parsed.bid.bidAmountSats,
+    );
     if (!paymentVerification.paid) {
       this.logger.warn(
         `Rejected unpaid bid for auction ${auction.id} (zap=${zapReceipt.id}, method=${paymentVerification.method}, reason=${paymentVerification.reason || 'unknown'})`,
@@ -283,6 +288,7 @@ export class AuctionService {
     zapReceipt: NostrEventLike,
     auctionId: string,
     bidderPubkey: string,
+    bidAmountSats: number,
   ): Promise<PaymentVerification> {
     const bolt11 = this.getTagValue(zapReceipt, 'bolt11');
     if (!bolt11) {
@@ -304,79 +310,88 @@ export class AuctionService {
 
     const normalizedPaymentHash = paymentHash.toLowerCase();
     const preimage = this.getTagValue(zapReceipt, 'preimage');
-    if (preimage) {
-      const preimageValid = this.validatePreimage(preimage, normalizedPaymentHash);
-      if (!preimageValid) {
-        return {
-          paid: false,
-          method: 'failed',
-          paymentHash: normalizedPaymentHash,
-          reason: 'Invalid zap preimage for invoice payment hash',
-        };
-      }
-
-      this.trackInvoice({
-        paymentHash: normalizedPaymentHash,
-        auctionId,
-        bidderPubkey,
-        amountSats: this.extractZapAmountSats(zapReceipt),
-        bolt11,
-        paid: true,
-      });
-
+    if (preimage && !this.validatePreimage(preimage, normalizedPaymentHash)) {
       return {
-        paid: true,
-        method: 'preimage',
+        paid: false,
+        method: 'failed',
         paymentHash: normalizedPaymentHash,
+        reason: 'Invalid zap preimage for invoice payment hash',
       };
     }
 
-    const tracked = this.invoicesByPaymentHash.get(normalizedPaymentHash);
-    if (tracked?.paid) {
-      return {
-        paid: true,
-        method: 'invoice-tracker',
-        paymentHash: normalizedPaymentHash,
-      };
-    }
+    let tracked = this.invoicesByPaymentHash.get(normalizedPaymentHash);
 
-    if (this.lightningInvoiceVerifier) {
+    // Authoritative source: our own LN status tracker / webhook-backed invoice registry.
+    if (!tracked && this.lightningInvoiceVerifier) {
       const settled = await this.lightningInvoiceVerifier(normalizedPaymentHash, bolt11);
       if (settled) {
         this.trackInvoice({
           paymentHash: normalizedPaymentHash,
           auctionId,
           bidderPubkey,
-          amountSats: this.extractZapAmountSats(zapReceipt),
+          amountSats: bidAmountSats,
           bolt11,
           paid: true,
         });
-
-        return {
-          paid: true,
-          method: 'lightning-node',
-          paymentHash: normalizedPaymentHash,
-        };
+        tracked = this.invoicesByPaymentHash.get(normalizedPaymentHash);
       }
     }
 
+    if (!tracked) {
+      return {
+        paid: false,
+        method: 'failed',
+        paymentHash: normalizedPaymentHash,
+        reason: 'Invoice is not registered in our payment tracker',
+      };
+    }
+
+    if (tracked.auctionId !== auctionId) {
+      return {
+        paid: false,
+        method: 'failed',
+        paymentHash: normalizedPaymentHash,
+        reason: 'Invoice does not belong to this auction',
+      };
+    }
+
+    if (tracked.bidderPubkey !== bidderPubkey) {
+      return {
+        paid: false,
+        method: 'failed',
+        paymentHash: normalizedPaymentHash,
+        reason: 'Invoice bidder pubkey mismatch',
+      };
+    }
+
+    if (tracked.amountSats !== bidAmountSats) {
+      return {
+        paid: false,
+        method: 'failed',
+        paymentHash: normalizedPaymentHash,
+        reason: 'Invoice amount mismatch for bid',
+      };
+    }
+
+    if (!tracked.paid) {
+      return {
+        paid: false,
+        method: 'failed',
+        paymentHash: normalizedPaymentHash,
+        reason: 'Invoice exists but is not yet marked paid',
+      };
+    }
+
     return {
-      paid: false,
-      method: 'failed',
+      paid: true,
+      method: tracked.paidAt ? 'invoice-tracker' : 'lightning-node',
       paymentHash: normalizedPaymentHash,
-      reason: 'Invoice is not settled (missing valid preimage and no paid invoice status)',
     };
   }
 
   private getTagValue(event: NostrEventLike, key: string): string | undefined {
     const tag = event.tags.find((entry) => entry[0]?.toLowerCase() === key.toLowerCase());
     return tag?.[1];
-  }
-
-  private extractZapAmountSats(event: NostrEventLike): number {
-    const amountMsat = Number(this.getTagValue(event, 'amount') || 0);
-    if (!Number.isFinite(amountMsat) || amountMsat <= 0) return 0;
-    return Math.floor(amountMsat / 1000);
   }
 
   private validatePreimage(preimage: string, paymentHash: string): boolean {
