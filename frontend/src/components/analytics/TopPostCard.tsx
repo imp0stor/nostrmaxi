@@ -2,15 +2,16 @@ interface TopPost {
   id: string;
   content: string;
   reactions: number;
+  replies?: number;
   reposts: number;
   zaps: number;
   zapAmount: number;
   score: number;
 }
 
-export function TopPostCard({ rank, post }: { rank: number; post: TopPost }) {
+export function TopPostCard({ rank, post, onClick }: { rank: number; post: TopPost; onClick?: (postId: string) => void }) {
   return (
-    <div className="flex items-start gap-4 p-3 bg-gray-800/50 rounded-lg">
+    <button type="button" onClick={() => onClick?.(post.id)} className="w-full text-left flex items-start gap-4 p-3 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors">
       <div
         className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
           rank === 1

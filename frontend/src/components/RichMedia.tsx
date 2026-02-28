@@ -18,18 +18,26 @@ const previewCache = new Map<string, LinkPreview>();
 type ImageMeta = { width: number; height: number };
 
 function getImageSizingClass(meta?: ImageMeta): string {
-  if (!meta) return 'w-full h-auto object-contain';
+  const classes = [
+    'block',
+    'mx-auto',
+    'max-w-full',
+    'w-full',
+    'h-auto',
+    'max-h-[500px]',
+    'object-contain',
+    'object-center',
+    'bg-black/20',
+  ];
 
-  const ratio = meta.width / Math.max(meta.height, 1);
-  const isVeryTall = meta.height > 2000;
-  const isVeryWide = ratio > 3;
-  const isVerySmall = meta.width < 120 || meta.height < 120;
+  if (meta) {
+    const ratio = meta.width / Math.max(meta.height, 1);
+    const isVerySmall = meta.width < 120 || meta.height < 120;
+    const isVeryWide = ratio > 3;
 
-  const classes = ['w-full', 'h-auto', 'object-contain', 'bg-black/20'];
-
-  if (isVeryTall) classes.push('max-h-[75vh]', 'sm:max-h-[80vh]');
-  if (isVeryWide) classes.push('max-w-[min(100%,56rem)]', 'mx-auto');
-  if (isVerySmall) classes.push('min-h-24');
+    if (isVerySmall) classes.push('min-h-24');
+    if (isVeryWide) classes.push('sm:max-w-[56rem]');
+  }
 
   return classes.join(' ');
 }
@@ -66,7 +74,7 @@ function MediaImage({ src, index, onClick }: { src: string; index: number; onCli
   const isGif = isGifUrl(src);
 
   return (
-    <div className="relative w-full overflow-hidden border border-cyan-900/70 bg-[#070b1d] hover:border-cyan-300/80 transition-colors rounded-md">
+    <div className="relative flex w-full items-center justify-center overflow-hidden border border-cyan-900/70 bg-[#070b1d] hover:border-cyan-300/80 transition-colors rounded-md">
       {!loaded && !failed ? (
         <div className="h-56 animate-pulse bg-cyan-900/20 flex items-center justify-center">
           {isGif ? <span className="text-xs text-cyan-400/60">Loading GIF...</span> : null}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 
 interface LinkPreview {
   url: string;
@@ -14,7 +14,15 @@ interface LinkPreviewCardProps {
 }
 
 export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = ({ preview }) => {
-  const domain = preview.domain || new URL(preview.url).hostname.replace('www.', '');
+  const domain = useMemo(() => {
+    try {
+      return preview.domain || new URL(preview.url).hostname.replace('www.', '');
+    } catch {
+      return preview.domain || preview.url;
+    }
+  }, [preview.domain, preview.url]);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   return (
     <a
@@ -24,16 +32,21 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = ({ preview }) => 
       className="block border border-gray-700 rounded-lg overflow-hidden bg-gray-800/50 hover:border-cyan-500/50 transition-colors"
     >
       {preview.image && (
-        <div className="relative h-40 bg-gray-900">
-          <img
-            src={preview.image}
-            alt=""
-            className="w-full h-full object-cover"
-            loading="lazy"
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
-          />
+        <div className="relative w-full aspect-video bg-gray-900">
+          {!imageLoaded && !imageError ? <div className="absolute inset-0 animate-pulse bg-gray-800" aria-hidden="true" /> : null}
+
+          {!imageError ? (
+            <img
+              src={preview.image}
+              alt={preview.title || 'Link preview image'}
+              className={`h-full w-full object-cover object-center ${imageLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity`}
+              loading="lazy"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <div className="absolute inset-0 grid place-items-center text-xs text-gray-400">Preview image unavailable</div>
+          )}
         </div>
       )}
 
