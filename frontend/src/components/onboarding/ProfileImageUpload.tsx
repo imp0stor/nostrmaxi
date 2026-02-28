@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import { signEvent } from '../../lib/nostr';
+import { MediaUploader } from '../MediaUploader';
 
 interface Props {
   label: string;
@@ -11,14 +13,6 @@ interface Props {
 
 export function ProfileImageUpload({ label, value, placeholder, onChange, onSkip, previewFallback = '👤' }: Props) {
   const [urlInput, setUrlInput] = useState('');
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const onFileChange = async (file?: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => onChange(String(reader.result || ''));
-    reader.readAsDataURL(file);
-  };
 
   return (
     <div className="rounded-lg border border-cyan-500/20 bg-slate-950/50 p-3 space-y-3">
@@ -40,14 +34,12 @@ export function ProfileImageUpload({ label, value, placeholder, onChange, onSkip
           />
           <div className="flex flex-wrap gap-2">
             <button type="button" className="cy-btn-secondary text-xs" onClick={() => onChange(urlInput.trim())}>Use URL</button>
-            <button type="button" className="cy-btn-secondary text-xs" onClick={() => fileInputRef.current?.click()}>Upload</button>
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
+          <MediaUploader
+            label={`Upload ${label} via Blossom`}
             accept="image/*"
-            className="hidden"
-            onChange={(e) => void onFileChange(e.target.files?.[0])}
+            signEvent={signEvent}
+            onUploaded={(result) => onChange(result.url)}
           />
         </div>
       </div>

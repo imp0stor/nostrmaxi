@@ -24,6 +24,7 @@ import { FeedDiscoveryModal } from '../components/feed/FeedDiscoveryModal';
 import { loadCustomFeedsList, saveCustomFeedsList } from '../lib/subscriptions';
 import { PostActionMenu } from '../components/PostActionMenu';
 import { useMuteActions } from '../hooks/useMuteActions';
+import { MediaUploader } from '../components/MediaUploader';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -786,6 +787,13 @@ export function FeedPage() {
           value={composer}
           onChange={(e) => setComposer(e.target.value)}
         />
+        <div className="mt-3">
+          <MediaUploader
+            label="Attach media via Blossom"
+            signEvent={signEvent}
+            onUploaded={(result) => setComposer((prev) => `${prev.trim()}\n${result.url}`.trim())}
+          />
+        </div>
         <div className="mt-3 flex justify-end">
           <button className="cy-btn" onClick={onPublish} disabled={!canPost || busyId === 'composer'}>
             {busyId === 'composer' ? 'Publishing…' : 'Post Event'}

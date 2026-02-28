@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { signEvent } from '../../lib/nostr';
+import { MediaUploader } from '../MediaUploader';
 import {
   AudioUploader,
   CategorySelector,
@@ -83,6 +85,14 @@ export const ContentComposer = ({ draftKey = 'default' }: { draftKey?: string })
           <ImageUploader value="" onChange={(url) => addMedia('image', url)} />
           <VideoUploader value="" onChange={(url) => addMedia('video', url)} />
           <AudioUploader value="" onChange={(url) => addMedia('audio', url)} />
+          <MediaUploader
+            label="Upload via Blossom"
+            signEvent={signEvent}
+            onUploaded={(result) => {
+              const mediaType = result.type.startsWith('video/') ? 'video' : result.type.startsWith('audio/') ? 'audio' : 'image';
+              addMedia(mediaType, result.url);
+            }}
+          />
           <MediaGallery items={state.media} onRemove={(id) => update({ media: state.media.filter((item) => item.id !== id) })} />
           <EmbedSelector value={inferEmbedPlatform(embedUrl || 'https://example.com')} onChange={() => undefined} />
           <URLEmbed value={embedUrl} onChange={setEmbedUrl} />
