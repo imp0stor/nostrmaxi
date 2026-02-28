@@ -5,6 +5,7 @@
  */
 
 import { SimplePool } from 'nostr-tools';
+import { getCachedConfigValue } from './runtimeConfig';
 
 export interface RelayConfig {
   localRelayUrl: string;
@@ -15,24 +16,25 @@ export interface RelayConfig {
 const SERVER_RELAY_URL = 'wss://10.1.10.143:3401/relay';
 const DEFAULT_LOCAL_RELAY_URL = SERVER_RELAY_URL;
 
-// Expanded fallback relays - server relay first, then reliable public relays
-// Auto-discovered from user relay lists (kind:10002) + manually verified
-export const FALLBACK_RELAYS = [
-  SERVER_RELAY_URL,  // Our local cache via WSS proxy - fast, no rate limits
+const DEFAULT_FALLBACK_RELAYS = [
+  SERVER_RELAY_URL,
   'wss://relay.damus.io',
-  'wss://relay.primal.net', 
+  'wss://relay.primal.net',
   'wss://relay.snort.social',
   'wss://nostr.wine',
-  'wss://relay.momostr.pink',   // Popular from user data
-  'wss://relay.ditto.pub',      // Popular from user data
-  'wss://nostr.oxtr.dev',       // Good connectivity
-  'wss://nostr.mom',            // Good connectivity
-  'wss://nostr.land',           // Good connectivity
+  'wss://relay.momostr.pink',
+  'wss://relay.ditto.pub',
+  'wss://nostr.oxtr.dev',
+  'wss://nostr.mom',
+  'wss://nostr.land',
   'wss://nostr.bitcoiner.social',
   'wss://nostr-pub.wellorder.net',
   'wss://offchain.pub',
   'wss://purplepag.es',
 ];
+
+// Expanded fallback relays are now admin-configurable via relays.fallback
+export const FALLBACK_RELAYS = getCachedConfigValue<string[]>('relays.fallback', DEFAULT_FALLBACK_RELAYS);
 
 // Dynamic relay discovery cache
 let discoveredRelays: string[] = [];

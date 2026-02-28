@@ -13,6 +13,7 @@ model User {
   id        String   @id @default(cuid())
   pubkey    String   @unique // hex pubkey
   npub      String   @unique // bech32 npub
+  isAdmin   Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -229,5 +230,53 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Config {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  type        String
+  category    String
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  @@index([category])
+}
+
+model ReservedName {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+model PremiumName {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  minimumPrice Int?
+  reason       String?
+  createdAt    DateTime @default(now())
+}
+
+model BlockedName {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+model AdminAuditLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  action    String
+  targetId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@index([action])
   @@index([createdAt])
 }

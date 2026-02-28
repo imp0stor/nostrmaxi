@@ -1,12 +1,15 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { ownerNpubs, adminNpubs } = require('../services/auth/nostr-auth-integration');
 
 @Injectable()
 export class NostrAdminGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
-    const req = context.switchToHttp().getRequest<{ npub?: string }>();
+  constructor(private readonly prisma?: PrismaService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const req = context.switchToHttp().getRequest<{ npub?: string; pubkey?: string }>();
     const npub = req.npub;
 
     if (!npub) {
@@ -14,7 +17,24 @@ export class NostrAdminGuard implements CanActivate {
     }
 
     const allowed = new Set<string>([...ownerNpubs, ...adminNpubs]);
-    if (!allowed.has(npub)) {
+    if (allowed.has(npub)) {
+      return true;
+    }
+
+    if (!req.pubkey) {
+      throw new ForbiddenException('Admin access required');
+    }
+
+    if (!this.prisma) {
+      throw new ForbiddenException('Admin access required');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { pubkey: req.pubkey },
+      select: { isAdmin: true },
+    });
+
+    if (!user?.isAdmin) {
       throw new ForbiddenException('Admin access required');
     }
 

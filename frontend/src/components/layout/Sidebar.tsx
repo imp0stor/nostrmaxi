@@ -27,6 +27,7 @@ const navItems: SidebarItem[] = [
   { type: 'divider' },
   { type: 'link', icon: '👤', label: 'Profile', path: '/profile/me', requiresAuth: true },
   { type: 'link', icon: '⚙️', label: 'Settings', path: '/settings', requiresAuth: true },
+  { type: 'link', icon: '🧰', label: 'Admin Config', path: '/admin', requiresAuth: true },
   { type: 'link', icon: '✨', label: 'Get Your NIP-05', path: '/pricing', requiresAuth: true },
 ];
 

@@ -27,6 +27,7 @@ import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middlewar
 import { SyncModule } from './sync/sync.module';
 import { RelayAggregatorModule } from './relay-aggregator/relay-aggregator.module';
 import { RelayDiscoveryModule } from './relay-discovery/relay-discovery.module';
+import { AppConfigModule } from './config/config.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { RelayDiscoveryModule } from './relay-discovery/relay-discovery.module';
       }),
     }),
     PrismaModule,
+    AppConfigModule,
     HealthModule,
     MetricsModule,
     AuthModule,

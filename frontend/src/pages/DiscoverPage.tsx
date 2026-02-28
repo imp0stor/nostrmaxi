@@ -15,6 +15,7 @@ import { ProfileCard, type WotHop } from '../components/ProfileCard';
 import { DiscoverSection } from '../components/discover/DiscoverSection';
 import { FilterBar } from '../components/filters/FilterBar';
 import { useTagFilter } from '../hooks/useTagFilter';
+import { useConfig } from '../hooks/useConfig';
 
 interface DiscoverCardData extends DiscoverUser, DiscoverCardDataLike {
   name: string;
@@ -29,7 +30,7 @@ type DiscoverTab = 'for-you' | 'wot' | 'general' | 'following';
 const PAGE_SIZE = 24;
 type DiscoverPostFilter = Exclude<ContentType, 'live' | 'longform' | 'events' | 'polls'>;
 const DISCOVER_POST_FILTERS: DiscoverPostFilter[] = ['text', 'images', 'videos', 'audio', 'links'];
-const RELAY_DISCOVERY_RELAYS = ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://relay.snort.social', 'wss://nostr.wine'];
+const DEFAULT_RELAY_DISCOVERY_RELAYS = ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://relay.snort.social', 'wss://nostr.wine'];
 
 const normalizeRelay = (relay: string): string => relay.trim().toLowerCase().replace(/\/+$/, '');
 
@@ -42,11 +43,11 @@ function userRegionFromLocale(): string {
   return 'Global';
 }
 
-async function fetchUserRelayList(pubkey: string, fallbackRelays: string[]): Promise<string[]> {
+async function fetchUserRelayList(pubkey: string, fallbackRelays: string[], discoveryRelays: string[]): Promise<string[]> {
   const pool = new SimplePool();
   const discovered = new Set<string>();
   try {
-    const nip65 = await pool.get(RELAY_DISCOVERY_RELAYS, { kinds: [10002], authors: [pubkey] });
+    const nip65 = await pool.get(discoveryRelays, { kinds: [10002], authors: [pubkey] });
     for (const tag of nip65?.tags || []) {
       if (tag[0] !== 'r' || !tag[1]) continue;
       discovered.add(normalizeRelay(tag[1]));
@@ -54,7 +55,7 @@ async function fetchUserRelayList(pubkey: string, fallbackRelays: string[]): Pro
   } catch {
     // fallback below
   } finally {
-    pool.close(RELAY_DISCOVERY_RELAYS);
+    pool.close(discoveryRelays);
   }
 
   if (discovered.size > 0) return [...discovered];
@@ -63,6 +64,7 @@ async function fetchUserRelayList(pubkey: string, fallbackRelays: string[]): Pro
 
 export function DiscoverPage() {
   const { user, isAuthenticated } = useAuth();
+  const { value: relayDiscoveryRelays } = useConfig<string[]>('relays.discovery', DEFAULT_RELAY_DISCOVERY_RELAYS);
   const [following, setFollowing] = useState<string[]>([]);
   const [poolCards, setPoolCards] = useState<Record<Exclude<DiscoverTab, 'following'>, DiscoverCardData[]>>({
     'for-you': [],
@@ -164,7 +166,7 @@ export function DiscoverPage() {
       setNetworkPosts(posts.sort((a, b) => (b.proximityScore + b.interactionScore) - (a.proximityScore + a.interactionScore)));
       setVisibleCount(PAGE_SIZE);
 
-      const configuredFromNip65 = await fetchUserRelayList(user.pubkey, connectedRelays);
+      const configuredFromNip65 = await fetchUserRelayList(user.pubkey, connectedRelays, relayDiscoveryRelays);
       setConnectedRelays(configuredFromNip65);
       if (typeof window !== 'undefined') {
         localStorage.setItem('nostrmaxi_connected_relays', JSON.stringify(configuredFromNip65));
@@ -243,7 +245,7 @@ export function DiscoverPage() {
 
     try {
       const signed = await signEvent(unsigned);
-      if (signed) await publishEvent(signed, RELAY_DISCOVERY_RELAYS);
+      if (signed) await publishEvent(signed, relayDiscoveryRelays);
     } catch {
       // local persistence still succeeds even if signer/publish unavailable
     }

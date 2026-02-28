@@ -1,4 +1,5 @@
 import type { NostrEvent } from '../types';
+import { getCachedConfigValue } from './runtimeConfig';
 
 export interface BlossomServer {
   url: string;
@@ -26,17 +27,19 @@ export interface BlossomConfig {
 
 const BLOSSOM_CONFIG_KEY = 'nostrmaxi.blossom.config';
 
-export const BLOSSOM_SERVERS: BlossomServer[] = [
+const DEFAULT_BLOSSOM_SERVERS: BlossomServer[] = [
   { url: 'https://blossom.primal.net', name: 'Primal', priority: 1, requiresAuth: false },
   { url: 'https://nostr.build', name: 'nostr.build', priority: 2, requiresAuth: false },
   { url: 'https://void.cat', name: 'void.cat', priority: 3, requiresAuth: false },
   { url: 'https://nostrimg.com', name: 'nostrimg', priority: 4, requiresAuth: false },
 ];
 
+export const BLOSSOM_SERVERS: BlossomServer[] = getCachedConfigValue<BlossomServer[]>('blossom.servers', DEFAULT_BLOSSOM_SERVERS);
+
 const DEFAULT_CONFIG: BlossomConfig = {
   servers: BLOSSOM_SERVERS,
   preferredServer: BLOSSOM_SERVERS[0]?.url ?? null,
-  maxFileSize: 50 * 1024 * 1024,
+  maxFileSize: getCachedConfigValue<number>('blossom.maxFileSize', 50 * 1024 * 1024),
   allowedTypes: ['image/', 'video/', 'audio/'],
 };
 

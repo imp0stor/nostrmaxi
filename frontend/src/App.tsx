@@ -19,6 +19,7 @@ import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
 import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
 import { BookmarksPage } from './pages/BookmarksPage';
+import { AdminPage } from './pages/AdminPage';
 import { truncateNpub } from './lib/nostr';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
 import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
@@ -140,6 +141,7 @@ export default function App() {
             <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
             <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
             <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
+            <Route path="/admin" element={isAuthenticated ? <AdminPage /> : <Navigate to="/" replace />} />
             <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
           </Routes>
         </main>

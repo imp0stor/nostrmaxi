@@ -1,4 +1,5 @@
 import type { DiscoverCardDataLike } from '../types/discover';
+import { getCachedConfigValue } from './runtimeConfig';
 
 export interface RelayRecommendation {
   url: string;
@@ -105,7 +106,9 @@ export interface RelayMetricsSeed extends RelayRecommendation {
   metrics: RelayMetrics;
 }
 
-const DEFAULT_RELAYS: RelayMetricsSeed[] = [
+const DEFAULT_RELAY_URLS = getCachedConfigValue<string[]>('relays.discovery', ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://relay.snort.social', 'wss://nostr.wine']);
+
+export const DEFAULT_RELAYS: RelayMetricsSeed[] = [
   {
     url: 'wss://relay.damus.io',
     name: 'Damus Relay',
@@ -421,8 +424,14 @@ const buildBadges = (metrics: RelayMetrics): string[] => {
   return badges.slice(0, 4);
 };
 
+function configuredRelayUniverse(): RelayMetricsSeed[] {
+  const configured = new Set(DEFAULT_RELAY_URLS.map((url) => normalizeRelayUrl(url)));
+  const subset = DEFAULT_RELAYS.filter((relay) => configured.has(normalizeRelayUrl(relay.url)));
+  return subset.length > 0 ? subset : DEFAULT_RELAYS;
+}
+
 export function relayRecommendations(): RelayRecommendation[] {
-  return DEFAULT_RELAYS;
+  return configuredRelayUniverse();
 }
 
 export async function fetchRelayMetricsSeed(signal?: AbortSignal): Promise<RelayMetricsSeed[]> {
@@ -435,7 +444,7 @@ export async function fetchRelayMetricsSeed(signal?: AbortSignal): Promise<Relay
     }
     return payload.relays;
   } catch {
-    return DEFAULT_RELAYS;
+    return configuredRelayUniverse();
   }
 }
 
