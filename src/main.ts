@@ -1,5 +1,5 @@
 // Enable WebSocket for nostr-tools in Node.js (must be before any nostr-tools imports)
-import { useWebSocketImplementation } from 'nostr-tools';
+import { useWebSocketImplementation } from 'nostr-tools/pool';
 import WebSocket from 'websocket-polyfill';
 useWebSocketImplementation(WebSocket);
 
