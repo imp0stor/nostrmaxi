@@ -14,6 +14,8 @@ import { useMuteSettings } from '../hooks/useMuteSettings';
 import { CONTENT_TYPE_LABELS, detectContentTypes, extractLiveStreamMeta } from '../lib/contentTypes';
 import { LiveStreamCard } from '../components/LiveStreamCard';
 import { ConfigAccordion } from '../components/ConfigAccordion';
+import { FilterBar } from '../components/filters/FilterBar';
+import { useTagFilter } from '../hooks/useTagFilter';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -114,6 +116,10 @@ export function FeedPage() {
   const [liveAlerts, setLiveAlerts] = useState<string[]>([]);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const observerRef = useRef<HTMLDivElement | null>(null);
+  const { selectedTags, logic, setSelectedTags, setLogic } = useTagFilter({
+    storageKey: 'nostrmaxi.feed.tag-filter',
+    defaultLogic: 'or',
+  });
 
   const canPost = useMemo(() => isAuthenticated && Boolean(user?.pubkey), [isAuthenticated, user?.pubkey]);
 
@@ -151,6 +157,34 @@ export function FeedPage() {
       return true;
     });
   }, [feed, feedFilters, mutedByEventId]);
+
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>();
+    for (const item of feed) {
+      for (const tag of item.tags || []) {
+        if (tag[0] === 't' && tag[1]) tags.add(tag[1].toLowerCase());
+      }
+      const inline = (item.content || '').match(/#[a-z0-9_]+/gi) || [];
+      inline.forEach((value) => tags.add(value.slice(1).toLowerCase()));
+    }
+    return Array.from(tags).slice(0, 80);
+  }, [feed]);
+
+  const tagFilteredFeed = useMemo(() => {
+    if (selectedTags.length === 0) return filteredFeed;
+
+    return filteredFeed.filter((item) => {
+      const tags = new Set<string>();
+      for (const tag of item.tags || []) {
+        if (tag[0] === 't' && tag[1]) tags.add(tag[1].toLowerCase());
+      }
+      const inline = (item.content || '').match(/#[a-z0-9_]+/gi) || [];
+      inline.forEach((value) => tags.add(value.slice(1).toLowerCase()));
+
+      if (logic === 'and') return selectedTags.every((tag) => tags.has(tag.toLowerCase()));
+      return selectedTags.some((tag) => tags.has(tag.toLowerCase()));
+    });
+  }, [filteredFeed, selectedTags, logic]);
 
   const activeCustomFeed = useMemo(
     () => userCustomFeeds.find((feedDef) => feedDef.id === activeCustomFeedId) || null,
@@ -633,14 +667,24 @@ export function FeedPage() {
 
         {loading ? <div className="cy-card p-6">Loading feed from relays…</div> : null}
         {loadError ? <div className="cy-card p-6 text-red-300">Feed failed to load: {loadError}</div> : null}
-        {!loading && !loadError && filteredFeed.length === 0 ? (
+        {!loading && !loadError && tagFilteredFeed.length === 0 ? (
           <div className="cy-card p-6">
             <p className="text-gray-100">No timeline events match current filters.</p>
             <p className="cy-muted mt-2">Try clearing filters, refreshing feed, or following more accounts from Discover.</p>
           </div>
         ) : null}
 
-        {filteredFeed.map((item) => {
+        <FilterBar
+          title="Feed Tag Filter"
+          availableTags={availableTags}
+          selectedTags={selectedTags}
+          logic={logic}
+          onTagsChange={setSelectedTags}
+          onLogicChange={setLogic}
+          onApply={() => { /* live filter */ }}
+        />
+
+        {tagFilteredFeed.map((item) => {
           const media = parseMediaFromFeedItem(item);
           const contentTypes = Array.from(detectContentTypes(item));
           const liveMeta = extractLiveStreamMeta(item);

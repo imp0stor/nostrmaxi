@@ -21,6 +21,7 @@ import { EcosystemCatalogModule } from './ecosystem-catalog/ecosystem-catalog.mo
 import { RelaySyncModule } from './relay-sync/relay-sync.module';
 import { AuctionModule } from './auctions/auction.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { MediaDiscoveryModule } from './discovery/media-discovery.module';
 import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middleware/security.middleware';
 
 @Module({
@@ -60,6 +61,7 @@ import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middlewar
     RelaySyncModule,
     AuctionModule,
     OnboardingModule,
+    MediaDiscoveryModule,
   ],
 })
 export class AppModule implements NestModule {

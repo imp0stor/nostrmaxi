@@ -13,6 +13,8 @@ import { useBeaconSearch } from '../lib/beaconSearch';
 import { ConfigAccordion } from '../components/ConfigAccordion';
 import { ProfileCard, type WotHop } from '../components/ProfileCard';
 import { DiscoverSection } from '../components/discover/DiscoverSection';
+import { FilterBar } from '../components/filters/FilterBar';
+import { useTagFilter } from '../hooks/useTagFilter';
 
 interface DiscoverCardData extends DiscoverUser, DiscoverCardDataLike {
   name: string;
@@ -87,6 +89,10 @@ export function DiscoverPage() {
   const [relayMetricsUniverse, setRelayMetricsUniverse] = useState<RelayMetricsSeed[]>([]);
   const [selectedRelay, setSelectedRelay] = useState<RankedRelayRecommendation | null>(null);
   const [postFilters, setPostFilters] = useState<Set<DiscoverPostFilter>>(new Set());
+  const { selectedTags, logic, setSelectedTags, setLogic } = useTagFilter({
+    storageKey: 'nostrmaxi.discover.tag-filter',
+    defaultLogic: 'or',
+  });
   
   // Beacon search integration
   const beaconSearch = useBeaconSearch(search, 300);
@@ -317,10 +323,31 @@ export function DiscoverPage() {
     });
   }, [connectedRelays, similarTopics, relaySort, relayPricingFilter, relayRegionFilter, relayNipFilter, relayMetricsUniverse]);
 
+  const availableTags = useMemo(() => {
+    const tags = new Set<string>(similarTopics.map((topic) => topic.topic.toLowerCase()));
+    for (const card of recommendedCards) {
+      const aboutTags = (card.about || '').match(/#[a-z0-9_]+/gi) || [];
+      aboutTags.forEach((tag) => tags.add(tag.slice(1).toLowerCase()));
+    }
+    return Array.from(tags).slice(0, 60);
+  }, [similarTopics, recommendedCards]);
+
+  const applyTagFilterToCards = (cards: DiscoverCardData[]) => {
+    if (selectedTags.length === 0) return cards;
+    return cards.filter((card) => {
+      const haystack = `${card.name} ${card.about || ''} ${card.nip05 || ''}`.toLowerCase();
+      if (logic === 'and') return selectedTags.every((tag) => haystack.includes(tag.toLowerCase()));
+      return selectedTags.some((tag) => haystack.includes(tag.toLowerCase()));
+    });
+  };
+
+  const filteredRecommendedCards = applyTagFilterToCards(recommendedCards);
+  const filteredSearchCards = applyTagFilterToCards(searchResultCards);
+
   const isSearching = search.trim().length > 0;
-  const visibleRecommendedCards = recommendedCards.slice(0, visibleCount);
-  const visibleSearchCards = searchResultCards.slice(0, visibleCount);
-  const activeListCount = isSearching ? searchResultCards.length : recommendedCards.length;
+  const visibleRecommendedCards = filteredRecommendedCards.slice(0, visibleCount);
+  const visibleSearchCards = filteredSearchCards.slice(0, visibleCount);
+  const activeListCount = isSearching ? filteredSearchCards.length : filteredRecommendedCards.length;
   const hasMore = visibleCount < activeListCount;
 
   useEffect(() => {
@@ -454,6 +481,16 @@ export function DiscoverPage() {
             <button type="button" onClick={() => setActiveOnly((v) => !v)} className={`rounded-lg px-3 py-2 text-sm border ${activeOnly ? 'bg-fuchsia-500/20 border-fuchsia-300 text-fuchsia-100' : 'bg-slate-950/70 border-fuchsia-500/40 text-fuchsia-200'}`}>
               {activeOnly ? 'Active users ✓' : 'Active users'}
             </button>
+
+            <FilterBar
+              title="Discover Topic Filter"
+              availableTags={availableTags}
+              selectedTags={selectedTags}
+              logic={logic}
+              onTagsChange={setSelectedTags}
+              onLogicChange={setLogic}
+              onApply={() => setVisibleCount(PAGE_SIZE)}
+            />
           </>
         )}
       </ConfigAccordion>

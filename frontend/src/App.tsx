@@ -17,6 +17,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
+import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
 import { truncateNpub } from './lib/nostr';
 import { Avatar } from './components/Avatar';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
@@ -97,6 +98,7 @@ export default function App() {
   const navItems = useMemo<NavItem[]>(() => [
     { path: '/feed', label: 'Feed' },
     { path: '/discover', label: 'Discover' },
+    { path: '/media-discovery', label: 'Media', authed: true },
     { path: '/lists', label: 'Lists', authed: true },
     { path: '/marketplace', label: 'Marketplace', authed: true },
     { path: '/dashboard', label: 'Manage', authed: true },
@@ -198,6 +200,7 @@ export default function App() {
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" replace />} />
           <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
+          <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
           <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
           <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
           <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
