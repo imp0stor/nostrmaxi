@@ -5,5 +5,6 @@ import { EcosystemCatalogService } from './ecosystem-catalog.service';
 @Module({
   controllers: [EcosystemCatalogController],
   providers: [EcosystemCatalogService],
+  exports: [EcosystemCatalogService],
 })
 export class EcosystemCatalogModule {}
