@@ -16,7 +16,7 @@ import type {
 
 // Use env var for API URL, fallback to same-origin relative path
 // Always use relative path - Caddy proxies /api/* to backend
-const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
+const API_BASE = (typeof process !== 'undefined' && (process as any).env?.VITE_API_URL) || '/api/v1';
 
 class ApiClient {
   private token: string | null = null;

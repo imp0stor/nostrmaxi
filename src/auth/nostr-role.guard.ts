@@ -8,7 +8,7 @@ const { ownerNpubs, adminNpubs } = require('../services/auth/nostr-auth-integrat
 export class NostrAdminGuard implements CanActivate {
   constructor(private readonly prisma?: PrismaService) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> {
     const req = context.switchToHttp().getRequest<{ npub?: string; pubkey?: string }>();
     const npub = req.npub;
 
@@ -29,16 +29,17 @@ export class NostrAdminGuard implements CanActivate {
       throw new ForbiddenException('Admin access required');
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { pubkey: req.pubkey },
-      select: { isAdmin: true },
-    });
-
-    if (!user?.isAdmin) {
-      throw new ForbiddenException('Admin access required');
-    }
-
-    return true;
+    return this.prisma.user
+      .findUnique({
+        where: { pubkey: req.pubkey },
+        select: { isAdmin: true },
+      })
+      .then((user) => {
+        if (!user?.isAdmin) {
+          throw new ForbiddenException('Admin access required');
+        }
+        return true;
+      });
   }
 }
 
