@@ -2,13 +2,9 @@ import { SimplePool, nip19 } from 'nostr-tools';
 import type { NostrEvent, NostrProfile } from '../types';
 import { fetchProfileCached, fetchProfilesBatchCached } from './profileCache';
 import { applyContentFilters, type ContentFilters } from './contentFilter';
+import { getDefaultRelays, getRelaysForUser, FALLBACK_RELAYS } from './relayConfig';
 
-const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.nostr.band',
-  'wss://nos.lol',
-  'wss://relay.primal.net',
-];
+const DEFAULT_RELAYS = getDefaultRelays();
 
 export interface FeedItem extends NostrEvent {
   profile?: NostrProfile;
@@ -229,17 +225,21 @@ export async function loadFeed(pubkey: string, relays: string[] = DEFAULT_RELAYS
   return result.items;
 }
 
-export async function loadProfileActivity(pubkey: string, relays: string[] = DEFAULT_RELAYS, contentFilters?: ContentFilters): Promise<FeedItem[]> {
+export async function loadProfileActivity(pubkey: string, relays?: string[], contentFilters?: ContentFilters): Promise<FeedItem[]> {
   const pool = new SimplePool();
   try {
-    const events = await pool.querySync(relays, { kinds: [1], authors: [pubkey], limit: 40 });
-    const profile = await fetchProfileCached(pubkey, relays) || undefined;
+    // Use user's configured relays if none provided
+    const effectiveRelays = relays || await getRelaysForUser(pubkey, pool);
+    console.log('[loadProfileActivity] using relays:', effectiveRelays.slice(0, 4));
+    const events = await pool.querySync(effectiveRelays, { kinds: [1], authors: [pubkey], limit: 40 });
+    console.log('[loadProfileActivity] fetched', events.length, 'events');
+    const profile = await fetchProfileCached(pubkey, effectiveRelays) || undefined;
     const items = events
       .sort((a, b) => b.created_at - a.created_at)
       .map((event) => ({ ...event, profile }));
     return applyMuteFilterForFeed(items, contentFilters);
   } finally {
-    pool.close(relays);
+    pool.close(FALLBACK_RELAYS);
   }
 }
 
