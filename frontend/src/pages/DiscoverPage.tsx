@@ -29,7 +29,7 @@ type DiscoverTab = 'for-you' | 'wot' | 'general' | 'following';
 const PAGE_SIZE = 24;
 type DiscoverPostFilter = Exclude<ContentType, 'live' | 'longform' | 'events' | 'polls'>;
 const DISCOVER_POST_FILTERS: DiscoverPostFilter[] = ['text', 'images', 'videos', 'audio', 'links'];
-const RELAY_DISCOVERY_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol', 'wss://relay.primal.net'];
+const RELAY_DISCOVERY_RELAYS = ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://relay.snort.social', 'wss://nostr.wine'];
 
 const normalizeRelay = (relay: string): string => relay.trim().toLowerCase().replace(/\/+$/, '');
 
