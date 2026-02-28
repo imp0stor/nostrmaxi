@@ -732,10 +732,27 @@ export function applyOptimisticFollow(pools: DiscoverPools, followedPubkey: stri
 }
 
 export function matchesCustomFeed(event: NostrEvent, definition: CustomFeedDefinition): boolean {
+  // Skip replies if not included
   if (!definition.includeReplies && event.tags.some((t) => t[0] === 'e')) return false;
-  const hashtags = (event.tags || []).filter((t) => t[0] === 't' && t[1]).map((t) => t[1].toLowerCase());
-  const hasTopicMatch = definition.hashtags.length === 0 || definition.hashtags.some((tag) => hashtags.includes(tag.toLowerCase()));
-  const hasAuthorMatch = definition.authors.length === 0 || definition.authors.includes(event.pubkey);
+  
+  // Get hashtags from event
+  const eventHashtags = (event.tags || [])
+    .filter((t) => t[0] === 't' && t[1])
+    .map((t) => t[1].toLowerCase());
+  
+  // Handle undefined/empty arrays safely
+  const feedHashtags = definition.hashtags || [];
+  const feedAuthors = definition.authors || [];
+  
+  // If no topic filter, match all. Otherwise require at least one match.
+  const hasTopicMatch = feedHashtags.length === 0 || 
+    feedHashtags.some((tag) => eventHashtags.includes(tag.toLowerCase()));
+  
+  // If no author filter, match all. Otherwise require author match.
+  const hasAuthorMatch = feedAuthors.length === 0 || 
+    feedAuthors.includes(event.pubkey);
+  
+  // Must match both topic AND author criteria
   return hasTopicMatch && hasAuthorMatch;
 }
 

@@ -152,7 +152,13 @@ export function FeedPage() {
   const canPost = useMemo(() => isAuthenticated && Boolean(user?.pubkey), [isAuthenticated, user?.pubkey]);
   const privateKey = useMemo(() => {
     if (typeof window === 'undefined') return null;
-    return hexToBytes(sessionStorage.getItem('nostrmaxi_nsec_hex') || '');
+    const nsecHex = sessionStorage.getItem('nostrmaxi_nsec_hex');
+    if (!nsecHex || nsecHex.length < 64) return null;  // Need valid 32-byte key
+    try {
+      return hexToBytes(nsecHex);
+    } catch {
+      return null;
+    }
   }, [user?.pubkey]);
   const userFollowing = useMemo(() => Array.from(followingSet), [followingSet]);
   const userInterests = useMemo(() => {
@@ -311,11 +317,29 @@ export function FeedPage() {
   useEffect(() => {
     if (!user?.pubkey) return;
     const loadCustomFeedState = async () => {
-      const [saved, discoverable, following] = await Promise.all([
-        privateKey ? loadCustomFeedsList(user.pubkey, privateKey, DEFAULT_RELAYS) : Promise.resolve([]),
+      const [relayFeeds, discoverable, following] = await Promise.all([
+        privateKey && privateKey.length === 32
+          ? loadCustomFeedsList(user.pubkey, privateKey, DEFAULT_RELAYS).catch(() => [])
+          : Promise.resolve([]),
         loadDiscoverableCustomFeeds(),
         loadFollowing(user.pubkey),
       ]);
+      
+      // Merge relay feeds with localStorage fallback
+      let saved = relayFeeds;
+      if (saved.length === 0) {
+        try {
+          const localFeeds = localStorage.getItem(`nostrmaxi_feeds_${user.pubkey}`);
+          if (localFeeds) {
+            saved = JSON.parse(localFeeds);
+            console.log('[FeedPage] Loaded feeds from localStorage:', saved.length);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      } else {
+        console.log('[FeedPage] Loaded feeds from relay:', saved.length);
+      }
       setUserCustomFeeds(saved);
       setDiscoverableFeeds(discoverable.filter((feedDef) => feedDef.ownerPubkey !== user.pubkey));
       setFollowingSet(new Set(following));
@@ -644,8 +668,20 @@ export function FeedPage() {
         ? prev.map((feed) => (feed.id === normalizedFeed.id ? normalizedFeed : feed))
         : [...prev, normalizedFeed];
 
-      if (privateKey) {
-        void saveCustomFeedsList(next, user.pubkey, privateKey, DEFAULT_RELAYS);
+      // Save to relay if we have privateKey, otherwise fallback to localStorage
+      if (privateKey && privateKey.length === 32) {
+        console.log('[FeedPage] Saving feeds to relay...');
+        saveCustomFeedsList(next, user.pubkey, privateKey, DEFAULT_RELAYS)
+          .then(() => console.log('[FeedPage] Feeds saved to relay'))
+          .catch((err) => console.error('[FeedPage] Failed to save feeds to relay:', err));
+      } else {
+        // Fallback: save to localStorage for NIP-46 users
+        console.log('[FeedPage] No privateKey, saving feeds to localStorage');
+        try {
+          localStorage.setItem(`nostrmaxi_feeds_${user.pubkey}`, JSON.stringify(next));
+        } catch (err) {
+          console.error('[FeedPage] Failed to save feeds to localStorage:', err);
+        }
       }
 
       return next;

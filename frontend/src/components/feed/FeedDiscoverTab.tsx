@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SimplePool, type Event as NostrEvent, type Filter } from 'nostr-tools';
-import type { CustomFeedDefinition } from '../../lib/social';
+import { loadFeedForCustomDefinition, type CustomFeedDefinition, type FeedItem } from '../../lib/social';
 
 interface FeedDiscoverTabProps {
   feeds: CustomFeedDefinition[];
-  userProfile?: { interests?: string[]; following?: string[] };
+  userProfile?: { interests?: string[]; following?: string[]; pubkey?: string };
   onAddFeed: (feed: CustomFeedDefinition) => void;
 }
 
@@ -23,13 +22,13 @@ interface FeedCardProps {
   onAdd: () => void;
   expanded: boolean;
   onToggleExpand: () => void;
-  previewPosts?: NostrEvent[];
+  previewPosts?: FeedItem[];
   loadingPreview: boolean;
 }
 
 export function FeedDiscoverTab({ feeds, userProfile, onAddFeed }: FeedDiscoverTabProps) {
   const [expandedFeedId, setExpandedFeedId] = useState<string | null>(null);
-  const [previewPosts, setPreviewPosts] = useState<Map<string, NostrEvent[]>>(new Map());
+  const [previewPosts, setPreviewPosts] = useState<Map<string, FeedItem[]>>(new Map());
   const [loadingPreview, setLoadingPreview] = useState<string | null>(null);
 
   const scoredFeeds = useMemo<ScoredFeed[]>(() => {
@@ -65,24 +64,15 @@ export function FeedDiscoverTab({ feeds, userProfile, onAddFeed }: FeedDiscoverT
     if (previewPosts.has(feedId)) return;
 
     setLoadingPreview(feedId);
-    const pool = new SimplePool();
-    const relays = ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol'];
 
     try {
-      const filter: Filter = { kinds: [1], limit: 5 };
-      if (feed.hashtags && feed.hashtags.length > 0) {
-        filter['#t'] = feed.hashtags;
-      }
-      if (feed.authors && feed.authors.length > 0) {
-        filter.authors = feed.authors;
-      }
-
-      const events = await pool.querySync(relays, filter);
-      setPreviewPosts((prev) => new Map(prev).set(feedId, events.slice(0, 5)));
+      const contextPubkey = userProfile?.pubkey || feed.ownerPubkey || '';
+      const result = await loadFeedForCustomDefinition(contextPubkey, feed);
+      setPreviewPosts((prev) => new Map(prev).set(feedId, result.items.slice(0, 5)));
     } catch (err) {
       console.error('Failed to load feed preview:', err);
+      setPreviewPosts((prev) => new Map(prev).set(feedId, []));
     } finally {
-      pool.close(relays);
       setLoadingPreview((current) => (current === feedId ? null : current));
     }
   };
@@ -140,6 +130,31 @@ export function FeedDiscoverTab({ feeds, userProfile, onAddFeed }: FeedDiscoverT
   );
 }
 
+function CompactPostPreview({ item }: { item: FeedItem }) {
+  const displayName = item.profile?.display_name || item.profile?.name || 'Unknown';
+  const hasImage = item.content?.match(/https?:\/\/[^\s]+\.(jpg|jpeg|png|gif|webp)/i);
+
+  return (
+    <div className="p-2 rounded bg-gray-800/70 border border-gray-700/50 space-y-1">
+      <div className="flex items-center gap-2">
+        <div className="w-5 h-5 rounded-full bg-gray-600 overflow-hidden">
+          {item.profile?.picture && (
+            <img src={item.profile.picture} alt="" className="w-full h-full object-cover" />
+          )}
+        </div>
+        <span className="text-xs font-medium text-cyan-300 truncate">{displayName}</span>
+        <span className="text-xs text-gray-500">{new Date(item.created_at * 1000).toLocaleDateString()}</span>
+      </div>
+
+      <p className="text-xs text-gray-300 line-clamp-2">
+        {item.content?.replace(/https?:\/\/[^\s]+/g, '[link]').slice(0, 200)}
+      </p>
+
+      {hasImage && <div className="text-xs text-gray-500">📷 Has image</div>}
+    </div>
+  );
+}
+
 function FeedCard({ feed, onAdd, expanded, onToggleExpand, previewPosts, loadingPreview }: FeedCardProps) {
   return (
     <div
@@ -174,37 +189,71 @@ function FeedCard({ feed, onAdd, expanded, onToggleExpand, previewPosts, loading
         <div className="px-4 pb-4 border-t border-gray-700/50 pt-3 space-y-3">
           {feed.description && <p className="text-sm text-gray-300">{feed.description}</p>}
 
-          {feed.hashtags && feed.hashtags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {feed.hashtags.map((topic) => (
-                <span key={topic} className="text-xs bg-gray-700 text-cyan-300 px-2 py-0.5 rounded">
-                  #{topic}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className="bg-gray-900/50 rounded-lg p-3 space-y-2">
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Feed Design</p>
 
-          {feed.authors && feed.authors.length > 0 && (
-            <div className="text-xs text-gray-400">
-              From {feed.authors.length} author{feed.authors.length > 1 ? 's' : ''}
+            {feed.hashtags && feed.hashtags.length > 0 && (
+              <div className="flex items-start gap-2">
+                <span className="text-xs text-gray-500 w-16 shrink-0">Topics:</span>
+                <div className="flex flex-wrap gap-1">
+                  {feed.hashtags.map((topic) => (
+                    <span key={topic} className="text-xs bg-cyan-900/30 text-cyan-300 px-2 py-0.5 rounded">
+                      #{topic}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {feed.authors && feed.authors.length > 0 && (
+              <div className="flex items-start gap-2">
+                <span className="text-xs text-gray-500 w-16 shrink-0">Authors:</span>
+                <div className="flex flex-wrap gap-1">
+                  {feed.authors.slice(0, 5).map((author) => (
+                    <span key={author} className="text-xs bg-purple-900/30 text-purple-300 px-2 py-0.5 rounded font-mono">
+                      {author.slice(0, 8)}...
+                    </span>
+                  ))}
+                  {feed.authors.length > 5 && (
+                    <span className="text-xs text-gray-500">+{feed.authors.length - 5} more</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 w-16 shrink-0">Replies:</span>
+              <span className="text-xs text-gray-300">{feed.includeReplies ? 'Included' : 'Excluded'}</span>
             </div>
-          )}
+
+            {feed.ownerPubkey && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500 w-16 shrink-0">Created by:</span>
+                <span className="text-xs text-gray-300 font-mono">{feed.ownerPubkey.slice(0, 12)}...</span>
+              </div>
+            )}
+          </div>
 
           <div className="mt-3">
-            <p className="text-xs text-gray-500 mb-2">Preview:</p>
+            <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">Content Preview</p>
             {loadingPreview ? (
-              <div className="text-xs text-gray-500 animate-pulse">Loading preview...</div>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                Loading preview...
+              </div>
             ) : previewPosts && previewPosts.length > 0 ? (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {previewPosts.slice(0, 3).map((post, index) => (
-                  <div key={`${post.id}-${index}`} className="p-2 rounded bg-gray-800/50 text-xs text-gray-300 line-clamp-2">
-                    {post.content?.slice(0, 150)}
-                    {post.content && post.content.length > 150 ? '...' : ''}
-                  </div>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {previewPosts.slice(0, 3).map((item) => (
+                  <CompactPostPreview key={item.id} item={item} />
                 ))}
+                {previewPosts.length > 3 && (
+                  <p className="text-xs text-gray-500 text-center">+{previewPosts.length - 3} more posts</p>
+                )}
               </div>
             ) : (
-              <div className="text-xs text-gray-500 italic">No preview available</div>
+              <div className="text-xs text-gray-500 italic p-3 bg-gray-800/30 rounded text-center">
+                No preview available — feed may have no recent content
+              </div>
             )}
           </div>
         </div>
