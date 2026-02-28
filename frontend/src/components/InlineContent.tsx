@@ -69,12 +69,14 @@ export function InlineContent({
   quotedProfiles,
   quotedLoadingIds = new Set<string>(),
   quotedFailedIds = new Set<string>(),
+  onRetryQuote,
 }: {
   tokens: ContentToken[];
   quotedEvents: Map<string, FeedItem>;
   quotedProfiles: Map<string, NostrProfile | null>;
   quotedLoadingIds?: Set<string>;
   quotedFailedIds?: Set<string>;
+  onRetryQuote?: (eventId: string) => void;
 }) {
   const [previews, setPreviews] = useState<Record<string, LinkPreview>>({});
   const [lightbox, setLightbox] = useState<string | null>(null);
@@ -295,7 +297,17 @@ export function InlineContent({
               const profile = event ? quotedProfiles.get(event.pubkey) || undefined : undefined;
               const loadingQuote = eventId ? quotedLoadingIds.has(eventId) : false;
               const failedQuote = eventId ? quotedFailedIds.has(eventId) : !event;
-              return <QuotedEventCard key={`quote-${token.ref}-${i}`} event={event} profile={profile} loading={loadingQuote && !event} unavailable={failedQuote && !event} compact />;
+              return (
+                <QuotedEventCard
+                  key={`quote-${token.ref}-${i}`}
+                  event={event}
+                  profile={profile}
+                  loading={loadingQuote && !event}
+                  unavailable={failedQuote && !event}
+                  compact
+                  onRetry={eventId && onRetryQuote ? () => onRetryQuote(eventId) : undefined}
+                />
+              );
             }
 
             if (token.type !== 'link') return null;

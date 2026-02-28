@@ -13,9 +13,17 @@ interface Props {
   loading?: boolean;
   unavailable?: boolean;
   compact?: boolean;
+  onRetry?: () => void;
 }
 
-export function QuotedEventCard({ event, profile, loading = false, unavailable = false, compact = false }: Props) {
+export function QuotedEventCard({
+  event,
+  profile,
+  loading = false,
+  unavailable = false,
+  compact = false,
+  onRetry,
+}: Props) {
   const spacing = compact ? '' : 'mt-3';
   const [resolvedProfile, setResolvedProfile] = useState<NostrProfile | null>(profile ?? null);
 
@@ -45,11 +53,20 @@ export function QuotedEventCard({ event, profile, loading = false, unavailable =
   if (loading && !event) {
     return (
       <div className={`${spacing} rounded-lg border border-indigo-500/30 bg-slate-900/70 p-3`}>
-        <div className="animate-pulse space-y-2">
-          <div className="h-3 w-1/3 rounded bg-slate-700" />
-          <div className="h-3 w-full rounded bg-slate-800" />
-          <div className="h-3 w-5/6 rounded bg-slate-800" />
-        </div>
+        <p className="text-xs text-slate-300">Loading quoted event...</p>
+      </div>
+    );
+  }
+
+  if (!event && unavailable) {
+    return (
+      <div className={`${spacing} rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-400`}>
+        <p>Quoted event could not be loaded.</p>
+        {onRetry ? (
+          <button onClick={onRetry} className="cy-chip text-xs mt-2" type="button">
+            🔄 Retry
+          </button>
+        ) : null}
       </div>
     );
   }
@@ -57,7 +74,7 @@ export function QuotedEventCard({ event, profile, loading = false, unavailable =
   if (!event) {
     return (
       <div className={`${spacing} rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-400`}>
-        {unavailable ? 'Quoted event could not be loaded right now.' : 'Quoted event unavailable'}
+        Event unavailable
       </div>
     );
   }

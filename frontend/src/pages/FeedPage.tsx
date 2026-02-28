@@ -440,6 +440,48 @@ export function FeedPage() {
     void loadQuotes();
   }, [feed]);
 
+  const retryQuotedEvent = async (eventId: string) => {
+    setQuotedLoadingIds((prev) => new Set(prev).add(eventId));
+    setQuotedFailedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(eventId);
+      return next;
+    });
+
+    try {
+      const relayHintsById = collectQuoteRelayHints(feed);
+      const events = await resolveQuotedEvents([eventId], undefined, { relayHintsById });
+      const event = events.get(eventId);
+
+      if (!event) {
+        setQuotedFailedIds((prev) => new Set(prev).add(eventId));
+        return;
+      }
+
+      setQuotedEvents((prev) => {
+        const next = new Map(prev);
+        next.set(eventId, event as FeedItem);
+        return next;
+      });
+
+      const profiles = await fetchProfilesBatchCached([event.pubkey]);
+      setQuotedProfiles((prev) => {
+        const next = new Map(prev);
+        const profile = profiles.get(event.pubkey);
+        if (typeof profile !== 'undefined') next.set(event.pubkey, profile);
+        return next;
+      });
+    } catch {
+      setQuotedFailedIds((prev) => new Set(prev).add(eventId));
+    } finally {
+      setQuotedLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(eventId);
+        return next;
+      });
+    }
+  };
+
   useEffect(() => {
     const loadZaps = async () => {
       if (feed.length === 0) {
@@ -827,6 +869,7 @@ export function FeedPage() {
                 quotedProfiles={quotedProfiles}
                 quotedLoadingIds={quotedLoadingIds}
                 quotedFailedIds={quotedFailedIds}
+                onRetryQuote={retryQuotedEvent}
               />
               <div className="mt-3 flex flex-wrap gap-2">
                 {contentTypes.map((type) => (
