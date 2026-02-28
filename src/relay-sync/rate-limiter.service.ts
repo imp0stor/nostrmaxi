@@ -10,6 +10,7 @@ interface RelayRateState {
 export class RateLimiterService {
   private readonly logger = new Logger(RateLimiterService.name);
   private readonly relayStates = new Map<string, RelayRateState>();
+  private readonly requestDelayMs: number;
 
   private readonly relayLimits: Record<string, number> = {
     'wss://relay.damus.io': 50,
@@ -17,7 +18,9 @@ export class RateLimiterService {
     'wss://nos.lol': 30,
   };
 
-  constructor(private readonly requestDelayMs = Number(process.env.RELAY_SYNC_REQUEST_DELAY_MS || 250)) {}
+  constructor() {
+    this.requestDelayMs = Number(process.env.RELAY_SYNC_REQUEST_DELAY_MS || 250);
+  }
 
   getRateLimit(relay: string): number {
     return this.relayLimits[relay] || 40;
