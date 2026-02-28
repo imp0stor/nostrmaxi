@@ -2,6 +2,8 @@ import { SimplePool, nip19 } from 'nostr-tools';
 import type { NostrEvent, NostrProfile } from '../types';
 import { isValidNip05 } from './profileCache';
 
+const LOCAL_RELAY = 'ws://10.1.10.143:7777';
+
 const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://relay.nostr.band',
@@ -103,16 +105,16 @@ function mergeRelayCandidates(
 
   for (const id of unresolved) {
     for (const relay of hints?.get(id) || []) {
-      if (isRelayUrl(relay) && !merged.includes(relay)) merged.push(relay);
+      if (isRelayUrl(relay) && relay !== LOCAL_RELAY && !merged.includes(relay)) merged.push(relay);
     }
   }
 
   for (const relay of relays) {
-    if (isRelayUrl(relay) && !merged.includes(relay)) merged.push(relay);
+    if (isRelayUrl(relay) && relay !== LOCAL_RELAY && !merged.includes(relay)) merged.push(relay);
   }
 
   for (const relay of DEFAULT_RELAYS) {
-    if (isRelayUrl(relay) && !merged.includes(relay)) merged.push(relay);
+    if (isRelayUrl(relay) && relay !== LOCAL_RELAY && !merged.includes(relay)) merged.push(relay);
   }
 
   return merged;
@@ -142,6 +144,24 @@ export async function resolveQuotedEvents(
 
   const pool = new SimplePool();
   try {
+    const localEvents = await Promise.race([
+      pool.querySync([LOCAL_RELAY], {
+        kinds: [1, 30023],
+        ids: unresolved,
+        limit: Math.max(unresolved.length * 2, 20),
+      } as any),
+      new Promise<any[]>((resolve) => setTimeout(() => resolve([]), QUOTE_FETCH_TIMEOUT_MS)),
+    ]);
+
+    const localResolved = new Set<string>();
+    for (const evt of localEvents) {
+      const prev = out.get(evt.id);
+      if (!prev || evt.created_at > prev.created_at) out.set(evt.id, evt as NostrEvent);
+      localResolved.add(evt.id);
+      quoteCache.set(evt.id, { event: evt as NostrEvent, at: Date.now() });
+    }
+    unresolved = unresolved.filter((id) => !localResolved.has(id));
+
     const attempts = 3;
     for (let attempt = 0; attempt < attempts && unresolved.length > 0; attempt += 1) {
       const relayPool = mergeRelayCandidates(relays, unresolved, options?.relayHintsById);
@@ -162,6 +182,12 @@ export async function resolveQuotedEvents(
         if (!prev || evt.created_at > prev.created_at) out.set(evt.id, evt as NostrEvent);
         resolved.add(evt.id);
         quoteCache.set(evt.id, { event: evt as NostrEvent, at: Date.now() });
+
+        try {
+          void pool.publish([LOCAL_RELAY], evt as any);
+        } catch {
+          // fire-and-forget sync failures should not block quote resolution
+        }
       }
 
       unresolved = unresolved.filter((id) => !resolved.has(id));
@@ -177,7 +203,7 @@ export async function resolveQuotedEvents(
 
     return out;
   } finally {
-    const relayPool = mergeRelayCandidates(relays, uniq, options?.relayHintsById);
+    const relayPool = [LOCAL_RELAY, ...mergeRelayCandidates(relays, uniq, options?.relayHintsById)];
     pool.close(relayPool);
   }
 }
