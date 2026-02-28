@@ -6,6 +6,8 @@ import { truncateNpub } from './nostr';
 
 const MARKETPLACE_RELAYS = [
   'wss://relay.damus.io',
+  'wss://nostr.mom',
+  'wss://relay.snort.social',
   'wss://relay.nostr.band',
   'wss://nos.lol',
   'wss://relay.primal.net',
@@ -63,21 +65,42 @@ function collectTags(event: NostrEvent, key: string): string[] {
   return event.tags.filter((t) => t[0] === key && t[1]).map((t) => t[1].trim().toLowerCase());
 }
 
+function normalizeCurrency(currency: string): string {
+  const normalized = currency.trim().toUpperCase();
+  if (!normalized) return 'USD';
+  if (normalized === 'SATS' || normalized === 'SATOSHI' || normalized === 'SATOSHIS') return 'SAT';
+  return normalized;
+}
+
 function parsePrice(event: NostrEvent, content: Record<string, unknown>, stallCurrency?: string): { amount: number | null; currency: string } {
   const tag = event.tags.find((t) => t[0] === 'price');
   if (tag?.[1]) {
     const amount = Number.parseFloat(tag[1]);
     return {
       amount: Number.isFinite(amount) ? amount : null,
-      currency: (tag[2] || String(content.currency ?? stallCurrency ?? 'USD')).toUpperCase(),
+      currency: normalizeCurrency(tag[2] || String(content.currency ?? stallCurrency ?? 'USD')),
     };
   }
 
   const contentPrice = Number.parseFloat(String(content.price ?? content.amount ?? ''));
   return {
     amount: Number.isFinite(contentPrice) ? contentPrice : null,
-    currency: String(content.currency ?? stallCurrency ?? 'USD').toUpperCase(),
+    currency: normalizeCurrency(String(content.currency ?? stallCurrency ?? 'USD')),
   };
+}
+
+export function formatMarketplacePrice(price: number | null, currency: string): string {
+  if (price == null) return 'Price on request';
+  const normalized = normalizeCurrency(currency);
+  if (/^[A-Z]{3}$/.test(normalized)) {
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: normalized, maximumFractionDigits: 2 }).format(price);
+    } catch {
+      // Fall through to generic formatting for non-ISO or unknown currency codes.
+    }
+  }
+
+  return `${new Intl.NumberFormat().format(price)} ${normalized}`;
 }
 
 function coalesceListingId(event: NostrEvent, content: Record<string, unknown>): string {

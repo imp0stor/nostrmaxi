@@ -1,4 +1,4 @@
-import { adaptMarketplaceEvent, filterMarketplaceListings, getMarketplaceListingByKey } from '../../frontend/src/lib/marketplace';
+import { adaptMarketplaceEvent, filterMarketplaceListings, formatMarketplacePrice, getMarketplaceListingByKey } from '../../frontend/src/lib/marketplace';
 import type { NostrEvent } from '../../frontend/src/types';
 
 describe('marketplace adapter', () => {
@@ -55,5 +55,22 @@ describe('marketplace adapter', () => {
     expect(getMarketplaceListingByKey(listings, 'pub:wallet-1')?.id).toBe('evt123');
     expect(getMarketplaceListingByKey(listings, 'evt123')?.id).toBe('evt123');
     expect(getMarketplaceListingByKey(listings, 'wallet-1')?.id).toBe('evt123');
+  });
+
+  it('normalizes SATS currency and formats safely for non-ISO currencies', () => {
+    const event: NostrEvent = {
+      id: 'evt-sat',
+      sig: 'f'.repeat(128),
+      pubkey: 'b'.repeat(64),
+      created_at: 1700000000,
+      kind: 30018,
+      content: JSON.stringify({ id: 'sat-item', name: 'SAT Item', currency: 'sats', price: 2800 }),
+      tags: [['d', 'sat-item']],
+    };
+
+    const listing = adaptMarketplaceEvent(event);
+    expect(listing).not.toBeNull();
+    expect(listing?.currency).toBe('SAT');
+    expect(formatMarketplacePrice(listing?.price ?? null, listing?.currency ?? 'USD')).toContain('SAT');
   });
 });

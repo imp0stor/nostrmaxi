@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getMarketplaceListingByKey, loadMarketplaceListings, type MarketplaceListing } from '../lib/marketplace';
+import { formatMarketplacePrice, getMarketplaceListingByKey, loadMarketplaceListings, type MarketplaceListing } from '../lib/marketplace';
 
 function formatPrice(listing: MarketplaceListing): string {
-  if (listing.price == null) return 'Price on request';
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency: listing.currency || 'USD', maximumFractionDigits: 2 }).format(listing.price);
+  return formatMarketplacePrice(listing.price, listing.currency || 'USD');
 }
 
 export function MarketplaceListingPage() {
