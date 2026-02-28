@@ -609,11 +609,12 @@ export function FeedPage() {
           <p className="cy-kicker">SOCIAL FEED</p>
           <button className="cy-btn-secondary" onClick={refresh}>Refresh</button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Default feed modes */}
           {(Object.keys(FEED_MODE_LABELS) as FeedMode[]).map((mode) => (
             <button
               key={mode}
-              className={`cy-chip text-sm ${feedMode === mode ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+              className={`cy-chip text-sm ${feedMode === mode && !activeCustomFeedId ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
               onClick={() => {
                 setActiveCustomFeedId(null);
                 setFeedMode(mode);
@@ -622,33 +623,35 @@ export function FeedPage() {
               {FEED_MODE_LABELS[mode]}
             </button>
           ))}
+          
+          {/* Divider + Bookmarks + User's saved feeds */}
+          <span className="text-gray-600 mx-1">|</span>
+          <button
+            className={`cy-chip text-sm ${activeCustomFeedId === 'bookmarks' ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+            onClick={() => { setFeedMode('following'); setActiveCustomFeedId('bookmarks'); }}
+          >
+            📑 Bookmarks
+          </button>
+          {userCustomFeeds.map((feedDef) => (
+            <button
+              key={feedDef.id}
+              className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+              onClick={() => { setFeedMode('following'); setActiveCustomFeedId(feedDef.id); }}
+            >
+              {feedDef.title}
+            </button>
+          ))}
         </div>
       </header>
 
       <ConfigAccordion
         id="custom-feeds"
-        title="Custom Feeds"
-        subtitle={`${userCustomFeeds.length} saved${discoverableFeeds.length > 0 ? ` · ${discoverableFeeds.length} discoverable` : ''}`}
-        summary="Your feeds, bookmarks, and public feeds to explore"
+        title="Discover & Create Feeds"
+        subtitle={`${discoverableFeeds.length} public feeds available`}
+        summary="Find public feeds or create your own"
         defaultOpen={false}
         rightSlot={<button className="cy-btn-secondary text-xs" onClick={() => setShowCreateFeed((v) => !v)}>{showCreateFeed ? 'Cancel' : '+ New'}</button>}
       >
-        {/* Your Feeds */}
-        <div className="mb-4">
-          <p className="text-xs text-gray-400 mb-2">Your Feeds</p>
-          <div className="flex flex-wrap gap-2">
-            <button className={`cy-chip text-sm ${activeCustomFeedId === 'bookmarks' ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`} onClick={() => { setFeedMode('following'); setActiveCustomFeedId('bookmarks'); }}>
-              📑 Bookmarks
-            </button>
-            {userCustomFeeds.map((feedDef) => (
-              <button key={feedDef.id} className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`} onClick={() => { setFeedMode('following'); setActiveCustomFeedId(feedDef.id); }}>
-                {feedDef.title}
-              </button>
-            ))}
-            {userCustomFeeds.length === 0 && <span className="text-xs text-gray-500 italic">No custom feeds yet</span>}
-          </div>
-        </div>
-
         {/* Discover Public Feeds */}
         {(() => {
           // Filter out feeds with UUID-like or hex titles (garbage data)
