@@ -15,11 +15,8 @@ import type {
 } from '../types';
 
 // Use env var for API URL, fallback to same-origin relative path
-const API_BASE = import.meta.env.VITE_API_URL || (
-  typeof window !== 'undefined' && window.location.port === '3401'
-    ? `http://${window.location.hostname}:3000/api/v1`
-    : '/api/v1'
-);
+// Always use relative path - Caddy proxies /api/* to backend
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
 class ApiClient {
   private token: string | null = null;

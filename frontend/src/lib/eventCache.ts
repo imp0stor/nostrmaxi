@@ -19,7 +19,7 @@ export interface CacheConfig {
 }
 
 const DEFAULT_CONFIG: Required<CacheConfig> = {
-  localRelayUrl: 'ws://localhost:7777',
+  localRelayUrl: 'wss://10.1.10.143:3401/relay', // WSS proxy through Caddy
   sourceRelays: [
     'wss://relay.damus.io',
     'wss://relay.nostr.band',

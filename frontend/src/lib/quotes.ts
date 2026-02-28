@@ -2,7 +2,8 @@ import { SimplePool, nip19 } from 'nostr-tools';
 import type { NostrEvent, NostrProfile } from '../types';
 import { isValidNip05 } from './profileCache';
 
-const LOCAL_RELAY = 'ws://10.1.10.143:7777';
+// Use WSS proxy through Caddy to avoid mixed content blocking
+const LOCAL_RELAY = 'wss://10.1.10.143:3401/relay';
 
 const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
