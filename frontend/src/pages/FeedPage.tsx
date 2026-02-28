@@ -18,6 +18,8 @@ import { FilterBar } from '../components/filters/FilterBar';
 import { useTagFilter } from '../hooks/useTagFilter';
 import { BookmarkButton } from '../components/bookmarks/BookmarkButton';
 import { usePinnedPost } from '../hooks/usePinnedPost';
+import { useSubscriptions } from '../hooks/useSubscriptions';
+import { shouldNotify, shouldPlaySound } from '../lib/subscriptionMatcher';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -131,6 +133,8 @@ export function FeedPage() {
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [pendingZaps, setPendingZaps] = useState<PendingZap[]>([]);
   const { filters: contentFilters, syncNow: syncContentFilters } = useContentFilters(user?.pubkey);
+  const { topicSubs, userSubs, notifPrefs } = useSubscriptions(user?.pubkey);
+  const [notificationQueue, setNotificationQueue] = useState<Array<{ id: string; type: 'topic' | 'keyword' | 'user'; match: string }>>([]);
   const [liveAlerts, setLiveAlerts] = useState<string[]>([]);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const observerRef = useRef<HTMLDivElement | null>(null);
@@ -155,6 +159,20 @@ export function FeedPage() {
   }, [feed, quotedEvents, contentFilters]);
 
   const hiddenCount = useMemo(() => Array.from(mutedByEventId.values()).filter(Boolean).length, [mutedByEventId]);
+
+  const notifyByEventId = useMemo(() => {
+    const map = new Map<string, { type: 'topic' | 'keyword' | 'user'; match: string }>();
+    for (const item of feed) {
+      if (mutedByEventId.get(item.id)) continue;
+      const trigger = shouldNotify(item, {
+        topicSubscriptions: topicSubs,
+        userSubscriptions: userSubs,
+        notificationPrefs: notifPrefs,
+      });
+      if (trigger) map.set(item.id, { type: trigger.type, match: trigger.match });
+    }
+    return map;
+  }, [feed, mutedByEventId, topicSubs, userSubs, notifPrefs]);
 
   const filteredFeed = useMemo(() => {
     return feed.filter((item) => {
@@ -226,6 +244,39 @@ export function FeedPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(FEED_MODE_STORAGE_KEY, feedMode);
   }, [feedMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const newlyMatched = feed
+      .filter((item) => notifyByEventId.has(item.id))
+      .slice(0, 5)
+      .map((item) => ({ id: item.id, ...(notifyByEventId.get(item.id) as { type: 'topic' | 'keyword' | 'user'; match: string }) }));
+
+    if (newlyMatched.length === 0) return;
+
+    setNotificationQueue((prev) => {
+      const seen = new Set(prev.map((entry) => entry.id));
+      const merged = [...newlyMatched.filter((entry) => !seen.has(entry.id)), ...prev];
+      return merged.slice(0, 40);
+    });
+
+    const latest = newlyMatched[0];
+    if ('Notification' in window) {
+      if (Notification.permission === 'default') void Notification.requestPermission();
+      if (Notification.permission === 'granted') {
+        new Notification('Subscription match', { body: `${latest.type}: ${latest.match}` });
+      }
+    }
+
+    if (shouldPlaySound(notifPrefs)) {
+      try {
+        const audio = new Audio('/notification.mp3');
+        void audio.play();
+      } catch {
+        // no-op when autoplay is blocked
+      }
+    }
+  }, [feed, notifyByEventId, notifPrefs]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -672,6 +723,12 @@ export function FeedPage() {
           <Link to="/settings" className="cy-btn-secondary text-xs">Manage muted words</Link>
         </div>
 
+        {notificationQueue.length > 0 ? (
+          <div className="cy-card p-4 border border-emerald-400/40">
+            <p className="text-sm text-emerald-200">🔔 Subscription matches queued: {notificationQueue.length}</p>
+          </div>
+        ) : null}
+
         {liveAlerts.length > 0 ? (
           <div className="cy-card p-4 border border-red-400/40">
             <p className="text-sm text-red-200">🔴 Live now from people you follow: {liveAlerts.join(', ')}</p>
@@ -721,7 +778,7 @@ export function FeedPage() {
           const hasNip05 = Boolean(item.profile?.nip05);
           const shortNpub = truncateNpub(item.pubkey, 10);
           return (
-            <article key={item.id} className="cy-card p-5">
+            <article key={item.id} className={`cy-card p-5 ${notifyByEventId.has(item.id) ? 'border border-emerald-400/50 shadow-[0_0_20px_rgba(16,185,129,0.22)]' : ''}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Avatar pubkey={item.pubkey} size={44} />
@@ -738,6 +795,13 @@ export function FeedPage() {
                 </div>
                 <span className="cy-mono text-xs text-blue-300">{formatTime(item.created_at)}</span>
               </div>
+              {notifyByEventId.has(item.id) ? (
+                <div className="mt-2">
+                  <span className="text-[11px] rounded-full border border-emerald-400/50 px-2 py-0.5 text-emerald-200 bg-emerald-500/10">
+                    🔔 Matched {notifyByEventId.get(item.id)?.type}: {notifyByEventId.get(item.id)?.match}
+                  </span>
+                </div>
+              ) : null}
               <InlineContent
                 tokens={media.tokens}
                 quotedEvents={quotedEvents}

@@ -5,6 +5,8 @@ import { MuteWordsSettings } from '../components/MuteWordsSettings';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { MutedWordsManager } from '../components/settings/MutedWordsManager';
 import { ContentFiltersManager } from '../components/settings/ContentFiltersManager';
+import { NotificationSettings } from '../components/settings/NotificationSettings';
+import { SubscriptionSettings } from '../components/settings/SubscriptionSettings';
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -64,6 +66,26 @@ export function SettingsPage() {
             defaultOpen
           >
             <ContentFiltersManager />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            id="settings-subscriptions"
+            title="Subscription Settings"
+            subtitle="Positive-match subscriptions for highlights and alerts"
+            summary="Topic + user subscriptions"
+            defaultOpen={false}
+          >
+            <SubscriptionSettings />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            id="settings-notification-prefs"
+            title="Notification Preferences"
+            subtitle="Control alert behavior, quiet hours, and zap thresholds"
+            summary="Event toggles, quiet hours, minimum zap amount"
+            defaultOpen={false}
+          >
+            <NotificationSettings />
           </CollapsibleSection>
         </>
       ) : null}
