@@ -280,3 +280,66 @@ model AdminAuditLog {
   @@index([action])
   @@index([createdAt])
 }
+
+model RelaySyncState {
+  id             String   @id @default(cuid())
+  pubkey         String   @unique
+  priority       Int      @default(0)
+  lastActive     DateTime?
+  followerCount  Int      @default(0)
+  lastSyncedAt   DateTime?
+  syncStatus     String   @default("pending")
+  eventsImported Int      @default(0)
+
+  @@index([priority(sort: Desc)])
+  @@index([syncStatus])
+}
+
+model RelaySyncStats {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  profilesSynced  Int
+  notesSynced     Int
+  reactionsSynced Int
+  zapsSynced      Int
+  totalEvents     Int
+  errors          Int
+
+  @@index([createdAt])
+}
+
+model DiscoveredRelay {
+  id           String   @id @default(cuid())
+  url          String   @unique
+  firstSeenAt  DateTime @default(now())
+  lastQueryAt  DateTime?
+  successCount Int      @default(0)
+  failureCount Int      @default(0)
+  avgLatencyMs Int?
+  isActive     Boolean  @default(true)
+
+  @@index([isActive])
+  @@index([successCount, avgLatencyMs])
+}
+
+model NetworkAnalytics {
+  id              String   @id @default(cuid())
+  computedAt      DateTime @default(now())
+  totalEvents     Int
+  eventsByKind    Json
+  hourlyEvents    Json
+  dailyEvents     Json
+  activeUsersHour Int
+  activeUsersDay  Int
+  activeUsersWeek Int
+  totalZapSats    BigInt
+  zapCount        Int
+  avgZapSats      Int
+  topZappedPosts  Json
+  topHashtags     Json
+  mediaPostCount  Int
+  relayLatencyMs  Int
+  eventsPerMinute Float
+
+  @@index([computedAt])
+}
