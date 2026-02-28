@@ -1,6 +1,7 @@
 import { OnboardingFeeds } from '../components/onboarding/OnboardingFeeds';
 import { OnboardingFollows } from '../components/onboarding/OnboardingFollows';
 import { OnboardingPathChoice } from '../components/onboarding/OnboardingPathChoice';
+import { OnboardingProfile } from '../components/onboarding/OnboardingProfile';
 import { OnboardingRelays } from '../components/onboarding/OnboardingRelays';
 import { OnboardingReview } from '../components/onboarding/OnboardingReview';
 import { OnboardingSuccess } from '../components/onboarding/OnboardingSuccess';
@@ -21,6 +22,10 @@ export function OnboardingPage() {
     importPrivateKey,
     markPaymentComplete,
     updateIdentity,
+    updateProfile,
+    skipProfileField,
+    addExternalIdentity,
+    removeExternalIdentity,
     toggleRelay,
     addManualRelay,
     isProfileSelected,
@@ -28,13 +33,22 @@ export function OnboardingPage() {
     selectAllInCategory,
     toggleFeed,
     complete,
+    profileCompletion,
     selectedFollowCount,
     selectedCategoryCount,
     totalSteps,
   } = useOnboarding();
 
+  const selectedCategoryNames = state.follows.categories
+    .filter((category) => category.profiles.some((profile) => state.follows.selected.has(profile.pubkey)))
+    .map((category) => category.name);
+
+  const selectedFeedNames = state.feeds.available
+    .filter((feed) => state.feeds.selected.includes(feed.id))
+    .map((feed) => feed.name);
+
   const renderStep = () => {
-    if (state.completed || state.step === 6) {
+    if (state.completed || state.step === 7) {
       return <OnboardingSuccess />;
     }
 
@@ -55,6 +69,23 @@ export function OnboardingPage() {
         );
       case 2:
         return (
+          <OnboardingProfile
+            profile={state.profile}
+            pubkey={state.identity.pubkey}
+            selectedCategoryNames={selectedCategoryNames}
+            selectedFeedNames={selectedFeedNames}
+            hasPremiumNip05={state.path === 'premium' && Boolean(state.identity.nip05)}
+            onProfileChange={updateProfile}
+            onSkipField={skipProfileField}
+            onAddExternalIdentity={addExternalIdentity}
+            onRemoveExternalIdentity={removeExternalIdentity}
+            profileCompletion={profileCompletion}
+            onBack={back}
+            onNext={next}
+          />
+        );
+      case 3:
+        return (
           <OnboardingRelays
             relays={state.relays}
             onToggleRelay={toggleRelay}
@@ -63,7 +94,7 @@ export function OnboardingPage() {
             onNext={next}
           />
         );
-      case 3:
+      case 4:
         return (
           <OnboardingFollows
             categories={state.follows.categories}
@@ -75,7 +106,7 @@ export function OnboardingPage() {
             onNext={next}
           />
         );
-      case 4:
+      case 5:
         return (
           <OnboardingFeeds
             feeds={state.feeds}
@@ -84,7 +115,7 @@ export function OnboardingPage() {
             onNext={next}
           />
         );
-      case 5:
+      case 6:
         return (
           <OnboardingReview
             state={state}

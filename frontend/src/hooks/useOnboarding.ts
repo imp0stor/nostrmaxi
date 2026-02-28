@@ -38,8 +38,29 @@ export interface FeedDefinition {
   subscriberCount: number;
 }
 
+export interface ExternalIdentity {
+  platform: string;
+  identity: string;
+  proof: string;
+  verified?: boolean;
+}
+
+export interface OnboardingProfileState {
+  displayName: string;
+  username: string;
+  bio: string;
+  picture: string;
+  banner: string;
+  website: string;
+  lightningAddress: string;
+  nip05: string;
+  nip05Verified: boolean;
+  externalIdentities: ExternalIdentity[];
+  skippedFields: Record<string, boolean>;
+}
+
 export interface OnboardingState {
-  step: number; // 0-6
+  step: number; // 0-7
   path?: 'premium' | 'free';
   identity: {
     pubkey: string;
@@ -50,6 +71,7 @@ export interface OnboardingState {
     imported?: boolean;
     paymentComplete?: boolean;
   };
+  profile: OnboardingProfileState;
   relays: {
     selected: string[];
     suggestions: RelaySuggestion[];
@@ -66,12 +88,25 @@ export interface OnboardingState {
   completed: boolean;
 }
 
-const MAX_STEP = 6;
+const MAX_STEP = 7;
 
 const initialState: OnboardingState = {
   step: 0,
   path: undefined,
   identity: { pubkey: '' },
+  profile: {
+    displayName: '',
+    username: '',
+    bio: '',
+    picture: '',
+    banner: '',
+    website: '',
+    lightningAddress: '',
+    nip05: '',
+    nip05Verified: false,
+    externalIdentities: [],
+    skippedFields: {},
+  },
   relays: { selected: [], suggestions: [] },
   follows: { selected: new Set<string>(), byCategory: new Map<string, string[]>(), categories: [] },
   feeds: { selected: [], available: [] },
@@ -139,8 +174,6 @@ export function useOnboarding() {
       step: path === 'premium' ? 1 : 2,
       identity: {
         ...prev.identity,
-        pubkey: prev.identity.pubkey || randomHex(64),
-        privateKey: prev.identity.privateKey || randomHex(64),
         paymentComplete: path === 'free' ? false : prev.identity.paymentComplete,
       },
     }));
@@ -149,7 +182,7 @@ export function useOnboarding() {
   const goNext = () => {
     setState((prev) => {
       if (!prev.path) return prev;
-      const nextStep = prev.path === 'free' && prev.step === 0 ? 2 : prev.path === 'free' && prev.step === 5 ? 6 : prev.step + 1;
+      const nextStep = prev.path === 'free' && prev.step === 0 ? 2 : prev.step + 1;
       return { ...prev, step: Math.min(MAX_STEP, nextStep) };
     });
   };
@@ -194,11 +227,68 @@ export function useOnboarding() {
   };
 
   const markPaymentComplete = () => {
-    setState((prev) => ({ ...prev, identity: { ...prev.identity, paymentComplete: true } }));
+    setState((prev) => ({
+      ...prev,
+      identity: { ...prev.identity, paymentComplete: true },
+      profile: {
+        ...prev.profile,
+        lightningAddress: prev.profile.lightningAddress || prev.identity.lightningAddress || '',
+        nip05: prev.identity.nip05 || prev.profile.nip05,
+        nip05Verified: Boolean(prev.identity.paymentComplete || prev.identity.nip05),
+      },
+    }));
   };
 
   const updateIdentity = (partial: Partial<OnboardingState['identity']>) => {
-    setState((prev) => ({ ...prev, identity: { ...prev.identity, ...partial } }));
+    setState((prev) => ({
+      ...prev,
+      identity: { ...prev.identity, ...partial },
+      profile: {
+        ...prev.profile,
+        lightningAddress: partial.lightningAddress ?? prev.profile.lightningAddress,
+        nip05: partial.nip05 ?? prev.profile.nip05,
+        nip05Verified: partial.nip05 ? true : prev.profile.nip05Verified,
+      },
+    }));
+  };
+
+  const updateProfile = (partial: Partial<OnboardingProfileState>) => {
+    setState((prev) => ({ ...prev, profile: { ...prev.profile, ...partial } }));
+  };
+
+  const skipProfileField = (field: string) => {
+    setState((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        skippedFields: { ...prev.profile.skippedFields, [field]: true },
+      },
+    }));
+  };
+
+  const addExternalIdentity = (identity: ExternalIdentity) => {
+    setState((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        externalIdentities: [
+          ...prev.profile.externalIdentities.filter((item) => item.platform !== identity.platform || item.identity !== identity.identity),
+          identity,
+        ],
+      },
+    }));
+  };
+
+  const removeExternalIdentity = (platform: string, identity: string) => {
+    setState((prev) => ({
+      ...prev,
+      profile: {
+        ...prev.profile,
+        externalIdentities: prev.profile.externalIdentities.filter(
+          (item) => !(item.platform === platform && item.identity === identity),
+        ),
+      },
+    }));
   };
 
   const toggleRelay = (url: string) => {
@@ -272,6 +362,19 @@ export function useOnboarding() {
         nip05: state.path === 'premium' ? state.identity.nip05 : undefined,
         lightningAddress: state.path === 'premium' ? state.identity.lightningAddress : undefined,
       },
+      profile: {
+        displayName: state.profile.displayName,
+        username: state.profile.username,
+        bio: state.profile.bio,
+        picture: state.profile.picture,
+        banner: state.profile.banner,
+        website: state.profile.website,
+        lightningAddress: state.profile.lightningAddress,
+        nip05: state.profile.nip05,
+        nip05Verified: state.profile.nip05Verified,
+        externalIdentities: state.profile.externalIdentities,
+        skippedFields: state.profile.skippedFields,
+      },
       relays: { selected: state.relays.selected },
       follows: {
         selected: Array.from(state.follows.selected),
@@ -304,6 +407,27 @@ export function useOnboarding() {
     [state.follows.categories, state.follows.selected],
   );
 
+  const profileCompletion = useMemo(() => {
+    const checks = [
+      Boolean(state.profile.displayName.trim() || state.profile.skippedFields.displayName),
+      Boolean(state.profile.username.trim() || state.profile.skippedFields.username),
+      Boolean(state.profile.bio.trim() || state.profile.skippedFields.bio),
+      Boolean(state.profile.picture.trim() || state.profile.skippedFields.picture),
+      Boolean(state.profile.banner.trim() || state.profile.skippedFields.banner),
+      Boolean(state.profile.website.trim() || state.profile.skippedFields.website),
+      Boolean(state.profile.lightningAddress.trim() || state.profile.skippedFields.lightningAddress),
+      Boolean(state.profile.nip05.trim() || state.profile.skippedFields.nip05),
+      Boolean(state.profile.externalIdentities.length || state.profile.skippedFields.externalIdentities),
+    ];
+
+    const completedCount = checks.filter(Boolean).length;
+    return {
+      completedCount,
+      totalCount: checks.length,
+      percent: Math.round((completedCount / checks.length) * 100),
+    };
+  }, [state.profile]);
+
   return {
     state,
     loading,
@@ -317,6 +441,10 @@ export function useOnboarding() {
     importPrivateKey,
     markPaymentComplete,
     updateIdentity,
+    updateProfile,
+    skipProfileField,
+    addExternalIdentity,
+    removeExternalIdentity,
     toggleRelay,
     addManualRelay,
     isProfileSelected,
@@ -324,6 +452,7 @@ export function useOnboarding() {
     selectAllInCategory,
     toggleFeed,
     complete,
+    profileCompletion,
     selectedFollowCount: state.follows.selected.size,
     selectedCategoryCount,
     totalSteps: MAX_STEP,

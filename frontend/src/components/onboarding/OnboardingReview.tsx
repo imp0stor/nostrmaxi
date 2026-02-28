@@ -30,16 +30,20 @@ export function OnboardingReview({
           <button className="cy-btn-secondary text-xs" onClick={() => onEditStep(state.path === 'premium' ? 1 : 0)}>Edit</button>
         </div>
         <div className="rounded border border-cyan-500/20 p-3 bg-slate-950/60 flex items-center justify-between">
-          <p>Relays selected: {state.relays.selected.length}</p>
+          <p>Profile: {state.profile.displayName || state.profile.username || 'Set up later'} • {state.profile.externalIdentities.length} external links</p>
           <button className="cy-btn-secondary text-xs" onClick={() => onEditStep(2)}>Edit</button>
         </div>
         <div className="rounded border border-cyan-500/20 p-3 bg-slate-950/60 flex items-center justify-between">
-          <p>Following: {selectedFollowCount} accounts across {selectedCategoryCount} categories</p>
+          <p>Relays selected: {state.relays.selected.length}</p>
           <button className="cy-btn-secondary text-xs" onClick={() => onEditStep(3)}>Edit</button>
         </div>
         <div className="rounded border border-cyan-500/20 p-3 bg-slate-950/60 flex items-center justify-between">
-          <p>Feeds subscribed: {state.feeds.selected.length}</p>
+          <p>Following: {selectedFollowCount} accounts across {selectedCategoryCount} categories</p>
           <button className="cy-btn-secondary text-xs" onClick={() => onEditStep(4)}>Edit</button>
+        </div>
+        <div className="rounded border border-cyan-500/20 p-3 bg-slate-950/60 flex items-center justify-between">
+          <p>Feeds subscribed: {state.feeds.selected.length}</p>
+          <button className="cy-btn-secondary text-xs" onClick={() => onEditStep(5)}>Edit</button>
         </div>
       </div>
 

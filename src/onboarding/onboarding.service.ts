@@ -10,6 +10,19 @@ interface CompleteOnboardingPayload {
     nip05?: string;
     lightningAddress?: string;
   };
+  profile?: {
+    displayName?: string;
+    username?: string;
+    bio?: string;
+    picture?: string;
+    banner?: string;
+    website?: string;
+    lightningAddress?: string;
+    nip05?: string;
+    nip05Verified?: boolean;
+    externalIdentities?: Array<{ platform: string; identity: string; proof: string }>;
+    skippedFields?: Record<string, boolean>;
+  };
   relays: {
     selected: string[];
   };
@@ -46,6 +59,27 @@ export class OnboardingService {
   complete(payload: CompleteOnboardingPayload) {
     const selectedFeeds = CURATED_FEEDS.filter((feed) => payload.feeds.selected.includes(feed.id));
 
+    const externalIdentityTags = (payload.profile?.externalIdentities || []).map((item) => [
+      'i',
+      `${item.platform}:${item.identity}`,
+      item.proof,
+    ] as string[]);
+
+    const profileEvent = {
+      kind: 0,
+      content: JSON.stringify({
+        name: payload.profile?.username || payload.identity.name || '',
+        display_name: payload.profile?.displayName || payload.identity.name || '',
+        about: payload.profile?.bio || '',
+        picture: payload.profile?.picture || '',
+        banner: payload.profile?.banner || '',
+        website: payload.profile?.website || '',
+        lud16: payload.profile?.lightningAddress || payload.identity.lightningAddress || '',
+        nip05: payload.profile?.nip05 || payload.identity.nip05 || '',
+      }),
+      tags: externalIdentityTags,
+    };
+
     const feedListEvent = {
       kind: 30001,
       tags: [
@@ -59,14 +93,23 @@ export class OnboardingService {
 
     return {
       success: true,
-      message: 'Onboarding complete. Feed subscriptions prepared with NIP-51 list.',
+      message: 'Onboarding complete. Profile, follows, relays, and feed subscriptions prepared.',
       summary: {
         identity: payload.identity,
+        profile: {
+          displayName: payload.profile?.displayName,
+          username: payload.profile?.username,
+          website: payload.profile?.website,
+          nip05Verified: payload.profile?.nip05Verified,
+          externalIdentityCount: payload.profile?.externalIdentities?.length || 0,
+          skippedFields: payload.profile?.skippedFields || {},
+        },
         relayCount: payload.relays.selected.length,
         followCount: payload.follows.selected.length,
         categoryCount: payload.follows.categories.length,
         feedCount: payload.feeds.selected.length,
       },
+      profileEvent,
       feedListEvent,
     };
   }
