@@ -30,6 +30,7 @@ export function TopPostCard({ rank, post, onClick }: { rank: number; post: TopPo
         <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
           <span>❤️ {post.reactions}</span>
           <span>🔁 {post.reposts}</span>
+          <span>💬 {post.replies ?? 0}</span>
           <span>
             ⚡ {post.zaps} ({post.zapAmount} sats)
           </span>
@@ -39,6 +40,6 @@ export function TopPostCard({ rank, post, onClick }: { rank: number; post: TopPo
         <div className="text-lg font-bold text-cyan-400">{post.score}</div>
         <div className="text-xs text-gray-500">score</div>
       </div>
-    </div>
+    </button>
   );
 }

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { SimplePool } from 'nostr-tools';
 import { useAuth } from '../hooks/useAuth';
 import { clearAnalyticsCache, loadAnalyticsDashboard, type AnalyticsDashboardData, type AnalyticsInterval } from '../lib/analytics';
+import type { NostrEvent } from '../types';
+import { FALLBACK_RELAYS } from '../lib/relayConfig';
+import { parseZapReceipt } from '../lib/zaps';
+import { fetchProfilesBatchCached, profileDisplayName } from '../lib/profileCache';
+import { encodeNpub, truncateNpub } from '../lib/nostr';
 import { TimeRangePicker, type TimeRangeValue } from '../components/analytics/TimeRangePicker';
 import { MetricCard } from '../components/analytics/MetricCard';
 import { EngagementChart } from '../components/analytics/EngagementChart';
@@ -10,6 +17,8 @@ import { BestDaysChart } from '../components/analytics/BestDaysChart';
 import { TopPostCard } from '../components/analytics/TopPostCard';
 import { HashtagTable } from '../components/analytics/HashtagTable';
 import { AnalyticsLoadingSkeleton } from '../components/analytics/AnalyticsLoadingSkeleton';
+import { Avatar } from '../components/Avatar';
+import { PostModal } from '../components/PostModal';
 
 interface TimelineDataPoint {
   date: string;
@@ -21,6 +30,7 @@ interface TopPost {
   id: string;
   content: string;
   reactions: number;
+  replies: number;
   reposts: number;
   zaps: number;
   zapAmount: number;
@@ -75,6 +85,7 @@ function mapMetrics(data: AnalyticsDashboardData): UserMetrics {
     id: post.id,
     content: post.preview,
     reactions: post.reactions,
+    replies: post.replies,
     reposts: post.reposts,
     zaps: post.zaps,
     zapAmount: post.zapSats,
