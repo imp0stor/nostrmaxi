@@ -1,7 +1,7 @@
 // Enable WebSocket for nostr-tools in Node.js (must be before any nostr-tools imports)
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const WebSocket = require('websocket-polyfill');
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+const WebSocket = require('ws');
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const { useWebSocketImplementation } = require('nostr-tools/pool');
 useWebSocketImplementation(WebSocket);
 
