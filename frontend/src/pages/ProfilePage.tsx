@@ -20,6 +20,21 @@ type PanelSort = 'name' | 'followers' | 'following';
 
 const PANEL_PAGE_SIZE = 18;
 
+function collectQuoteRelayHints(items: FeedItem[]): Map<string, string[]> {
+  const hints = new Map<string, Set<string>>();
+  for (const item of items) {
+    for (const tag of item.tags || []) {
+      if (tag[0] !== 'e' || !tag[1] || !tag[2] || !/^wss?:\/\//i.test(tag[2])) continue;
+      if (!hints.has(tag[1])) hints.set(tag[1], new Set());
+      hints.get(tag[1])!.add(tag[2]);
+    }
+  }
+
+  const out = new Map<string, string[]>();
+  hints.forEach((relaySet, id) => out.set(id, [...relaySet]));
+  return out;
+}
+
 export function ProfilePage() {
   const { npub } = useParams();
   const { user, isAuthenticated } = useAuth();
@@ -91,7 +106,8 @@ export function ProfilePage() {
         return;
       }
 
-      const resolved = await resolveQuotedEvents(refs);
+      const relayHintsById = collectQuoteRelayHints(activity);
+      const resolved = await resolveQuotedEvents(refs, undefined, { relayHintsById });
       const feedMap = new Map<string, FeedItem>();
       resolved.forEach((evt, id) => {
         feedMap.set(id, evt as FeedItem);

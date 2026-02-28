@@ -41,6 +41,21 @@ const FEED_FILTER_LABELS: Record<FeedFilter, string> = {
   withLinks: 'With links',
 };
 
+function collectQuoteRelayHints(items: FeedItem[]): Map<string, string[]> {
+  const hints = new Map<string, Set<string>>();
+  for (const item of items) {
+    for (const tag of item.tags || []) {
+      if (tag[0] !== 'e' || !tag[1] || !tag[2] || !/^wss?:\/\//i.test(tag[2])) continue;
+      if (!hints.has(tag[1])) hints.set(tag[1], new Set());
+      hints.get(tag[1])!.add(tag[2]);
+    }
+  }
+
+  const out = new Map<string, string[]>();
+  hints.forEach((relaySet, id) => out.set(id, [...relaySet]));
+  return out;
+}
+
 const FEED_MODE_LABELS: Record<FeedMode, string> = {
   firehose: 'Firehose',
   following: 'Following',
@@ -332,7 +347,8 @@ export function FeedPage() {
       setQuotedFailedIds(new Set());
 
       try {
-        const events = await resolveQuotedEvents(refs);
+        const relayHintsById = collectQuoteRelayHints(feed);
+        const events = await resolveQuotedEvents(refs, undefined, { relayHintsById });
         setQuotedEvents(events as Map<string, FeedItem>);
 
         const missing = refs.filter((id) => !events.has(id));

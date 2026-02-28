@@ -7,14 +7,26 @@ const DEFAULT_RELAYS = [
   'wss://relay.nostr.band',
   'wss://nos.lol',
   'wss://relay.primal.net',
+  'wss://relay.snort.social',
+  'wss://offchain.pub',
 ];
 
 const QUOTE_CACHE_KEY = 'nostrmaxi.quotes.cache.v1';
 const QUOTE_CACHE_TTL_MS = 30 * 60 * 1000;
+const QUOTE_NEGATIVE_CACHE_TTL_MS = 2 * 60 * 1000;
+const QUOTE_FETCH_TIMEOUT_MS = 10_000;
 const quoteCache = new Map<string, { event: NostrEvent | null; at: number }>();
+
+export interface ResolveQuotedEventsOptions {
+  relayHintsById?: Map<string, string[]>;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRelayUrl(value: string | undefined): value is string {
+  return Boolean(value && /^wss?:\/\//i.test(value));
 }
 
 function readQuoteCacheFromStorage(): void {
@@ -25,7 +37,9 @@ function readQuoteCacheFromStorage(): void {
     const parsed = JSON.parse(raw) as Record<string, { event: NostrEvent | null; at: number }>;
     const now = Date.now();
     for (const [id, entry] of Object.entries(parsed)) {
-      if (!entry || (now - entry.at) > QUOTE_CACHE_TTL_MS) continue;
+      if (!entry) continue;
+      const ttl = entry.event ? QUOTE_CACHE_TTL_MS : QUOTE_NEGATIVE_CACHE_TTL_MS;
+      if ((now - entry.at) > ttl) continue;
       quoteCache.set(id, entry);
     }
   } catch {
@@ -39,7 +53,8 @@ function persistQuoteCacheToStorage(): void {
     const now = Date.now();
     const out: Record<string, { event: NostrEvent | null; at: number }> = {};
     for (const [id, entry] of quoteCache.entries()) {
-      if ((now - entry.at) > QUOTE_CACHE_TTL_MS) continue;
+      const ttl = entry.event ? QUOTE_CACHE_TTL_MS : QUOTE_NEGATIVE_CACHE_TTL_MS;
+      if ((now - entry.at) > ttl) continue;
       out[id] = entry;
     }
     window.localStorage.setItem(QUOTE_CACHE_KEY, JSON.stringify(out));
@@ -79,7 +94,35 @@ export function parseQuotedEventRefs(event: Pick<NostrEvent, 'tags' | 'content'>
   return [...ids];
 }
 
-export async function resolveQuotedEvents(ids: string[], relays: string[] = DEFAULT_RELAYS): Promise<Map<string, NostrEvent>> {
+function mergeRelayCandidates(
+  relays: string[],
+  unresolved: string[],
+  hints?: Map<string, string[]>,
+): string[] {
+  const merged: string[] = [];
+
+  for (const id of unresolved) {
+    for (const relay of hints?.get(id) || []) {
+      if (isRelayUrl(relay) && !merged.includes(relay)) merged.push(relay);
+    }
+  }
+
+  for (const relay of relays) {
+    if (isRelayUrl(relay) && !merged.includes(relay)) merged.push(relay);
+  }
+
+  for (const relay of DEFAULT_RELAYS) {
+    if (isRelayUrl(relay) && !merged.includes(relay)) merged.push(relay);
+  }
+
+  return merged;
+}
+
+export async function resolveQuotedEvents(
+  ids: string[],
+  relays: string[] = DEFAULT_RELAYS,
+  options?: ResolveQuotedEventsOptions,
+): Promise<Map<string, NostrEvent>> {
   hydrateQuoteCacheOnce();
   const uniq = [...new Set(ids.filter(Boolean))].slice(0, 60);
   if (uniq.length === 0) return new Map();
@@ -89,7 +132,8 @@ export async function resolveQuotedEvents(ids: string[], relays: string[] = DEFA
   let unresolved = uniq.filter((id) => {
     const cached = quoteCache.get(id);
     if (!cached) return true;
-    if ((now - cached.at) > QUOTE_CACHE_TTL_MS) return true;
+    const ttl = cached.event ? QUOTE_CACHE_TTL_MS : QUOTE_NEGATIVE_CACHE_TTL_MS;
+    if ((now - cached.at) > ttl) return true;
     if (cached.event) out.set(id, cached.event);
     return false;
   });
@@ -100,11 +144,17 @@ export async function resolveQuotedEvents(ids: string[], relays: string[] = DEFA
   try {
     const attempts = 3;
     for (let attempt = 0; attempt < attempts && unresolved.length > 0; attempt += 1) {
-      const events = await pool.querySync(relays, {
-        kinds: [1, 30023],
-        ids: unresolved,
-        limit: Math.max(unresolved.length * 2, 20),
-      } as any);
+      const relayPool = mergeRelayCandidates(relays, unresolved, options?.relayHintsById);
+      if (relayPool.length === 0) break;
+
+      const events = await Promise.race([
+        pool.querySync(relayPool, {
+          kinds: [1, 30023],
+          ids: unresolved,
+          limit: Math.max(unresolved.length * 2, 20),
+        } as any),
+        new Promise<any[]>((resolve) => setTimeout(() => resolve([]), QUOTE_FETCH_TIMEOUT_MS)),
+      ]);
 
       const resolved = new Set<string>();
       for (const evt of events) {
@@ -116,7 +166,7 @@ export async function resolveQuotedEvents(ids: string[], relays: string[] = DEFA
 
       unresolved = unresolved.filter((id) => !resolved.has(id));
       if (unresolved.length > 0 && attempt < attempts - 1) {
-        await sleep(180 * Math.pow(2, attempt));
+        await sleep(250 * Math.pow(2, attempt));
       }
     }
 
@@ -127,7 +177,8 @@ export async function resolveQuotedEvents(ids: string[], relays: string[] = DEFA
 
     return out;
   } finally {
-    pool.close(relays);
+    const relayPool = mergeRelayCandidates(relays, uniq, options?.relayHintsById);
+    pool.close(relayPool);
   }
 }
 
