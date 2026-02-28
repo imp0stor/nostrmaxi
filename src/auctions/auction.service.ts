@@ -15,17 +15,39 @@ import {
   AuctionState,
   Bid,
   PaymentVerification,
+  SecondChanceOffer,
   TrackedInvoiceStatus,
   WinnerResult,
 } from './auction.types';
+import { Invoice, PaymentProvider } from '../payments/payment-provider.interface';
 
 const MIN_INCREMENT_RATE = 0.1;
 const SNIPE_WINDOW_SECONDS = 5 * 60;
 const SNIPE_EXTENSION_SECONDS = 10 * 60;
 const BOLT11_SIGNATURE_WORDS = 104;
 const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+const WINNER_PAYMENT_WINDOW_SECONDS = 48 * 60 * 60;
+const SECOND_CHANCE_WINDOW_SECONDS = 24 * 60 * 60;
 
 type LightningInvoiceVerifier = (paymentHash: string, bolt11: string) => Promise<boolean>;
+
+interface PendingBidInvoice {
+  auctionId: string;
+  bidderPubkey: string;
+  amountSats: number;
+  invoice: Invoice;
+  status: 'pending' | 'paid';
+}
+
+interface SettlementInvoice {
+  auctionId: string;
+  bidderPubkey: string;
+  amountSats: number;
+  invoice: Invoice;
+  expiresAt: number;
+  status: 'pending' | 'paid' | 'expired';
+  source: 'winner' | 'second_chance';
+}
 
 @Injectable()
 export class AuctionService {
@@ -33,6 +55,10 @@ export class AuctionService {
   private readonly auctions = new Map<string, AuctionListing>();
   private readonly bidsByAuction = new Map<string, Bid[]>();
   private readonly invoicesByPaymentHash = new Map<string, TrackedInvoiceStatus>();
+  private readonly pendingBidInvoices = new Map<string, PendingBidInvoice>();
+  private readonly settlementInvoices = new Map<string, SettlementInvoice>();
+  private readonly secondChanceOffersByAuction = new Map<string, SecondChanceOffer[]>();
+  private paymentProvider?: PaymentProvider;
   private lightningInvoiceVerifier?: LightningInvoiceVerifier;
 
   createAuction(input: AuctionCreateInput): { auction: AuctionListing; eventTemplate: ReturnType<typeof buildAuctionListingEventTemplate> } {
@@ -121,8 +147,50 @@ export class AuctionService {
     });
   }
 
+  getSecondChanceOffers(auctionId: string): SecondChanceOffer[] {
+    return [...(this.secondChanceOffersByAuction.get(auctionId) || [])];
+  }
+
   setLightningInvoiceVerifier(verifier: LightningInvoiceVerifier): void {
     this.lightningInvoiceVerifier = verifier;
+  }
+
+  setPaymentProvider(provider: PaymentProvider): void {
+    this.paymentProvider = provider;
+    provider.subscribeToPayments((payment) => {
+      if (payment.status === 'paid') {
+        this.handlePaymentReceived(payment.invoiceId).catch((error) => {
+          this.logger.error(`Failed to process payment callback: ${error?.message || error}`);
+        });
+      }
+    });
+  }
+
+  async createBidInvoice(auctionId: string, bidderPubkey: string, amount: number): Promise<Invoice> {
+    const auction = this.auctions.get(auctionId);
+    if (!auction) throw new NotFoundException('Auction not found');
+
+    const state = this.calculateState(auction.startsAt, auction.endsAt, auction.state);
+    if (state !== AuctionState.LIVE) {
+      throw new BadRequestException(`Auction is not live (${state})`);
+    }
+
+    const provider = this.requirePaymentProvider();
+    const invoice = await provider.createInvoice(amount, `Bid for ${auction.name}`, {
+      auctionId,
+      bidderPubkey,
+      type: 'bid',
+    });
+
+    this.pendingBidInvoices.set(invoice.id, {
+      auctionId,
+      bidderPubkey,
+      amountSats: amount,
+      invoice,
+      status: 'pending',
+    });
+
+    return invoice;
   }
 
   trackInvoice(input: {
@@ -153,6 +221,57 @@ export class AuctionService {
     tracked.paid = true;
     tracked.paidAt = Math.floor(Date.now() / 1000);
     this.invoicesByPaymentHash.set(normalized, tracked);
+  }
+
+  async handlePaymentReceived(invoiceId: string): Promise<void> {
+    const now = Math.floor(Date.now() / 1000);
+
+    const pendingBid = this.pendingBidInvoices.get(invoiceId);
+    if (pendingBid && pendingBid.status !== 'paid') {
+      pendingBid.status = 'paid';
+      this.pendingBidInvoices.set(invoiceId, pendingBid);
+
+      const bid: Bid = {
+        id: randomUUID(),
+        auctionEventId: this.auctions.get(pendingBid.auctionId)?.eventId || pendingBid.auctionId,
+        zapReceiptId: `invoice:${invoiceId}`,
+        bidderPubkey: pendingBid.bidderPubkey,
+        bidAmountSats: pendingBid.amountSats,
+        zapAmountSats: pendingBid.amountSats,
+        memo: 'invoice-payment',
+        createdAt: now,
+      };
+
+      const bids = this.bidsByAuction.get(pendingBid.auctionId) || [];
+      bids.push(bid);
+      this.bidsByAuction.set(pendingBid.auctionId, bids);
+      return;
+    }
+
+    const settlement = this.settlementInvoices.get(invoiceId);
+    if (!settlement) {
+      this.logger.warn(`Received payment for unknown invoice ${invoiceId}`);
+      return;
+    }
+
+    settlement.status = 'paid';
+    this.settlementInvoices.set(invoiceId, settlement);
+
+    const auction = this.auctions.get(settlement.auctionId);
+    if (!auction) return;
+
+    auction.state = AuctionState.SETTLED;
+    auction.winnerPubkey = settlement.bidderPubkey;
+    auction.winningBidSats = settlement.amountSats;
+    auction.settledAt = now;
+    this.auctions.set(auction.id, auction);
+
+    const offers = this.secondChanceOffersByAuction.get(settlement.auctionId) || [];
+    offers.forEach((offer) => {
+      if (offer.settlementInvoiceId === invoiceId) offer.status = 'accepted';
+      else if (offer.status === 'pending') offer.status = 'declined';
+    });
+    this.secondChanceOffersByAuction.set(settlement.auctionId, offers);
   }
 
   async ingestZapBid(auctionId: string, zapReceipt: NostrEventLike): Promise<Bid> {
@@ -235,7 +354,7 @@ export class AuctionService {
     };
   }
 
-  settleAuction(auctionId: string): AuctionSettlement {
+  async settleAuction(auctionId: string): Promise<AuctionSettlement> {
     const auction = this.auctions.get(auctionId);
     if (!auction) {
       throw new NotFoundException('Auction not found');
@@ -269,18 +388,173 @@ export class AuctionService {
       };
     }
 
-    auction.state = AuctionState.SETTLED;
-    auction.settledAt = Math.floor(Date.now() / 1000);
+    const invoice = await this.requirePaymentProvider().createInvoice(
+      winner.winningBidSats!,
+      `Settlement for ${auction.name}`,
+      {
+        auctionId,
+        bidderPubkey: winner.winnerPubkey,
+        type: 'auction_settlement',
+      },
+    );
+
+    const now = Math.floor(Date.now() / 1000);
+    const expiresAt = now + WINNER_PAYMENT_WINDOW_SECONDS;
+
+    this.settlementInvoices.set(invoice.id, {
+      auctionId,
+      bidderPubkey: winner.winnerPubkey!,
+      amountSats: winner.winningBidSats!,
+      invoice,
+      expiresAt,
+      status: 'pending',
+      source: 'winner',
+    });
+
+    auction.state = AuctionState.ENDED;
     auction.winnerPubkey = winner.winnerPubkey;
     auction.winningBidSats = winner.winningBidSats;
+    auction.settlementInvoiceId = invoice.id;
+    auction.settlementDeadlineAt = expiresAt;
+    this.auctions.set(auction.id, auction);
 
     return {
       auctionId,
-      state: AuctionState.SETTLED,
+      state: AuctionState.ENDED,
       reserveMet: true,
+      deedIssued: false,
+      awaitingPayment: true,
+      settlementInvoiceId: invoice.id,
+      settlementDeadlineAt: expiresAt,
       winnerPubkey: winner.winnerPubkey,
       winningBidSats: winner.winningBidSats,
-      deedIssued: true,
+      reason: 'Awaiting winner settlement payment',
+    };
+  }
+
+  async processSecondChance(auctionId: string): Promise<AuctionSettlement> {
+    const auction = this.auctions.get(auctionId);
+    if (!auction) throw new NotFoundException('Auction not found');
+
+    if (auction.state === AuctionState.SETTLED) {
+      return {
+        auctionId,
+        state: AuctionState.SETTLED,
+        reserveMet: true,
+        deedIssued: true,
+        winnerPubkey: auction.winnerPubkey,
+        winningBidSats: auction.winningBidSats,
+      };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (auction.settlementInvoiceId) {
+      const currentSettlement = this.settlementInvoices.get(auction.settlementInvoiceId);
+      if (currentSettlement?.status === 'pending' && now <= currentSettlement.expiresAt) {
+        return {
+          auctionId,
+          state: AuctionState.ENDED,
+          reserveMet: true,
+          deedIssued: false,
+          awaitingPayment: true,
+          settlementInvoiceId: currentSettlement.invoice.id,
+          settlementDeadlineAt: currentSettlement.expiresAt,
+          reason: 'Current settlement invoice is still active',
+        };
+      }
+
+      if (currentSettlement?.status === 'pending' && now > currentSettlement.expiresAt) {
+        currentSettlement.status = 'expired';
+        this.settlementInvoices.set(auction.settlementInvoiceId, currentSettlement);
+      }
+    }
+
+    const sortedBids = this.getBids(auctionId);
+    const offers = this.secondChanceOffersByAuction.get(auctionId) || [];
+
+    for (const offer of offers) {
+      if (offer.status === 'pending' && offer.expiresAt.getTime() <= now * 1000) {
+        offer.status = 'expired';
+      }
+    }
+
+    const alreadyOffered = new Set(offers.map((offer) => offer.bidderPubkey));
+    const currentWinner = auction.winnerPubkey;
+    const activeSettlementBidder = auction.settlementInvoiceId
+      ? this.settlementInvoices.get(auction.settlementInvoiceId)?.bidderPubkey
+      : undefined;
+    const nextBid = sortedBids.find(
+      (bid) =>
+        bid.bidderPubkey !== currentWinner &&
+        bid.bidderPubkey !== activeSettlementBidder &&
+        !alreadyOffered.has(bid.bidderPubkey),
+    );
+
+    if (!nextBid) {
+      auction.state = AuctionState.FAILED;
+      auction.failedAt = now;
+      this.auctions.set(auction.id, auction);
+      return {
+        auctionId,
+        state: AuctionState.FAILED,
+        reserveMet: true,
+        deedIssued: false,
+        reason: 'No second chance bidders left',
+      };
+    }
+
+    const invoice = await this.requirePaymentProvider().createInvoice(
+      nextBid.bidAmountSats,
+      `Second chance for ${auction.name}`,
+      {
+        auctionId,
+        bidderPubkey: nextBid.bidderPubkey,
+        type: 'second_chance_settlement',
+      },
+    );
+
+    const expiresAt = now + SECOND_CHANCE_WINDOW_SECONDS;
+    this.settlementInvoices.set(invoice.id, {
+      auctionId,
+      bidderPubkey: nextBid.bidderPubkey,
+      amountSats: nextBid.bidAmountSats,
+      invoice,
+      expiresAt,
+      status: 'pending',
+      source: 'second_chance',
+    });
+
+    const secondChanceOffer: SecondChanceOffer = {
+      auctionId,
+      bidderPubkey: nextBid.bidderPubkey,
+      amount: nextBid.bidAmountSats,
+      offeredAt: new Date(now * 1000),
+      expiresAt: new Date(expiresAt * 1000),
+      status: 'pending',
+      settlementInvoiceId: invoice.id,
+    };
+
+    offers.push(secondChanceOffer);
+    this.secondChanceOffersByAuction.set(auctionId, offers);
+
+    auction.winnerPubkey = nextBid.bidderPubkey;
+    auction.winningBidSats = nextBid.bidAmountSats;
+    auction.settlementInvoiceId = invoice.id;
+    auction.settlementDeadlineAt = expiresAt;
+    this.auctions.set(auction.id, auction);
+
+    return {
+      auctionId,
+      state: AuctionState.ENDED,
+      reserveMet: true,
+      deedIssued: false,
+      awaitingPayment: true,
+      settlementInvoiceId: invoice.id,
+      settlementDeadlineAt: expiresAt,
+      secondChanceOffer,
+      reason: 'Second chance offer created',
+      winnerPubkey: nextBid.bidderPubkey,
+      winningBidSats: nextBid.bidAmountSats,
     };
   }
 
@@ -321,7 +595,6 @@ export class AuctionService {
 
     let tracked = this.invoicesByPaymentHash.get(normalizedPaymentHash);
 
-    // Authoritative source: our own LN status tracker / webhook-backed invoice registry.
     if (!tracked && this.lightningInvoiceVerifier) {
       const settled = await this.lightningInvoiceVerifier(normalizedPaymentHash, bolt11);
       if (settled) {
@@ -412,7 +685,7 @@ export class AuctionService {
       const normalized = bolt11.trim().toLowerCase();
       const decoded = bech32.decode(normalized, 5000);
       const words = decoded.words;
-      let cursor = 7; // 35-bit timestamp
+      let cursor = 7;
 
       while (cursor < words.length - BOLT11_SIGNATURE_WORDS) {
         const tagCode = words[cursor++];
@@ -468,13 +741,29 @@ export class AuctionService {
   }
 
   private calculateState(startsAt: number, endsAt: number, explicitState?: AuctionState): AuctionState {
-    if (explicitState === AuctionState.SETTLED) {
-      return AuctionState.SETTLED;
+    if (explicitState === AuctionState.SETTLED || explicitState === AuctionState.FAILED) {
+      return explicitState;
     }
 
     const now = Math.floor(Date.now() / 1000);
     if (now < startsAt) return AuctionState.UPCOMING;
     if (now <= endsAt) return AuctionState.LIVE;
     return AuctionState.ENDED;
+  }
+
+  private requirePaymentProvider(): PaymentProvider {
+    if (this.paymentProvider) {
+      return this.paymentProvider;
+    }
+
+    const { BTCPayProvider } = require('../payments/btcpay.provider');
+    this.paymentProvider = new BTCPayProvider({
+      url: process.env.BTCPAY_URL || '',
+      apiKey: process.env.BTCPAY_API_KEY || '',
+      storeId: process.env.BTCPAY_STORE_ID || '',
+      webhookSecret: process.env.BTCPAY_WEBHOOK_SECRET,
+    }) as PaymentProvider;
+
+    return this.paymentProvider;
   }
 }

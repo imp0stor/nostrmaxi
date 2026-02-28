@@ -98,6 +98,33 @@ This keeps scarce/high-risk names in auction flow while normal reserved names ca
 - `GET /api/v1/auctions/:id` — details + bids
 - `POST /api/v1/auctions` — create auction (admin only)
 - `POST /api/v1/auctions/:id/settle` — settle ended auction (admin only)
+- `POST /api/v1/payments/webhooks/btcpay` — receive BTCPay invoice status updates
+
+## BTCPay Setup
+
+Environment variables:
+
+```env
+BTCPAY_URL=https://btcpay.example.com
+BTCPAY_API_KEY=xxx
+BTCPAY_STORE_ID=xxx
+BTCPAY_WEBHOOK_SECRET=xxx
+```
+
+Behavior:
+- Auction bid/settlement invoices are created via `PaymentProvider` abstraction.
+- BTCPay webhook signature is verified using `BTCPAY_WEBHOOK_SECRET`.
+- Paid invoice webhook triggers `AuctionService.handlePaymentReceived(invoiceId)`.
+- Additional Lightning backends (LND, CLN) are supported through provider abstraction.
+
+## Settlement + Second Chance Flow
+
+1. Auction ends, `settleAuction()` creates a settlement invoice for winner.
+2. Winner has 48 hours to pay.
+3. If winner does not pay in time, `processSecondChance()` offers settlement to the next highest bidder.
+4. Each second chance offer is valid for 24 hours.
+5. Flow continues down ranked bidders until paid or no bidders remain.
+6. If no one pays, auction transitions to `FAILED`.
 
 ## Example Flow
 

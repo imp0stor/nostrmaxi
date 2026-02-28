@@ -350,10 +350,12 @@ describe('AuctionService', () => {
 
     setNowSeconds(1700003000);
 
-    const result = service.settleAuction(auction.id);
-    expect(result.state).toBe('SETTLED');
+    const result = await service.settleAuction(auction.id);
+    expect(result.state).toBe('ENDED');
     expect(result.reserveMet).toBe(true);
+    expect(result.awaitingPayment).toBe(true);
     expect(result.winnerPubkey).toBe(aliceHex);
     expect(result.winningBidSats).toBe(550000);
+    expect(result.settlementInvoiceId).toBeDefined();
   });
 });

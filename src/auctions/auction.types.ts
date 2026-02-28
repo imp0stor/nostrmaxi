@@ -3,6 +3,7 @@ export enum AuctionState {
   LIVE = 'LIVE',
   ENDED = 'ENDED',
   SETTLED = 'SETTLED',
+  FAILED = 'FAILED',
 }
 
 export interface AuctionListing {
@@ -20,6 +21,9 @@ export interface AuctionListing {
   settledAt?: number;
   winnerPubkey?: string;
   winningBidSats?: number;
+  settlementInvoiceId?: string;
+  settlementDeadlineAt?: number;
+  failedAt?: number;
 }
 
 export interface Bid {
@@ -31,6 +35,16 @@ export interface Bid {
   zapAmountSats: number;
   memo?: string;
   createdAt: number;
+}
+
+export interface SecondChanceOffer {
+  auctionId: string;
+  bidderPubkey: string;
+  amount: number;
+  offeredAt: Date;
+  expiresAt: Date;
+  status: 'pending' | 'accepted' | 'declined' | 'expired';
+  settlementInvoiceId?: string;
 }
 
 export interface AuctionCreateInput {
@@ -50,12 +64,16 @@ export interface AuctionDetail {
 
 export interface AuctionSettlement {
   auctionId: string;
-  state: AuctionState.SETTLED | AuctionState.ENDED;
+  state: AuctionState.SETTLED | AuctionState.ENDED | AuctionState.FAILED;
   reserveMet: boolean;
   winnerPubkey?: string;
   winningBidSats?: number;
   deedIssued: boolean;
   reason?: string;
+  awaitingPayment?: boolean;
+  settlementInvoiceId?: string;
+  settlementDeadlineAt?: number;
+  secondChanceOffer?: SecondChanceOffer;
 }
 
 export interface WinnerResult {
