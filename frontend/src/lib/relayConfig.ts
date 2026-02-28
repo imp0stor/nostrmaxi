@@ -11,13 +11,13 @@ export interface RelayConfig {
   enabled: boolean;
 }
 
-// Server's local relay - prioritized for caching
-const SERVER_RELAY_URL = 'ws://10.1.10.143:7777';
+// Server's local relay via Caddy WSS proxy (avoids mixed content blocking)
+const SERVER_RELAY_URL = 'wss://10.1.10.143:3401/relay';
 const DEFAULT_LOCAL_RELAY_URL = SERVER_RELAY_URL;
 
 // Expanded fallback relays - server relay first, then public relays
 export const FALLBACK_RELAYS = [
-  SERVER_RELAY_URL,  // Our local cache - fast, no rate limits
+  SERVER_RELAY_URL,  // Our local cache via WSS proxy - fast, no rate limits
   'wss://relay.damus.io',
   'wss://relay.primal.net',
   'wss://purplepag.es',
