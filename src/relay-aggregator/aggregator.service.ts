@@ -1,6 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { SimplePool, type Event as NostrEvent } from 'nostr-tools';
 import { NoiseFilterService } from '../sync/noise-filter.service';
+
+// Enable WebSocket for Node.js
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+const { useWebSocketImplementation } = require('nostr-tools/pool');
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+useWebSocketImplementation(require('ws'));
 import { RetentionPolicy, SyncPriorityService, SyncTier } from '../sync/sync-priority.service';
 import { RetentionCleanupService } from '../sync/retention-cleanup.service';
 import { IngestionService } from './ingestion.service';
