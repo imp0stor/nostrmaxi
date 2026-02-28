@@ -20,6 +20,7 @@ import { NetworkAnalyticsService } from './scopes/network-analytics.service';
 import { RelayAnalyticsService } from './scopes/relay-analytics.service';
 import { WotAnalyticsService } from './scopes/wot-analytics.service';
 import { TopicAnalyticsService } from './scopes/topic-analytics.service';
+import { AnalyticsDataService } from './analytics-data.service';
 
 const TRENDING_CACHE_MS = 5 * 60 * 1000;
 
@@ -31,6 +32,7 @@ export class AnalyticsController {
     private readonly relayAnalytics: RelayAnalyticsService,
     private readonly wotAnalytics: WotAnalyticsService,
     private readonly topicAnalytics: TopicAnalyticsService,
+    private readonly analyticsData: AnalyticsDataService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -42,6 +44,49 @@ export class AnalyticsController {
   ): Promise<UserAnalytics> {
     this.ensurePubkey(pubkey);
     return this.userAnalytics.getUserAnalytics(pubkey, this.normalizeInterval(interval));
+  }
+
+  @Get('user/:pubkey')
+  async getUserAnalyticsByPubkey(
+    @Param('pubkey') pubkey: string,
+    @Query('refresh') refresh?: string,
+  ) {
+    this.ensurePubkey(pubkey);
+    return this.analyticsData.getUserMetrics(pubkey, refresh === 'true');
+  }
+
+  @Get('user/:pubkey/insights')
+  async getUserInsights(@Param('pubkey') pubkey: string) {
+    this.ensurePubkey(pubkey);
+    const metrics = await this.analyticsData.getUserMetrics(pubkey);
+
+    const insights: string[] = [];
+
+    if (metrics.bestHours.length > 0) {
+      const bestHour = metrics.bestHours[0].hour;
+      insights.push(`Your posts perform best around ${bestHour}:00 - consider posting then.`);
+    }
+
+    if (metrics.topHashtags.length > 0) {
+      const topTag = metrics.topHashtags[0];
+      insights.push(
+        `#${topTag.tag} content gets ${Math.round(topTag.engagement / topTag.count)}x more engagement.`,
+      );
+    }
+
+    if (metrics.avgNotesPerDay < 1) {
+      insights.push(
+        `You average ${metrics.avgNotesPerDay.toFixed(1)} posts/day. Posting daily could increase your reach.`,
+      );
+    }
+
+    if (metrics.engagementRate > 5) {
+      insights.push(
+        `Great engagement rate of ${metrics.engagementRate.toFixed(1)}%! Your audience is highly active.`,
+      );
+    }
+
+    return { metrics, insights };
   }
 
   @Get('network')

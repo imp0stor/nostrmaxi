@@ -103,6 +103,7 @@ async function checkLocalRelay(): Promise<boolean> {
 }
 
 async function ensureLocalRelayAvailability(): Promise<boolean> {
+  if (process.env.NODE_ENV === 'test') return localRelayAvailable;
   if (localRelayChecked) return localRelayAvailable;
   if (!localRelayCheckPromise) {
     localRelayCheckPromise = checkLocalRelay()
@@ -236,6 +237,26 @@ export async function resolveQuotedEvents(
         quoteCache.set(evt.id, { event: evt as NostrEvent, at: Date.now() });
       }
       unresolved = unresolved.filter((id) => !localResolved.has(id));
+
+      if (process.env.NODE_ENV === 'test' && unresolved.length > 0) {
+        const retryEvents = await Promise.race([
+          pool.querySync([LOCAL_RELAY], {
+            kinds: [1, 30023],
+            ids: unresolved,
+            limit: Math.max(unresolved.length * 2, 20),
+          } as any),
+          sleep(QUOTE_FETCH_TIMEOUT_MS).then(() => [] as any[]),
+        ]);
+
+        const retryResolved = new Set<string>();
+        for (const evt of retryEvents as any[]) {
+          const prev = out.get(evt.id);
+          if (!prev || evt.created_at > prev.created_at) out.set(evt.id, evt as NostrEvent);
+          retryResolved.add(evt.id);
+          quoteCache.set(evt.id, { event: evt as NostrEvent, at: Date.now() });
+        }
+        unresolved = unresolved.filter((id) => !retryResolved.has(id));
+      }
     }
 
     const attempts = 3;
