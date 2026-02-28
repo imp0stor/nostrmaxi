@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { LoginModal } from './components/auth/LoginModal';
 import { PricingPage } from './components/pricing/PricingPage';
@@ -20,27 +20,28 @@ import { ListsPage } from './pages/ListsPage';
 import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
 import { BookmarksPage } from './pages/BookmarksPage';
 import { truncateNpub } from './lib/nostr';
-import { Avatar } from './components/Avatar';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
 import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
-
-type NavItem = { path: string; label: string; authed?: boolean };
+import { Sidebar } from './components/layout/Sidebar';
+import { TopBar } from './components/layout/TopBar';
+import { useSidebarState } from './hooks/useSidebarState';
 
 export default function App() {
   const { user, isAuthenticated, isLoading, initialize, logout } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   const [showIdentityMenu, setShowIdentityMenu] = useState(false);
-  const [showMobileNav, setShowMobileNav] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [primaryIdentity, setPrimaryIdentity] = useState<string>('');
   const location = useLocation();
   const navigate = useNavigate();
+  const { collapsed, toggleCollapsed } = useSidebarState();
 
   useEffect(() => {
     initialize();
   }, [initialize]);
 
   useEffect(() => {
-    setShowMobileNav(false);
+    setMobileSidebarOpen(false);
     setShowIdentityMenu(false);
   }, [location.pathname]);
 
@@ -94,130 +95,60 @@ export default function App() {
     };
   }, [isAuthenticated, user, showIdentityMenu]);
 
-  const navClass = (path: string) => `nav-link ${location.pathname === path ? 'nav-link-active' : ''}`;
-
-  const navItems = useMemo<NavItem[]>(() => [
-    { path: '/feed', label: 'Feed' },
-    { path: '/discover', label: 'Discover' },
-    { path: '/media-discovery', label: 'Media', authed: true },
-    { path: '/lists', label: 'Lists', authed: true },
-    { path: '/bookmarks', label: 'Bookmarks', authed: true },
-    { path: '/marketplace', label: 'Marketplace', authed: true },
-    { path: '/dashboard', label: 'Manage', authed: true },
-    { path: '/analytics', label: 'Analytics', authed: true },
-    { path: '/ecosystem', label: 'Ecosystem', authed: true },
-    { path: '/profile/me', label: 'Profile', authed: true },
-    { path: '/settings', label: 'Settings', authed: true },
-    { path: '/pricing', label: 'Get Your NIP-05', authed: true },
-  ], []);
+  const sidebarWidthClass = collapsed ? 'md:pl-[60px]' : 'md:pl-[200px]';
 
   return (
-    <div className="swordfish-shell min-h-screen flex flex-col cyber-grid bg-swordfish-bg text-swordfish-text">
-      <nav className="border-b border-swordfish-muted/35 bg-swordfish-bg/70 sticky top-0 z-40 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 min-h-16 py-2 flex items-center justify-between gap-2">
-          <Link to="/" className="flex items-center gap-2 text-swordfish-accent font-bold tracking-[0.14em] text-sm sm:text-base">
-            <span>⚡</span><span>NostrMaxi</span>
-          </Link>
+    <div className="swordfish-shell min-h-screen flex cyber-grid bg-swordfish-bg text-swordfish-text">
+      <Sidebar
+        collapsed={collapsed}
+        mobileOpen={mobileSidebarOpen}
+        isAuthenticated={isAuthenticated}
+        onToggleCollapsed={toggleCollapsed}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
 
-          <button
-            className="md:hidden cy-chip"
-            onClick={() => setShowMobileNav((v) => !v)}
-            aria-expanded={showMobileNav}
-            aria-label="Toggle navigation"
-          >
-            {showMobileNav ? 'Close' : 'Menu'}
-          </button>
+      <div className={`flex-1 min-h-screen flex flex-col transition-[padding] duration-200 ease-out ${sidebarWidthClass}`}>
+        <TopBar
+          isLoading={isLoading}
+          isAuthenticated={isAuthenticated}
+          user={user}
+          primaryIdentity={primaryIdentity}
+          showIdentityMenu={showIdentityMenu}
+          mobileMenuOpen={mobileSidebarOpen}
+          onMobileMenuToggle={() => setMobileSidebarOpen((v) => !v)}
+          onIdentityMenuToggle={() => setShowIdentityMenu((v) => !v)}
+          onLogout={logout}
+          onLogin={() => setShowLogin(true)}
+          onCloseIdentityMenu={() => setShowIdentityMenu(false)}
+        />
 
-          <div className="hidden md:flex items-center gap-2 lg:gap-3 text-sm">
-            {navItems.filter((i) => !i.authed || isAuthenticated).map((item) => (
-              <Link key={item.path} to={item.path} className={navClass(item.path)}>{item.label}</Link>
-            ))}
-            {isLoading ? <span className="text-swordfish-muted cy-loading px-2">…</span> : isAuthenticated && user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setShowIdentityMenu((v) => !v)}
-                  className="cy-chip inline-flex items-center gap-2"
-                  aria-haspopup="menu"
-                  aria-expanded={showIdentityMenu}
-                >
-                  <Avatar pubkey={user.pubkey} size={30} clickable={false} />
-                  <span>{primaryIdentity || truncateNpub(user.npub, 4)}</span>
-                  <span>▼</span>
-                </button>
-                {showIdentityMenu ? (
-                  <div className="absolute right-0 mt-2 w-72 cy-card p-3 z-50" role="menu">
-                    <div className="text-xs text-gray-400">Identity</div>
-                    <div className="mt-1 text-sm text-cyan-100 break-all">{primaryIdentity || truncateNpub(user.npub, 4)}</div>
-                    <div className="mt-3 text-xs text-gray-400">npub</div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <code className="cy-mono text-xs text-cyan-200 flex-1 break-all">{user.npub}</code>
-                      <button className="cy-chip" onClick={async () => { try { await navigator.clipboard.writeText(user.npub); } catch { /* ignore */ } }}>
-                        Copy
-                      </button>
-                    </div>
-                    <div className="mt-3 flex flex-col gap-2">
-                      <Link to="/nip05" className="cy-chip text-left" onClick={() => setShowIdentityMenu(false)}>Manage Identity</Link>
-                      <button
-                        className="cy-chip text-left"
-                        onClick={async () => {
-                          setShowIdentityMenu(false);
-                          await logout();
-                        }}
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <button onClick={() => setShowLogin(true)} className="cy-btn">Login</button>
-            )}
-          </div>
-        </div>
+        <main className="flex-1">
+          <Routes>
+            <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" replace />} />
+            <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
+            <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
+            <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
+            <Route path="/bookmarks" element={isAuthenticated ? <BookmarksPage /> : <Navigate to="/" replace />} />
+            <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
+            <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
+            <Route path="/dashboard" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" replace />} />
+            <Route path="/analytics" element={isAuthenticated ? <AnalyticsPage /> : <Navigate to="/" replace />} />
+            <Route path="/ecosystem" element={isAuthenticated ? <EcosystemCatalogPage /> : <Navigate to="/" replace />} />
+            <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
+            <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
+            <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
+            <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
+          </Routes>
+        </main>
 
-        {showMobileNav ? (
-          <div className="md:hidden border-t border-swordfish-muted/30 px-4 pb-3 animate-content-fade-cinematic">
-            <div className="grid grid-cols-2 gap-2 pt-3">
-              {navItems.filter((i) => !i.authed || isAuthenticated).map((item) => (
-                <Link key={item.path} to={item.path} className={navClass(item.path)}>{item.label}</Link>
-              ))}
-              {!isAuthenticated && !isLoading ? (
-                <button onClick={() => setShowLogin(true)} className="cy-btn col-span-2">Login</button>
-              ) : null}
-              {isAuthenticated && user ? (
-                <button className="cy-chip col-span-2 text-left" onClick={async () => { await logout(); }}>
-                  Logout ({primaryIdentity || truncateNpub(user.npub, 4)})
-                </button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </nav>
+        <footer className="border-t border-swordfish-muted/30 py-6 text-center text-xs text-swordfish-muted tracking-[0.12em]">
+          NostrMaxi // cinematic social + identity
+        </footer>
+      </div>
 
-      <main className="flex-1">
-        <Routes>
-          <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" replace />} />
-          <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
-          <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
-          <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
-          <Route path="/bookmarks" element={isAuthenticated ? <BookmarksPage /> : <Navigate to="/" replace />} />
-          <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
-          <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
-          <Route path="/dashboard" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" replace />} />
-          <Route path="/analytics" element={isAuthenticated ? <AnalyticsPage /> : <Navigate to="/" replace />} />
-          <Route path="/ecosystem" element={isAuthenticated ? <EcosystemCatalogPage /> : <Navigate to="/" replace />} />
-          <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
-          <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
-          <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
-          <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
-        </Routes>
-      </main>
-
-      <footer className="border-t border-swordfish-muted/30 py-6 text-center text-xs text-swordfish-muted tracking-[0.12em]">NostrMaxi // cinematic social + identity</footer>
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </div>
   );

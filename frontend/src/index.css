@@ -239,7 +239,20 @@
     background: linear-gradient(130deg, rgba(40, 215, 255, 0.14), rgba(143, 107, 255, 0.09));
     box-shadow: 0 0 18px rgba(40, 215, 255, 0.3);
   }
+
+  .sidebar {
+    transition: width 200ms ease;
+  }
+
+  .sidebar-collapsed {
+    width: 60px;
+  }
+
+  .sidebar-expanded {
+    width: 200px;
+  }
 }
+
 
 @keyframes subtle-pulse {
   0%, 100% { opacity: 0.84; }
