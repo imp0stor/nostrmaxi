@@ -47,8 +47,13 @@ Zap receipt (`9735`) parsing rules:
 1. Must reference auction event id via `e` tag.
 2. Bid amount:
    - Prefer memo `bid:<amount>` (or plain numeric memo).
+   - Also accepts `npub1...:<amount>` and `bid:<amount>:npub1...`.
    - Fallback to zap amount tag (`amount` in millisats, converted to sats).
-3. Bidder identity = zap receipt `pubkey`.
+3. Bidder identity (required):
+   - Prefer sender from `P` tag on zap receipt (or `sender_pubkey` tag if present).
+   - Fallback to explicit memo npub.
+   - Final fallback to event `pubkey` only when it is a valid hex pubkey.
+   - If bidder cannot be identified, bid is rejected.
 
 ## Auction States
 

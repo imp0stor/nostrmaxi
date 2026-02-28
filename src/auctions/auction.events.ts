@@ -58,18 +58,49 @@ function parseZapAmountSats(event: NostrEventLike): number {
   return Math.floor(value / 1000);
 }
 
-function parseBidAmountFromMemo(content: string): number | undefined {
+function parseMemoBidAndIdentity(content: string): { bidAmountSats?: number; memoNpub?: string } {
   const value = (content || '').trim();
-  if (!value) return undefined;
+  if (!value) return {};
 
-  const directBid = /^bid\s*:\s*(\d+)$/i.exec(value);
-  if (directBid) {
-    return Number(directBid[1]);
+  const bidOnly = /^bid\s*:\s*(\d+)$/i.exec(value);
+  if (bidOnly) {
+    return { bidAmountSats: Number(bidOnly[1]) };
   }
 
-  const onlyNumber = /^(\d+)$/.exec(value);
-  if (onlyNumber) {
-    return Number(onlyNumber[1]);
+  const numberOnly = /^(\d+)$/.exec(value);
+  if (numberOnly) {
+    return { bidAmountSats: Number(numberOnly[1]) };
+  }
+
+  const npubAmount = /^(npub1[023456789acdefghjklmnpqrstuvwxyz]+)\s*:\s*(\d+)$/i.exec(value);
+  if (npubAmount) {
+    const npub = npubAmount[1];
+    return {
+      bidAmountSats: Number(npubAmount[2]),
+      memoNpub: npub,
+    };
+  }
+
+  const bidAmountNpub = /^bid\s*:\s*(\d+)\s*:\s*(npub1[023456789acdefghjklmnpqrstuvwxyz]+)$/i.exec(value);
+  if (bidAmountNpub) {
+    const npub = bidAmountNpub[2];
+    return {
+      bidAmountSats: Number(bidAmountNpub[1]),
+      memoNpub: npub,
+    };
+  }
+
+  return {};
+}
+
+function extractSenderPubkey(event: NostrEventLike, memoNpub?: string): string | undefined {
+  const senderFromTag = findTagValue(event.tags, 'P') || findTagValue(event.tags, 'sender_pubkey');
+  if (senderFromTag) return senderFromTag;
+
+  if (memoNpub) return memoNpub;
+
+  if (/^[a-f0-9]{64}$/i.test(event.pubkey)) {
+    return event.pubkey;
   }
 
   return undefined;
@@ -86,18 +117,25 @@ export function parseZapReceiptToBid(event: NostrEventLike, auctionEventId: stri
   }
 
   const zapAmountSats = parseZapAmountSats(event);
-  const memoBid = parseBidAmountFromMemo(event.content);
-  const bidAmountSats = memoBid && memoBid > 0 ? memoBid : zapAmountSats;
+  const memoParsed = parseMemoBidAndIdentity(event.content);
+  const bidAmountSats = memoParsed.bidAmountSats && memoParsed.bidAmountSats > 0
+    ? memoParsed.bidAmountSats
+    : zapAmountSats;
 
   if (!Number.isFinite(bidAmountSats) || bidAmountSats <= 0) {
     return { reason: 'invalid bid amount' };
+  }
+
+  const bidderPubkey = extractSenderPubkey(event, memoParsed.memoNpub);
+  if (!bidderPubkey) {
+    return { reason: 'unable to identify bidder from zap receipt tags or memo npub' };
   }
 
   const bid: Bid = {
     id: createHash('sha256').update(`${event.id}:${auctionEventId}:${bidAmountSats}`).digest('hex').slice(0, 24),
     auctionEventId,
     zapReceiptId: event.id,
-    bidderPubkey: event.pubkey,
+    bidderPubkey,
     bidAmountSats,
     zapAmountSats,
     memo: event.content || undefined,
