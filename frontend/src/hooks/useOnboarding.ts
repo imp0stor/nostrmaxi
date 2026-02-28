@@ -39,7 +39,8 @@ export interface FeedDefinition {
 }
 
 export interface OnboardingState {
-  step: number;
+  step: number; // 0-6
+  path?: 'premium' | 'free';
   identity: {
     pubkey: string;
     privateKey?: string;
@@ -47,6 +48,7 @@ export interface OnboardingState {
     nip05?: string;
     lightningAddress?: string;
     imported?: boolean;
+    paymentComplete?: boolean;
   };
   relays: {
     selected: string[];
@@ -64,10 +66,11 @@ export interface OnboardingState {
   completed: boolean;
 }
 
-const TOTAL_STEPS = 6;
+const MAX_STEP = 6;
 
 const initialState: OnboardingState = {
-  step: 1,
+  step: 0,
+  path: undefined,
   identity: { pubkey: '' },
   relays: { selected: [], suggestions: [] },
   follows: { selected: new Set<string>(), byCategory: new Map<string, string[]>(), categories: [] },
@@ -126,7 +129,37 @@ export function useOnboarding() {
   }, []);
 
   const setStep = (step: number) => {
-    setState((prev) => ({ ...prev, step: Math.max(1, Math.min(TOTAL_STEPS, step)) }));
+    setState((prev) => ({ ...prev, step: Math.max(0, Math.min(MAX_STEP, step)) }));
+  };
+
+  const choosePath = (path: 'premium' | 'free') => {
+    setState((prev) => ({
+      ...prev,
+      path,
+      step: path === 'premium' ? 1 : 2,
+      identity: {
+        ...prev.identity,
+        pubkey: prev.identity.pubkey || randomHex(64),
+        privateKey: prev.identity.privateKey || randomHex(64),
+        paymentComplete: path === 'free' ? false : prev.identity.paymentComplete,
+      },
+    }));
+  };
+
+  const goNext = () => {
+    setState((prev) => {
+      if (!prev.path) return prev;
+      const nextStep = prev.path === 'free' && prev.step === 0 ? 2 : prev.path === 'free' && prev.step === 5 ? 6 : prev.step + 1;
+      return { ...prev, step: Math.min(MAX_STEP, nextStep) };
+    });
+  };
+
+  const goBack = () => {
+    setState((prev) => {
+      if (!prev.path) return { ...prev, step: 0 };
+      if (prev.path === 'free' && prev.step === 2) return { ...prev, step: 0 };
+      return { ...prev, step: Math.max(0, prev.step - 1) };
+    });
   };
 
   const generateKeys = () => {
@@ -158,6 +191,10 @@ export function useOnboarding() {
       },
     }));
     return true;
+  };
+
+  const markPaymentComplete = () => {
+    setState((prev) => ({ ...prev, identity: { ...prev.identity, paymentComplete: true } }));
   };
 
   const updateIdentity = (partial: Partial<OnboardingState['identity']>) => {
@@ -228,11 +265,12 @@ export function useOnboarding() {
 
   const complete = async () => {
     const payload = {
+      path: state.path,
       identity: {
         pubkey: state.identity.pubkey,
         name: state.identity.name,
-        nip05: state.identity.nip05,
-        lightningAddress: state.identity.lightningAddress,
+        nip05: state.path === 'premium' ? state.identity.nip05 : undefined,
+        lightningAddress: state.path === 'premium' ? state.identity.lightningAddress : undefined,
       },
       relays: { selected: state.relays.selected },
       follows: {
@@ -254,7 +292,7 @@ export function useOnboarding() {
       throw new Error('Could not complete onboarding');
     }
 
-    setState((prev) => ({ ...prev, completed: true, step: TOTAL_STEPS }));
+    setState((prev) => ({ ...prev, completed: true, step: MAX_STEP }));
     return response.json();
   };
 
@@ -272,10 +310,12 @@ export function useOnboarding() {
     error,
     setError,
     setStep,
-    next: () => setStep(state.step + 1),
-    back: () => setStep(state.step - 1),
+    choosePath,
+    next: goNext,
+    back: goBack,
     generateKeys,
     importPrivateKey,
+    markPaymentComplete,
     updateIdentity,
     toggleRelay,
     addManualRelay,
@@ -286,6 +326,6 @@ export function useOnboarding() {
     complete,
     selectedFollowCount: state.follows.selected.size,
     selectedCategoryCount,
-    totalSteps: TOTAL_STEPS,
+    totalSteps: MAX_STEP,
   };
 }

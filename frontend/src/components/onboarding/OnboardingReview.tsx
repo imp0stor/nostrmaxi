@@ -22,8 +22,12 @@ export function OnboardingReview({
       <h2 className="text-xl text-cyan-100 font-semibold">Review and confirm</h2>
       <div className="space-y-3 text-sm">
         <div className="rounded border border-cyan-500/20 p-3 bg-slate-950/60 flex items-center justify-between">
-          <p>Identity: {state.identity.nip05 || `${state.identity.name || 'name'}@nostrmaxi.com`}</p>
-          <button className="cy-btn-secondary text-xs" onClick={() => onEditStep(1)}>Edit</button>
+          <p>
+            Identity: {state.path === 'premium'
+              ? state.identity.nip05 || `${state.identity.name || 'name'}@nostrmaxi.com`
+              : `${state.identity.pubkey ? 'Free account (no NIP-05 yet)' : 'Free account'}`}
+          </p>
+          <button className="cy-btn-secondary text-xs" onClick={() => onEditStep(state.path === 'premium' ? 1 : 0)}>Edit</button>
         </div>
         <div className="rounded border border-cyan-500/20 p-3 bg-slate-950/60 flex items-center justify-between">
           <p>Relays selected: {state.relays.selected.length}</p>

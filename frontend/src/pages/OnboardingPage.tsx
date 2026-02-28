@@ -1,5 +1,6 @@
 import { OnboardingFeeds } from '../components/onboarding/OnboardingFeeds';
 import { OnboardingFollows } from '../components/onboarding/OnboardingFollows';
+import { OnboardingPathChoice } from '../components/onboarding/OnboardingPathChoice';
 import { OnboardingRelays } from '../components/onboarding/OnboardingRelays';
 import { OnboardingReview } from '../components/onboarding/OnboardingReview';
 import { OnboardingSuccess } from '../components/onboarding/OnboardingSuccess';
@@ -13,10 +14,12 @@ export function OnboardingPage() {
     error,
     setError,
     setStep,
+    choosePath,
     next,
     back,
     generateKeys,
     importPrivateKey,
+    markPaymentComplete,
     updateIdentity,
     toggleRelay,
     addManualRelay,
@@ -36,6 +39,8 @@ export function OnboardingPage() {
     }
 
     switch (state.step) {
+      case 0:
+        return <OnboardingPathChoice onChoose={choosePath} />;
       case 1:
         return (
           <OnboardingWelcome
@@ -43,6 +48,8 @@ export function OnboardingPage() {
             onGenerate={generateKeys}
             onImport={importPrivateKey}
             onIdentityChange={updateIdentity}
+            onPaid={markPaymentComplete}
+            onBack={back}
             onNext={next}
           />
         );

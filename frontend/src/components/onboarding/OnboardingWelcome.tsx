@@ -6,15 +6,19 @@ interface Props {
   onGenerate: () => void;
   onImport: (key: string) => boolean;
   onIdentityChange: (partial: Partial<OnboardingState['identity']>) => void;
+  onPaid: () => void;
   onNext: () => void;
+  onBack: () => void;
 }
 
-export function OnboardingWelcome({ state, onGenerate, onImport, onIdentityChange, onNext }: Props) {
+export function OnboardingWelcome({ state, onGenerate, onImport, onIdentityChange, onPaid, onNext, onBack }: Props) {
   const [importKey, setImportKey] = useState('');
 
   return (
     <section className="cy-card p-6 space-y-4">
-      <h2 className="text-xl text-cyan-100 font-semibold">Create or import your Nostr account</h2>
+      <h2 className="text-xl text-cyan-100 font-semibold">Premium identity setup</h2>
+      <p className="text-sm text-gray-300">Choose your key, claim your NIP-05, and complete Lightning payment.</p>
+
       <div className="grid md:grid-cols-2 gap-3">
         <button className="cy-btn" onClick={onGenerate}>Generate new keypair</button>
         <div className="space-y-2">
@@ -37,27 +41,29 @@ export function OnboardingWelcome({ state, onGenerate, onImport, onIdentityChang
             onChange={(e) => onIdentityChange({ name: e.target.value, nip05: `${e.target.value || 'name'}@nostrmaxi.com` })}
             placeholder="satoshi"
           />
-          <p className="text-xs text-gray-400 mt-1">Reserved names pricing: 1-2 chars premium, 3-5 chars standard, 6+ chars starter.</p>
+          <p className="text-xs text-gray-400 mt-1">Pricing: base 21k sats • short names 100k+ sats • premium reserved names custom pricing.</p>
         </div>
         <div>
-          <label className="text-sm text-cyan-100">Lightning Address (optional)</label>
+          <label className="text-sm text-cyan-100">Lightning Address</label>
           <input
             className="cy-input mt-1"
             value={state.identity.lightningAddress || ''}
             onChange={(e) => onIdentityChange({ lightningAddress: e.target.value })}
-            placeholder="you@getalby.com"
+            placeholder="you@nostrmaxi.com"
           />
         </div>
       </div>
 
-      {state.identity.pubkey ? (
-        <div className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/30 rounded p-3 break-all">
-          Pubkey: {state.identity.pubkey}
-        </div>
-      ) : null}
+      <div className="rounded border border-yellow-400/30 bg-yellow-500/10 p-3">
+        <p className="text-sm text-yellow-100">Lightning payment integration</p>
+        <p className="text-xs text-gray-300 mt-1">Invoice amount: 21,000 sats (simulated in this flow).</p>
+        <button className="cy-btn-secondary mt-2" onClick={onPaid}>Mark invoice as paid</button>
+        {state.identity.paymentComplete ? <p className="text-xs text-emerald-300 mt-2">Payment confirmed ✓</p> : null}
+      </div>
 
-      <div className="flex justify-end">
-        <button className="cy-btn" onClick={onNext} disabled={!state.identity.pubkey}>Continue</button>
+      <div className="flex justify-between">
+        <button className="cy-btn-secondary" onClick={onBack}>Back</button>
+        <button className="cy-btn" onClick={onNext} disabled={!state.identity.pubkey || !state.identity.paymentComplete || !state.identity.name}>Continue</button>
       </div>
     </section>
   );
