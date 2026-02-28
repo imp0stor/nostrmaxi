@@ -69,3 +69,20 @@ export interface ParsedBidResult {
   bid?: Bid;
   reason?: string;
 }
+
+export interface TrackedInvoiceStatus {
+  auctionId: string;
+  bidderPubkey: string;
+  amountSats: number;
+  paid: boolean;
+  paymentHash: string;
+  bolt11?: string;
+  paidAt?: number;
+}
+
+export interface PaymentVerification {
+  paid: boolean;
+  method: 'preimage' | 'invoice-tracker' | 'lightning-node' | 'failed';
+  paymentHash?: string;
+  reason?: string;
+}

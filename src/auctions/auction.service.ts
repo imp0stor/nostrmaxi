@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { bech32 } from 'bech32';
+import { createHash, randomUUID } from 'crypto';
 import { getReservedNameMeta } from '../config/reserved-names';
 import {
   NostrEventLike,
@@ -13,17 +14,26 @@ import {
   AuctionSettlement,
   AuctionState,
   Bid,
+  PaymentVerification,
+  TrackedInvoiceStatus,
   WinnerResult,
 } from './auction.types';
 
 const MIN_INCREMENT_RATE = 0.1;
 const SNIPE_WINDOW_SECONDS = 5 * 60;
 const SNIPE_EXTENSION_SECONDS = 10 * 60;
+const BOLT11_SIGNATURE_WORDS = 104;
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+type LightningInvoiceVerifier = (paymentHash: string, bolt11: string) => Promise<boolean>;
 
 @Injectable()
 export class AuctionService {
+  private readonly logger = new Logger(AuctionService.name);
   private readonly auctions = new Map<string, AuctionListing>();
   private readonly bidsByAuction = new Map<string, Bid[]>();
+  private readonly invoicesByPaymentHash = new Map<string, TrackedInvoiceStatus>();
+  private lightningInvoiceVerifier?: LightningInvoiceVerifier;
 
   createAuction(input: AuctionCreateInput): { auction: AuctionListing; eventTemplate: ReturnType<typeof buildAuctionListingEventTemplate> } {
     this.validateAuctionInput(input);
@@ -111,7 +121,41 @@ export class AuctionService {
     });
   }
 
-  ingestZapBid(auctionId: string, zapReceipt: NostrEventLike): Bid {
+  setLightningInvoiceVerifier(verifier: LightningInvoiceVerifier): void {
+    this.lightningInvoiceVerifier = verifier;
+  }
+
+  trackInvoice(input: {
+    paymentHash: string;
+    auctionId: string;
+    bidderPubkey: string;
+    amountSats: number;
+    bolt11?: string;
+    paid?: boolean;
+  }): void {
+    const paymentHash = input.paymentHash.toLowerCase();
+    this.invoicesByPaymentHash.set(paymentHash, {
+      paymentHash,
+      auctionId: input.auctionId,
+      bidderPubkey: input.bidderPubkey,
+      amountSats: input.amountSats,
+      bolt11: input.bolt11,
+      paid: !!input.paid,
+      paidAt: input.paid ? Math.floor(Date.now() / 1000) : undefined,
+    });
+  }
+
+  markInvoicePaid(paymentHash: string): void {
+    const normalized = paymentHash.toLowerCase();
+    const tracked = this.invoicesByPaymentHash.get(normalized);
+    if (!tracked) return;
+
+    tracked.paid = true;
+    tracked.paidAt = Math.floor(Date.now() / 1000);
+    this.invoicesByPaymentHash.set(normalized, tracked);
+  }
+
+  async ingestZapBid(auctionId: string, zapReceipt: NostrEventLike): Promise<Bid> {
     const auction = this.auctions.get(auctionId);
     if (!auction) {
       throw new NotFoundException('Auction not found');
@@ -125,6 +169,14 @@ export class AuctionService {
     const parsed = parseZapReceiptToBid(zapReceipt, auction.eventId);
     if (!parsed.bid) {
       throw new BadRequestException(parsed.reason || 'Unable to parse bid from zap receipt');
+    }
+
+    const paymentVerification = await this.verifyZapPayment(zapReceipt, auction.id, parsed.bid.bidderPubkey);
+    if (!paymentVerification.paid) {
+      this.logger.warn(
+        `Rejected unpaid bid for auction ${auction.id} (zap=${zapReceipt.id}, method=${paymentVerification.method}, reason=${paymentVerification.reason || 'unknown'})`,
+      );
+      throw new BadRequestException(paymentVerification.reason || 'Zap payment is not verified as settled');
     }
 
     const currentHighest = this.getBids(auctionId)[0];
@@ -225,6 +277,153 @@ export class AuctionService {
       winningBidSats: winner.winningBidSats,
       deedIssued: true,
     };
+  }
+
+  private async verifyZapPayment(
+    zapReceipt: NostrEventLike,
+    auctionId: string,
+    bidderPubkey: string,
+  ): Promise<PaymentVerification> {
+    const bolt11 = this.getTagValue(zapReceipt, 'bolt11');
+    if (!bolt11) {
+      return {
+        paid: false,
+        method: 'failed',
+        reason: 'Zap receipt missing bolt11 invoice',
+      };
+    }
+
+    const paymentHash = this.extractPaymentHashFromBolt11(bolt11);
+    if (!paymentHash) {
+      return {
+        paid: false,
+        method: 'failed',
+        reason: 'Unable to extract payment hash from bolt11 invoice',
+      };
+    }
+
+    const normalizedPaymentHash = paymentHash.toLowerCase();
+    const preimage = this.getTagValue(zapReceipt, 'preimage');
+    if (preimage) {
+      const preimageValid = this.validatePreimage(preimage, normalizedPaymentHash);
+      if (!preimageValid) {
+        return {
+          paid: false,
+          method: 'failed',
+          paymentHash: normalizedPaymentHash,
+          reason: 'Invalid zap preimage for invoice payment hash',
+        };
+      }
+
+      this.trackInvoice({
+        paymentHash: normalizedPaymentHash,
+        auctionId,
+        bidderPubkey,
+        amountSats: this.extractZapAmountSats(zapReceipt),
+        bolt11,
+        paid: true,
+      });
+
+      return {
+        paid: true,
+        method: 'preimage',
+        paymentHash: normalizedPaymentHash,
+      };
+    }
+
+    const tracked = this.invoicesByPaymentHash.get(normalizedPaymentHash);
+    if (tracked?.paid) {
+      return {
+        paid: true,
+        method: 'invoice-tracker',
+        paymentHash: normalizedPaymentHash,
+      };
+    }
+
+    if (this.lightningInvoiceVerifier) {
+      const settled = await this.lightningInvoiceVerifier(normalizedPaymentHash, bolt11);
+      if (settled) {
+        this.trackInvoice({
+          paymentHash: normalizedPaymentHash,
+          auctionId,
+          bidderPubkey,
+          amountSats: this.extractZapAmountSats(zapReceipt),
+          bolt11,
+          paid: true,
+        });
+
+        return {
+          paid: true,
+          method: 'lightning-node',
+          paymentHash: normalizedPaymentHash,
+        };
+      }
+    }
+
+    return {
+      paid: false,
+      method: 'failed',
+      paymentHash: normalizedPaymentHash,
+      reason: 'Invoice is not settled (missing valid preimage and no paid invoice status)',
+    };
+  }
+
+  private getTagValue(event: NostrEventLike, key: string): string | undefined {
+    const tag = event.tags.find((entry) => entry[0]?.toLowerCase() === key.toLowerCase());
+    return tag?.[1];
+  }
+
+  private extractZapAmountSats(event: NostrEventLike): number {
+    const amountMsat = Number(this.getTagValue(event, 'amount') || 0);
+    if (!Number.isFinite(amountMsat) || amountMsat <= 0) return 0;
+    return Math.floor(amountMsat / 1000);
+  }
+
+  private validatePreimage(preimage: string, paymentHash: string): boolean {
+    const normalizedPreimage = preimage.trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(normalizedPreimage)) {
+      return false;
+    }
+
+    const preimageHash = createHash('sha256')
+      .update(Buffer.from(normalizedPreimage, 'hex'))
+      .digest('hex');
+
+    return preimageHash === paymentHash;
+  }
+
+  private extractPaymentHashFromBolt11(bolt11: string): string | undefined {
+    try {
+      const normalized = bolt11.trim().toLowerCase();
+      const decoded = bech32.decode(normalized, 5000);
+      const words = decoded.words;
+      let cursor = 7; // 35-bit timestamp
+
+      while (cursor < words.length - BOLT11_SIGNATURE_WORDS) {
+        const tagCode = words[cursor++];
+        const dataLength = (words[cursor++] << 5) + words[cursor++];
+
+        const maxFieldEnd = words.length - BOLT11_SIGNATURE_WORDS;
+        if (cursor + dataLength > maxFieldEnd) {
+          return undefined;
+        }
+
+        const tag = BECH32_CHARSET[tagCode];
+        const dataWords = words.slice(cursor, cursor + dataLength);
+        cursor += dataLength;
+
+        if (tag !== 'p') {
+          continue;
+        }
+
+        const bytes = Buffer.from(bech32.fromWords(dataWords));
+        return bytes.toString('hex');
+      }
+
+      return undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private validateAuctionInput(input: AuctionCreateInput): void {
