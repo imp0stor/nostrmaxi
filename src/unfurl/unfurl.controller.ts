@@ -3,7 +3,7 @@ import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { UnfurlService } from './unfurl.service';
 
 @ApiTags('unfurl')
-@Controller('unfurl')
+@Controller('api/v1/unfurl')
 export class UnfurlController {
   constructor(private readonly unfurlService: UnfurlService) {}
 
