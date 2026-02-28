@@ -16,19 +16,82 @@ const SERVER_RELAY_URL = 'wss://10.1.10.143:3401/relay';
 const DEFAULT_LOCAL_RELAY_URL = SERVER_RELAY_URL;
 
 // Expanded fallback relays - server relay first, then reliable public relays
+// Auto-discovered from user relay lists (kind:10002) + manually verified
 export const FALLBACK_RELAYS = [
   SERVER_RELAY_URL,  // Our local cache via WSS proxy - fast, no rate limits
   'wss://relay.damus.io',
   'wss://relay.primal.net', 
   'wss://relay.snort.social',
   'wss://nostr.wine',
+  'wss://relay.momostr.pink',   // Popular from user data
+  'wss://relay.ditto.pub',      // Popular from user data
+  'wss://nostr.oxtr.dev',       // Good connectivity
+  'wss://nostr.mom',            // Good connectivity
+  'wss://nostr.land',           // Good connectivity
+  'wss://nostr.bitcoiner.social',
   'wss://nostr-pub.wellorder.net',
   'wss://offchain.pub',
   'wss://purplepag.es',
-  // Disabled - currently having issues (2026-02-28):
-  // 'wss://nos.lol',
-  // 'wss://relay.nostr.band',
 ];
+
+// Dynamic relay discovery cache
+let discoveredRelays: string[] = [];
+let discoveryTimestamp = 0;
+const DISCOVERY_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Discover popular relays from user relay lists (kind:10002)
+ */
+export async function discoverRelaysFromNetwork(seedRelays: string[] = FALLBACK_RELAYS.slice(0, 5)): Promise<string[]> {
+  // Return cached if fresh
+  if (discoveredRelays.length > 0 && Date.now() - discoveryTimestamp < DISCOVERY_TTL_MS) {
+    return discoveredRelays;
+  }
+
+  const pool = new SimplePool();
+  try {
+    const events = await Promise.race([
+      pool.querySync(seedRelays, { kinds: [10002], limit: 200 }),
+      new Promise<never[]>((resolve) => setTimeout(() => resolve([]), 8000)),
+    ]);
+
+    const relayCount = new Map<string, number>();
+    events.forEach((evt) => {
+      evt.tags.forEach((tag) => {
+        if (tag[0] === 'r' && tag[1]) {
+          const url = tag[1].toLowerCase().replace(/\/+$/, '');
+          if (url.startsWith('wss://')) {
+            relayCount.set(url, (relayCount.get(url) || 0) + 1);
+          }
+        }
+      });
+    });
+
+    // Sort by popularity, take top 20
+    const sorted = [...relayCount.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([url]) => url);
+
+    discoveredRelays = sorted;
+    discoveryTimestamp = Date.now();
+    console.log(`[RelayConfig] Discovered ${sorted.length} relays from network`);
+    return sorted;
+  } catch {
+    return discoveredRelays; // Return stale cache on error
+  } finally {
+    pool.close(seedRelays);
+  }
+}
+
+/**
+ * Get best relays - combines fallback + discovered
+ */
+export async function getBestRelays(maxCount: number = 8): Promise<string[]> {
+  const discovered = await discoverRelaysFromNetwork();
+  const combined = [...new Set([...FALLBACK_RELAYS, ...discovered])];
+  return combined.slice(0, maxCount);
+}
 
 // Cache user relay lists
 const userRelayCache = new Map<string, { relays: string[]; fetchedAt: number }>();

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { loadAnalyticsDashboard, type AnalyticsDashboardData, type AnalyticsInterval } from '../lib/analytics';
+import { clearAnalyticsCache, loadAnalyticsDashboard, type AnalyticsDashboardData, type AnalyticsInterval } from '../lib/analytics';
 import { TimeRangePicker, type TimeRangeValue } from '../components/analytics/TimeRangePicker';
 import { MetricCard } from '../components/analytics/MetricCard';
 import { EngagementChart } from '../components/analytics/EngagementChart';
@@ -35,15 +35,19 @@ interface HashtagStat {
 
 interface UserMetrics {
   followerCount: number;
-  followerGrowth30d: number;
-  engagementRate: number;
+  followingCount: number;
+  totalPosts: number;
+  totalZaps: number;
   totalZapAmount: number;
-  reach: number;
+  averageZapAmount: number;
   timeline: TimelineDataPoint[];
   bestHours: { hour: number; engagement: number }[];
   bestDays: { day: string; engagement: number }[];
   topPosts: TopPost[];
   topHashtags: HashtagStat[];
+  topZappers: { pubkey: string; sats: number; count: number }[];
+  recentPosts: { id: string; preview: string; createdAt: number }[];
+  noHistoricalDataMessage?: string;
 }
 
 function formatSats(value: number): string {
@@ -59,88 +63,56 @@ function toRange(value: TimeRangeValue): AnalyticsInterval {
   return '30d';
 }
 
-function computeInsights(metrics: UserMetrics): string[] {
-  const insights: string[] = [];
-
-  if (metrics.followerGrowth30d > 5) insights.push(`Your follower base is growing quickly (+${metrics.followerGrowth30d.toFixed(1)}%). Keep posting consistently to sustain momentum.`);
-  if (metrics.engagementRate > 25) insights.push('Your engagement rate is strong. Prioritize content formats similar to your top-performing posts.');
-  if (metrics.bestHours.length > 0) {
-    const topHour = [...metrics.bestHours].sort((a, b) => b.engagement - a.engagement)[0];
-    insights.push(`Best posting hour: ${topHour.hour}:00. Schedule your important posts around this time.`);
-  }
-  if (metrics.topHashtags[0]) insights.push(`Top hashtag #${metrics.topHashtags[0].tag} drives the highest engagement—reuse it strategically.`);
-  if (insights.length === 0) insights.push('Keep posting regularly and include hashtags to unlock stronger analytics insights.');
-
-  return insights;
-}
-
 function mapMetrics(data: AnalyticsDashboardData): UserMetrics {
-  const followerSeries = data.profile.followerGrowth;
-  const currentFollowers = followerSeries[followerSeries.length - 1]?.value ?? 0;
-  const previousFollowers = followerSeries[0]?.value ?? 0;
-  const followerGrowth30d = previousFollowers > 0 ? ((currentFollowers - previousFollowers) / previousFollowers) * 100 : 0;
-
-  const timeline = data.profile.engagementRate.map((point, index) => ({
+  const postsByDate = new Map(data.postsPerDay.map((p) => [p.label, p.value]));
+  const timeline = data.engagementPerDay.map((point) => ({
     date: point.label,
     engagement: Number(point.value.toFixed(1)),
-    posts: data.profile.followerGrowth[index]?.value ?? 0,
+    posts: postsByDate.get(point.label) ?? 0,
   }));
 
-  const hourMap = new Map<number, number>();
-  data.content.bestPostingTimes.forEach((item) => {
-    const hour = Number(item.hour.split(':')[0]);
-    hourMap.set(hour, item.score);
-  });
-
-  const bestHours = Array.from({ length: 24 }, (_, hour) => ({ hour, engagement: hourMap.get(hour) ?? 0 }));
-
-  const dayMap = new Map<string, number>();
-  data.engagement.peakHoursHeatmap.forEach((point) => {
-    dayMap.set(point.day, (dayMap.get(point.day) ?? 0) + point.value);
-  });
-
-  const bestDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({
-    day,
-    engagement: Number((dayMap.get(day) ?? 0).toFixed(1)),
-  }));
-
-  const topPosts: TopPost[] = data.profile.topPosts.map((post) => ({
+  const topPosts: TopPost[] = data.topPosts.map((post) => ({
     id: post.id,
     content: post.preview,
     reactions: post.reactions,
-    reposts: 0,
-    zaps: 1,
-    zapAmount: post.zaps,
+    reposts: post.reposts,
+    zaps: post.zaps,
+    zapAmount: post.zapSats,
     score: Number(post.score.toFixed(1)),
   }));
 
-  const topHashtags: HashtagStat[] = data.content.hashtagEngagement.map((tag) => ({
+  const topHashtags: HashtagStat[] = data.hashtagPerformance.map((tag) => ({
     tag: tag.hashtag.replace('#', ''),
-    count: tag.value,
-    engagement: tag.value,
+    count: tag.posts,
+    engagement: tag.engagement,
   }));
 
   return {
-    followerCount: currentFollowers,
-    followerGrowth30d,
-    engagementRate: data.profile.engagementRate[data.profile.engagementRate.length - 1]?.value ?? 0,
-    totalZapAmount: data.summary?.totalSatsReceived ?? 0,
-    reach: data.profile.reachEstimate[data.profile.reachEstimate.length - 1]?.value ?? 0,
+    followerCount: data.followerCount,
+    followingCount: data.followingCount,
+    totalPosts: data.totalPosts,
+    totalZaps: data.zapStats.totalZaps,
+    totalZapAmount: data.zapStats.totalSats,
+    averageZapAmount: data.zapStats.averageZapAmount,
     timeline,
-    bestHours,
-    bestDays,
+    bestHours: data.bestPostingTimes.hours,
+    bestDays: data.bestPostingTimes.days,
     topPosts,
     topHashtags,
+    topZappers: data.zapStats.topZappers.map((z) => ({ pubkey: z.pubkey, sats: z.totalSats, count: z.zapCount })),
+    recentPosts: data.recentPosts,
+    noHistoricalDataMessage: data.noHistoricalDataMessage,
   };
 }
 
 export function AnalyticsPage() {
   const { user } = useAuth();
   const [metrics, setMetrics] = useState<UserMetrics | null>(null);
-  const [insights, setInsights] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('30d');
   const [error, setError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     if (!user?.pubkey) return;
@@ -149,19 +121,18 @@ export function AnalyticsPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await loadAnalyticsDashboard(user.pubkey, 'individual', { interval: toRange(timeRange) });
-        const mapped = mapMetrics(response);
-        setMetrics(mapped);
-        setInsights(computeInsights(mapped));
+        const response = await loadAnalyticsDashboard(user.pubkey, 'individual', { interval: toRange(timeRange) }, refreshTick > 0);
+        setMetrics(mapMetrics(response));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load analytics');
       } finally {
         setLoading(false);
+        setRefreshing(false);
       }
     };
 
     void loadAnalytics();
-  }, [user?.pubkey, timeRange]);
+  }, [user?.pubkey, timeRange, refreshTick]);
 
   const safeMetrics = useMemo<UserMetrics | null>(() => metrics, [metrics]);
 
@@ -173,38 +144,44 @@ export function AnalyticsPage() {
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-white">Analytics</h1>
-          <p className="text-gray-400">Track your Nostr performance</p>
+          <p className="text-gray-400">Real on-chain Nostr analytics (no synthetic metrics)</p>
         </div>
-        <TimeRangePicker value={timeRange} onChange={(range) => setTimeRange(range)} />
+        <div className="flex items-center gap-2">
+          <TimeRangePicker value={timeRange} onChange={(range) => setTimeRange(range)} />
+          <button
+            type="button"
+            onClick={() => {
+              setRefreshing(true);
+              clearAnalyticsCache();
+              setRefreshTick((v) => v + 1);
+            }}
+            className="px-3 py-2 rounded-md bg-cyan-700 hover:bg-cyan-600 text-white text-sm"
+            disabled={refreshing}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        </div>
       </header>
 
       {error && <div className="cy-card p-4 text-red-300">{error}</div>}
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard label="Followers" value={safeMetrics.followerCount} change={safeMetrics.followerGrowth30d} icon="👥" />
-        <MetricCard label="Engagement Rate" value={`${safeMetrics.engagementRate.toFixed(1)}%`} icon="📈" />
+        <MetricCard label="Followers" value={formatNumber(safeMetrics.followerCount)} icon="👥" />
+        <MetricCard label="Following" value={formatNumber(safeMetrics.followingCount)} icon="➡️" />
+        <MetricCard label="Posts" value={formatNumber(safeMetrics.totalPosts)} icon="📝" />
         <MetricCard label="Total Zaps" value={`${formatSats(safeMetrics.totalZapAmount)} sats`} icon="⚡" />
-        <MetricCard label="Reach" value={formatNumber(safeMetrics.reach)} icon="🌐" />
       </section>
 
-      {insights.length > 0 && (
-        <section className="cy-card p-5">
-          <h2 className="text-lg font-semibold text-cyan-400 mb-3">💡 Insights</h2>
-          <div className="space-y-2">
-            {insights.map((insight, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 bg-gray-800/50 rounded-lg">
-                <span className="text-cyan-400">→</span>
-                <p className="text-gray-200">{insight}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+      {safeMetrics.noHistoricalDataMessage && (
+        <section className="cy-card p-5 text-gray-300">{safeMetrics.noHistoricalDataMessage}</section>
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <EngagementChart data={safeMetrics.timeline} />
-        <PostingActivityChart data={safeMetrics.timeline} />
-      </div>
+      {!safeMetrics.noHistoricalDataMessage && (
+        <div className="grid md:grid-cols-2 gap-6">
+          <EngagementChart data={safeMetrics.timeline} />
+          <PostingActivityChart data={safeMetrics.timeline} />
+        </div>
+      )}
 
       <section className="cy-card p-5">
         <h2 className="text-lg font-semibold text-white mb-4">🕐 Best Times to Post</h2>
@@ -215,17 +192,58 @@ export function AnalyticsPage() {
       </section>
 
       <section className="cy-card p-5">
-        <h2 className="text-lg font-semibold text-white mb-4">🏆 Top Performing Content</h2>
-        <div className="space-y-3">
-          {safeMetrics.topPosts.slice(0, 5).map((post, i) => (
-            <TopPostCard key={post.id} rank={i + 1} post={post} />
-          ))}
-        </div>
+        <h2 className="text-lg font-semibold text-white mb-4">🏆 Top Posts (Real Engagement)</h2>
+        {safeMetrics.topPosts.length === 0 ? (
+          <p className="text-gray-400">No post engagement data available yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {safeMetrics.topPosts.slice(0, 5).map((post, i) => (
+              <TopPostCard key={post.id} rank={i + 1} post={post} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="cy-card p-5">
+        <h2 className="text-lg font-semibold text-white mb-4">⚡ Zap Stats</h2>
+        <p className="text-gray-300 mb-3">Average zap amount: {formatSats(safeMetrics.averageZapAmount)} sats</p>
+        {safeMetrics.topZappers.length === 0 ? (
+          <p className="text-gray-400">No zap data available yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {safeMetrics.topZappers.slice(0, 5).map((z) => (
+              <div key={z.pubkey} className="flex justify-between text-sm text-gray-300">
+                <span className="font-mono">{z.pubkey.slice(0, 12)}…</span>
+                <span>{formatSats(z.sats)} sats ({z.count} zaps)</span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="cy-card p-5">
         <h2 className="text-lg font-semibold text-white mb-4">#️⃣ Hashtag Performance</h2>
-        <HashtagTable hashtags={safeMetrics.topHashtags} />
+        {safeMetrics.topHashtags.length === 0 ? (
+          <p className="text-gray-400">No hashtag data available yet.</p>
+        ) : (
+          <HashtagTable hashtags={safeMetrics.topHashtags} />
+        )}
+      </section>
+
+      <section className="cy-card p-5">
+        <h2 className="text-lg font-semibold text-white mb-4">Recent Posts</h2>
+        {safeMetrics.recentPosts.length === 0 ? (
+          <p className="text-gray-400">No recent posts found.</p>
+        ) : (
+          <div className="space-y-2">
+            {safeMetrics.recentPosts.slice(0, 8).map((post) => (
+              <div key={post.id} className="p-3 rounded bg-gray-800/50">
+                <p className="text-gray-200 line-clamp-2">{post.preview}</p>
+                <p className="text-xs text-gray-500 mt-1">{new Date(post.createdAt * 1000).toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

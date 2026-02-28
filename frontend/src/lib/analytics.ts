@@ -1,12 +1,14 @@
 import { SimplePool } from 'nostr-tools';
-import { SOCIAL_RELAYS, loadFollowers, loadFollowing, loadProfileActivity } from './social';
-import { parseZapReceipt } from './zaps';
-import { hydrateUserProfileCached } from './profileHydration';
 import type { NostrEvent } from '../types';
+import { FALLBACK_RELAYS } from './relayConfig';
+import { parseZapReceipt } from './zaps';
 
-export interface TimePoint { label: string; value: number; secondary?: number; }
+export interface TimePoint {
+  label: string;
+  value: number;
+}
 
-export type AnalyticsScope = 'individual' | 'following' | 'wot' | 'global';
+export type AnalyticsScope = 'individual';
 export type AnalyticsInterval = '7d' | '30d' | '90d' | '1y' | 'all' | 'custom';
 
 export interface AnalyticsRange {
@@ -15,525 +17,508 @@ export interface AnalyticsRange {
   endTs?: number;
 }
 
+export interface PostSummary {
+  id: string;
+  createdAt: number;
+  preview: string;
+}
+
+export interface TopPost {
+  id: string;
+  preview: string;
+  reactions: number;
+  replies: number;
+  reposts: number;
+  zaps: number;
+  zapSats: number;
+  score: number;
+}
+
+export interface TopZapper {
+  pubkey: string;
+  totalSats: number;
+  zapCount: number;
+  averageSats: number;
+}
+
 export interface AnalyticsDashboardData {
   generatedAt: string;
-  scope: AnalyticsScope;
-  summary?: {
-    totalZapsReceived: number;
-    totalSatsReceived: number;
-    totalReactions: number;
-    totalReplies: number;
-    totalPosts: number;
+  pubkey: string;
+  followerCount: number;
+  followingCount: number;
+  totalPosts: number;
+  postsPerDay: TimePoint[];
+  postsPerWeek: TimePoint[];
+  engagementPerDay: TimePoint[];
+  recentPosts: PostSummary[];
+  topPosts: TopPost[];
+  zapStats: {
+    totalSats: number;
+    totalZaps: number;
+    averageZapAmount: number;
+    topZappers: TopZapper[];
   };
-  profile: {
-    followerGrowth: TimePoint[];
-    engagementRate: TimePoint[];
-    topPosts: { id: string; preview: string; zaps: number; reactions: number; score: number }[];
-    reachEstimate: TimePoint[];
-    profileViews: TimePoint[];
+  bestPostingTimes: {
+    hours: { hour: number; engagement: number }[];
+    days: { day: string; engagement: number }[];
   };
-  content: {
-    postPerformance: { label: string; reactions: number; replies: number; reposts: number; zaps: number }[];
-    bestPostingTimes: { hour: string; score: number }[];
-    contentTypePerformance: { type: string; value: number }[];
-    hashtagEngagement: { hashtag: string; value: number }[];
-    viralContent: { id: string; preview: string; velocity: number; engagement: number }[];
-  };
-  network: {
-    networkGrowth: TimePoint[];
-    overlap: { segment: string; value: number }[];
-    influentialConnections: { pubkey: string; influence: number; sharedFollows: number }[];
-    clusters: { cluster: string; users: number }[];
-    nodes: { id: string; label: string; group: number; influence: number }[];
-    links: { source: string; target: string; weight: number }[];
-  };
-  engagement: {
-    zaps: TimePoint[];
-    topZappers: { pubkey: string; totalSats: number; zapCount: number; averageSats: number }[];
-    reactionsByType: { type: string; value: number }[];
-    replyQuoteMetrics: { metric: string; value: number }[];
-    engagementByContentType: { type: string; value: number }[];
-    peakHoursHeatmap: { day: string; hour: number; value: number }[];
-  };
-  relay: {
-    relayPerformance: { relay: string; latency: number; uptime: number; events: number }[];
-    eventDistribution: { relay: string; value: number }[];
-    recommendations: { relay: string; reason: string; score: number }[];
-  };
+  hashtagPerformance: { hashtag: string; posts: number; engagement: number }[];
+  noHistoricalDataMessage?: string;
 }
 
 const DAY = 24 * 60 * 60;
+const CACHE_VERSION = 'v2-real';
+const CACHE_VERSION_KEY = 'nostrmaxi.analytics.version';
+const CACHE_PREFIX = `nostrmaxi.analytics.${CACHE_VERSION}`;
 
-function resolveWindow(events: NostrEvent[], range?: AnalyticsRange): { startTs: number; endTs: number } {
-  const now = Math.floor(Date.now() / 1000);
-  const latestEventTs = events.length ? Math.max(...events.map((e) => e.created_at)) : now;
-  const earliestEventTs = events.length ? Math.min(...events.map((e) => e.created_at)) : now - (30 * DAY);
-
-  if (!range || range.interval === '30d') {
-    return { startTs: now - (30 * DAY), endTs: now };
+function localStorageSafe(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
   }
+}
 
+function ensureCacheVersion(): void {
+  const storage = localStorageSafe();
+  if (!storage) return;
+
+  const current = storage.getItem(CACHE_VERSION_KEY);
+  if (current === CACHE_VERSION) return;
+
+  const keysToDelete: string[] = [];
+  for (let i = 0; i < storage.length; i += 1) {
+    const key = storage.key(i);
+    if (key && key.startsWith('nostrmaxi.analytics.')) keysToDelete.push(key);
+  }
+  keysToDelete.forEach((key) => storage.removeItem(key));
+  storage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
+}
+
+export function clearAnalyticsCache(): void {
+  const storage = localStorageSafe();
+  if (!storage) return;
+
+  const keysToDelete: string[] = [];
+  for (let i = 0; i < storage.length; i += 1) {
+    const key = storage.key(i);
+    if (key && key.startsWith('nostrmaxi.analytics.')) keysToDelete.push(key);
+  }
+  keysToDelete.forEach((key) => storage.removeItem(key));
+  storage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
+}
+
+function cacheKey(pubkey: string, range: AnalyticsRange): string {
+  return `${CACHE_PREFIX}.${pubkey}.${range.interval}.${range.startTs || ''}.${range.endTs || ''}`;
+}
+
+function getRangeBounds(range: AnalyticsRange): { startTs: number; endTs: number } {
+  const now = Math.floor(Date.now() / 1000);
   if (range.interval === 'custom' && range.startTs && range.endTs) {
     return { startTs: range.startTs, endTs: range.endTs };
   }
-
   if (range.interval === '7d') return { startTs: now - (7 * DAY), endTs: now };
   if (range.interval === '90d') return { startTs: now - (90 * DAY), endTs: now };
   if (range.interval === '1y') return { startTs: now - (365 * DAY), endTs: now };
-  if (range.interval === 'all') return { startTs: earliestEventTs, endTs: Math.max(now, latestEventTs) };
-
+  if (range.interval === 'all') return { startTs: now - (365 * 5 * DAY), endTs: now };
   return { startTs: now - (30 * DAY), endTs: now };
 }
 
-function keyFromDay(ts: number): string {
+function formatDayLabel(ts: number): string {
   return new Date(ts * 1000).toISOString().slice(0, 10);
 }
 
-function textPreview(content: string, fallback: string): string {
-  const normalized = content.replace(/\s+/g, ' ').trim();
-  return normalized ? `${normalized.slice(0, 92)}${normalized.length > 92 ? '…' : ''}` : fallback;
+function getWeekLabel(ts: number): string {
+  const d = new Date(ts * 1000);
+  const day = d.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < items.length; i += size) result.push(items.slice(i, i + size));
+  return result;
+}
+
+function postPreview(content: string, id: string): string {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (!normalized) return `Post ${id.slice(0, 8)}`;
+  return normalized.length > 120 ? `${normalized.slice(0, 120)}…` : normalized;
+}
+
+function extractEventIds(evt: NostrEvent): string[] {
+  return evt.tags.filter((t) => t[0] === 'e' && t[1]).map((t) => t[1]);
+}
+
+function parseBolt11AmountSats(invoice: string | undefined): number | null {
+  if (!invoice) return null;
+  const lower = invoice.trim().toLowerCase();
+  const match = lower.match(/^ln[a-z]+(\d+)([munp]?)/);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  const unit = match[2] || '';
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  if (unit === '') return Math.floor(amount * 100_000_000);
+  if (unit === 'm') return Math.floor(amount * 100_000);
+  if (unit === 'u') return Math.floor(amount * 100);
+  if (unit === 'n') return Math.floor(amount / 10);
+  if (unit === 'p') return Math.floor(amount / 10_000);
+  return null;
+}
+
+function parseZapAmountSat(evt: NostrEvent): number {
+  const parsed = parseZapReceipt(evt);
+  if (parsed?.amountSat && parsed.amountSat > 0) return parsed.amountSat;
+  const bolt11 = evt.tags.find((t) => t[0] === 'bolt11' && t[1])?.[1];
+  return parseBolt11AmountSats(bolt11) || 0;
+}
+
+async function queryEvents(pool: SimplePool, filter: any): Promise<NostrEvent[]> {
+  const events = await pool.querySync(FALLBACK_RELAYS, filter);
+  return (events as NostrEvent[]) || [];
+}
+
+async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<AnalyticsDashboardData> {
+  const pool = new SimplePool();
+  try {
+    const { startTs, endTs } = getRangeBounds(range);
+
+    const [contactEvents, followerEvents, posts] = await Promise.all([
+      queryEvents(pool, { kinds: [3], authors: [pubkey], limit: 20 }),
+      queryEvents(pool, { kinds: [3], '#p': [pubkey], limit: 5000 }),
+      queryEvents(pool, { kinds: [1], authors: [pubkey], limit: 2000 }),
+    ]);
+
+    const latestContact = [...contactEvents].sort((a, b) => b.created_at - a.created_at)[0];
+    const followingCount = latestContact
+      ? new Set(latestContact.tags.filter((t) => t[0] === 'p' && t[1]).map((t) => t[1])).size
+      : 0;
+    const followerCount = new Set(followerEvents.map((e) => e.pubkey)).size;
+
+    const sortedPosts = [...posts].sort((a, b) => b.created_at - a.created_at);
+    const totalPosts = sortedPosts.length;
+    const rangedPosts = sortedPosts.filter((p) => p.created_at >= startTs && p.created_at <= endTs);
+
+    const postIds = sortedPosts.map((p) => p.id);
+
+    const reactionEvents: NostrEvent[] = [];
+    const replyEvents: NostrEvent[] = [];
+    const repostEvents: NostrEvent[] = [];
+    const zapEvents: NostrEvent[] = [];
+
+    for (const ids of chunk(postIds, 150)) {
+      if (ids.length === 0) continue;
+      const [reactions, replies, reposts, zaps] = await Promise.all([
+        queryEvents(pool, { kinds: [7], '#e': ids, limit: 3000 }),
+        queryEvents(pool, { kinds: [1], '#e': ids, limit: 3000 }),
+        queryEvents(pool, { kinds: [6], '#e': ids, limit: 3000 }),
+        queryEvents(pool, { kinds: [9735], '#e': ids, limit: 3000 }),
+      ]);
+      reactionEvents.push(...reactions);
+      replyEvents.push(...replies);
+      repostEvents.push(...reposts);
+      zapEvents.push(...zaps);
+    }
+
+    const postMetrics = new Map<string, TopPost>();
+    const hashtagUsage = new Map<string, { posts: number; engagement: number }>();
+
+    sortedPosts.forEach((post) => {
+      postMetrics.set(post.id, {
+        id: post.id,
+        preview: postPreview(post.content, post.id),
+        reactions: 0,
+        replies: 0,
+        reposts: 0,
+        zaps: 0,
+        zapSats: 0,
+        score: 0,
+      });
+
+      const tags = [
+        ...post.tags.filter((t) => t[0] === 't' && t[1]).map((t) => t[1]),
+        ...(post.content.match(/#([a-zA-Z0-9_]+)/g) || []).map((t) => t.slice(1)),
+      ];
+      new Set(tags.map((t) => t.toLowerCase())).forEach((tag) => {
+        const existing = hashtagUsage.get(tag) || { posts: 0, engagement: 0 };
+        hashtagUsage.set(tag, { posts: existing.posts + 1, engagement: existing.engagement });
+      });
+    });
+
+    const postIdSet = new Set(postIds);
+
+    reactionEvents.forEach((evt) => {
+      extractEventIds(evt).forEach((id) => {
+        if (!postIdSet.has(id)) return;
+        const metric = postMetrics.get(id);
+        if (metric) metric.reactions += 1;
+      });
+    });
+
+    replyEvents.forEach((evt) => {
+      if (evt.pubkey === pubkey) return;
+      extractEventIds(evt).forEach((id) => {
+        if (!postIdSet.has(id)) return;
+        const metric = postMetrics.get(id);
+        if (metric) metric.replies += 1;
+      });
+    });
+
+    repostEvents.forEach((evt) => {
+      extractEventIds(evt).forEach((id) => {
+        if (!postIdSet.has(id)) return;
+        const metric = postMetrics.get(id);
+        if (metric) metric.reposts += 1;
+      });
+    });
+
+    const zapperStats = new Map<string, { sats: number; count: number }>();
+    let totalSats = 0;
+    let totalZaps = 0;
+
+    zapEvents.forEach((evt) => {
+      const sats = parseZapAmountSat(evt);
+      if (sats <= 0) return;
+      const sender = evt.tags.find((t) => t[0] === 'P' && t[1])?.[1] || evt.pubkey;
+      const senderPrev = zapperStats.get(sender) || { sats: 0, count: 0 };
+      zapperStats.set(sender, { sats: senderPrev.sats + sats, count: senderPrev.count + 1 });
+
+      totalSats += sats;
+      totalZaps += 1;
+
+      extractEventIds(evt).forEach((id) => {
+        if (!postIdSet.has(id)) return;
+        const metric = postMetrics.get(id);
+        if (!metric) return;
+        metric.zaps += 1;
+        metric.zapSats += sats;
+      });
+    });
+
+    const postsPerDayMap = new Map<string, number>();
+    const postsPerWeekMap = new Map<string, number>();
+    const engagementPerDayMap = new Map<string, number>();
+
+    rangedPosts.forEach((post) => {
+      const day = formatDayLabel(post.created_at);
+      const week = getWeekLabel(post.created_at);
+      postsPerDayMap.set(day, (postsPerDayMap.get(day) || 0) + 1);
+      postsPerWeekMap.set(week, (postsPerWeekMap.get(week) || 0) + 1);
+
+      const m = postMetrics.get(post.id);
+      const engagement = m ? (m.reactions + m.replies + m.reposts + m.zapSats) : 0;
+      engagementPerDayMap.set(day, (engagementPerDayMap.get(day) || 0) + engagement);
+    });
+
+    const weekdayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayTotals = new Array<number>(7).fill(0);
+    const hourTotals = new Array<number>(24).fill(0);
+
+    sortedPosts.forEach((post) => {
+      const metric = postMetrics.get(post.id);
+      const engagement = metric ? (metric.reactions + metric.replies + metric.reposts + metric.zapSats) : 0;
+      const d = new Date(post.created_at * 1000);
+      dayTotals[d.getDay()] += engagement;
+      hourTotals[d.getHours()] += engagement;
+    });
+
+    postMetrics.forEach((metric) => {
+      metric.score = metric.reactions + metric.replies + metric.reposts + metric.zapSats;
+      const post = sortedPosts.find((p) => p.id === metric.id);
+      if (!post) return;
+
+      const tags = [
+        ...post.tags.filter((t) => t[0] === 't' && t[1]).map((t) => t[1]),
+        ...(post.content.match(/#([a-zA-Z0-9_]+)/g) || []).map((t) => t.slice(1)),
+      ];
+
+      new Set(tags.map((t) => t.toLowerCase())).forEach((tag) => {
+        const existing = hashtagUsage.get(tag) || { posts: 0, engagement: 0 };
+        hashtagUsage.set(tag, { posts: existing.posts, engagement: existing.engagement + metric.score });
+      });
+    });
+
+    const topZappers: TopZapper[] = Array.from(zapperStats.entries())
+      .map(([pubkeyValue, stat]) => ({
+        pubkey: pubkeyValue,
+        totalSats: stat.sats,
+        zapCount: stat.count,
+        averageSats: Math.round(stat.sats / stat.count),
+      }))
+      .sort((a, b) => b.totalSats - a.totalSats)
+      .slice(0, 10);
+
+    const postsPerDay = Array.from(postsPerDayMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([label, value]) => ({ label, value }));
+
+    const postsPerWeek = Array.from(postsPerWeekMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([label, value]) => ({ label, value }));
+
+    const engagementPerDay = Array.from(engagementPerDayMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([label, value]) => ({ label, value }));
+
+    const topPosts = Array.from(postMetrics.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+
+    const recentPosts = sortedPosts.slice(0, 10).map((post) => ({
+      id: post.id,
+      createdAt: post.created_at,
+      preview: postPreview(post.content, post.id),
+    }));
+
+    const hashtagPerformance = Array.from(hashtagUsage.entries())
+      .map(([hashtag, stats]) => ({ hashtag, posts: stats.posts, engagement: stats.engagement }))
+      .sort((a, b) => b.engagement - a.engagement)
+      .slice(0, 20);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      pubkey,
+      followerCount,
+      followingCount,
+      totalPosts,
+      postsPerDay,
+      postsPerWeek,
+      engagementPerDay,
+      recentPosts,
+      topPosts,
+      zapStats: {
+        totalSats,
+        totalZaps,
+        averageZapAmount: totalZaps > 0 ? Math.round(totalSats / totalZaps) : 0,
+        topZappers,
+      },
+      bestPostingTimes: {
+        hours: hourTotals.map((engagement, hour) => ({ hour, engagement })),
+        days: weekdayLabels.map((day, idx) => ({ day, engagement: dayTotals[idx] })),
+      },
+      hashtagPerformance,
+      noHistoricalDataMessage: postsPerDay.length === 0 ? 'No historical data available' : undefined,
+    };
+  } finally {
+    pool.close(FALLBACK_RELAYS);
+  }
+}
+
+export async function loadAnalyticsDashboard(
+  pubkey: string,
+  scope: AnalyticsScope = 'individual',
+  range: AnalyticsRange = { interval: '30d' },
+  forceRefresh = false,
+): Promise<AnalyticsDashboardData> {
+  if (scope !== 'individual') {
+    throw new Error('Only individual scope is supported for real-data analytics.');
+  }
+
+  ensureCacheVersion();
+
+  const storage = localStorageSafe();
+  const key = cacheKey(pubkey, range);
+  if (!forceRefresh && storage) {
+    const raw = storage.getItem(key);
+    if (raw) {
+      try {
+        return JSON.parse(raw) as AnalyticsDashboardData;
+      } catch {
+        storage.removeItem(key);
+      }
+    }
+  }
+
+  const data = await loadAnalyticsRaw(pubkey, range);
+  if (storage) {
+    storage.setItem(key, JSON.stringify(data));
+  }
+  return data;
+}
+
+// Legacy compute helper kept for tests and compatibility.
 export function computeAnalyticsFromEvents(params: {
   pubkey: string;
   events: NostrEvent[];
   followers: string[];
   following: string[];
-  scope?: AnalyticsScope;
-  range?: AnalyticsRange;
-}): AnalyticsDashboardData {
-  const { pubkey, events, followers, following, scope = 'global', range } = params;
-  const sorted = [...events].sort((a, b) => a.created_at - b.created_at);
-  const { startTs, endTs } = resolveWindow(sorted, range);
-  const rangedEvents = sorted.filter((evt) => evt.created_at >= startTs && evt.created_at <= endTs);
-  const notes = rangedEvents.filter((evt) => evt.kind === 1);
-  const totalDays = Math.max(1, Math.ceil((endTs - startTs) / DAY));
-  const points = Math.min(120, Math.max(7, totalDays + 1));
-  const seriesDays = Array.from({ length: points }).map((_, idx) => {
-    const ts = startTs + Math.round((idx / Math.max(1, points - 1)) * (endTs - startTs));
-    return { ts, key: keyFromDay(ts), label: new Date(ts * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) };
-  });
+  scope?: 'individual' | 'following' | 'wot' | 'global';
+}) {
+  const notes = params.events.filter((e) => e.kind === 1 && !e.tags.some((t) => t[0] === 'e'));
+  const postIds = new Set(notes.map((n) => n.id));
 
-  const postsByDay = new Map<string, number>();
-  const reactionsByDay = new Map<string, number>();
-  const repliesByDay = new Map<string, number>();
-  const zapsByDay = new Map<string, number>();
-  const zapSatsByDay = new Map<string, number>();
-  const mentionsByDay = new Map<string, number>();
-  const zapperStats = new Map<string, { totalSats: number; zapCount: number }>();
-
-  const reactionTypeCounts: Record<string, number> = {};
-  const hashtagCounts: Record<string, number> = {};
-  const contentTypeCounts = { text: 0, image: 0, video: 0 };
-  const engagementByType = { text: 0, image: 0, video: 0 };
-  const hourScores = new Array<number>(24).fill(0);
-
-  const postMetrics = new Map<string, { reactions: number; replies: number; reposts: number; zaps: number; zapSats: number; createdAt: number; preview: string }>();
-  for (const note of notes) {
-    postMetrics.set(note.id, {
+  const metrics = new Map<string, { reactions: number; replies: number; reposts: number; zapSats: number; preview: string }>();
+  notes.forEach((n) => {
+    metrics.set(n.id, {
       reactions: 0,
       replies: 0,
       reposts: 0,
-      zaps: 0,
       zapSats: 0,
-      createdAt: note.created_at,
-      preview: textPreview(note.content, `Post ${note.id.slice(0, 8)}`),
+      preview: postPreview(n.content, n.id),
     });
+  });
 
-    const day = keyFromDay(note.created_at);
-    postsByDay.set(day, (postsByDay.get(day) || 0) + 1);
+  const reactionTypeCounts: Record<string, number> = {};
 
-    const hashtags = note.content.match(/#([a-zA-Z0-9_]{2,32})/g) || [];
-    hashtags.forEach((tag) => {
-      const key = tag.toLowerCase();
-      hashtagCounts[key] = (hashtagCounts[key] || 0) + 1;
-    });
+  params.events.forEach((evt) => {
+    const targets = extractEventIds(evt).filter((id) => postIds.has(id));
+    if (!targets.length) return;
 
-    const lower = note.content.toLowerCase();
-    const hasImage = /(https?:\/\/\S+\.(png|jpg|jpeg|gif|webp))/i.test(note.content);
-    const hasVideo = /(https?:\/\/\S+\.(mp4|webm|mov))|(youtu\.be|youtube\.com|vimeo\.com)/i.test(note.content);
-    if (hasVideo) contentTypeCounts.video += 1;
-    else if (hasImage) contentTypeCounts.image += 1;
-    else contentTypeCounts.text += 1;
-
-    const hour = new Date(note.created_at * 1000).getHours();
-    hourScores[hour] += 1;
-
-    if (lower.includes('@')) mentionsByDay.set(day, (mentionsByDay.get(day) || 0) + 1);
-  }
-
-  for (const evt of rangedEvents) {
-    const eTargets = evt.tags.filter((tag) => tag[0] === 'e' && tag[1]).map((tag) => tag[1]);
-    if (eTargets.length === 0) continue;
-
-    const day = keyFromDay(evt.created_at);
     if (evt.kind === 7) {
-      reactionsByDay.set(day, (reactionsByDay.get(day) || 0) + 1);
       const reaction = evt.content?.trim() || '+';
       reactionTypeCounts[reaction] = (reactionTypeCounts[reaction] || 0) + 1;
-      eTargets.forEach((id) => {
-        const metric = postMetrics.get(id);
-        if (metric) metric.reactions += 1;
+      targets.forEach((id) => {
+        const m = metrics.get(id);
+        if (m) m.reactions += 1;
       });
     }
 
     if (evt.kind === 1) {
-      repliesByDay.set(day, (repliesByDay.get(day) || 0) + 1);
-      eTargets.forEach((id) => {
-        const metric = postMetrics.get(id);
-        if (metric) metric.replies += 1;
+      targets.forEach((id) => {
+        const m = metrics.get(id);
+        if (m) m.replies += 1;
       });
     }
 
     if (evt.kind === 6) {
-      eTargets.forEach((id) => {
-        const metric = postMetrics.get(id);
-        if (metric) metric.reposts += 1;
+      targets.forEach((id) => {
+        const m = metrics.get(id);
+        if (m) m.reposts += 1;
       });
     }
 
     if (evt.kind === 9735) {
-      const parsed = parseZapReceipt(evt as NostrEvent);
-      if (parsed) {
-        zapsByDay.set(day, (zapsByDay.get(day) || 0) + 1);
-        zapSatsByDay.set(day, (zapSatsByDay.get(day) || 0) + parsed.amountSat);
-        
-        // Track zapper stats
-        const zapperKey = parsed.anonymous ? 'anonymous' : parsed.senderPubkey;
-        const existing = zapperStats.get(zapperKey) || { totalSats: 0, zapCount: 0 };
-        zapperStats.set(zapperKey, {
-          totalSats: existing.totalSats + parsed.amountSat,
-          zapCount: existing.zapCount + 1,
-        });
-        
-        eTargets.forEach((id) => {
-          const metric = postMetrics.get(id);
-          if (metric) {
-            metric.zaps += 1;
-            metric.zapSats += parsed.amountSat;
-          }
-        });
-      }
+      const sats = parseZapAmountSat(evt);
+      targets.forEach((id) => {
+        const m = metrics.get(id);
+        if (m) m.zapSats += sats;
+      });
     }
-  }
-
-  const followerBase = Math.max(1, followers.length);
-  const followerGrowth = seriesDays.map((d, idx) => ({
-    label: d.label,
-    value: Math.max(1, Math.round(followerBase * (0.58 + (idx / 26)) + Math.sin(idx / 2) * 2)),
-  }));
-
-  const engagementRate = seriesDays.map((d) => {
-    const posts = postsByDay.get(d.key) || 0;
-    const engagements = (reactionsByDay.get(d.key) || 0) + (repliesByDay.get(d.key) || 0) + (zapsByDay.get(d.key) || 0);
-    const value = posts === 0 ? 0 : Number(((engagements / posts) * 100).toFixed(1));
-    return { label: d.label, value };
   });
 
-  const reachEstimate = seriesDays.map((d) => {
-    const posts = postsByDay.get(d.key) || 0;
-    const engaged = (reactionsByDay.get(d.key) || 0) + (repliesByDay.get(d.key) || 0) + (zapsByDay.get(d.key) || 0);
-    const estimated = posts * Math.max(4, Math.round(followerBase * 0.2)) + engaged * 12;
-    return { label: d.label, value: estimated };
-  });
-
-  const profileViews = seriesDays.map((d, idx) => {
-    const mentions = mentionsByDay.get(d.key) || 0;
-    return { label: d.label, value: Math.max(0, Math.round(followerBase * 0.06 + mentions * 4 + Math.cos(idx / 2) * 6)) };
-  });
-
-  const topPosts = Array.from(postMetrics.entries())
-    .map(([id, m]) => ({ 
-      id, 
-      preview: m.preview, 
-      zaps: m.zapSats, // Use sat amount for display
-      reactions: m.reactions, 
-      score: (m.zapSats * 0.1) + (m.zaps * 2) + (m.reactions * 2) + (m.replies * 2) + (m.reposts * 3) // Weight sats heavily
+  const topPosts = Array.from(metrics.entries())
+    .map(([id, m]) => ({
+      id,
+      preview: m.preview,
+      zaps: m.zapSats,
+      reactions: m.reactions,
+      score: m.reactions + m.replies + m.reposts + m.zapSats,
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
-  const postPerformance = topPosts.map((post) => {
-    const base = postMetrics.get(post.id)!;
-    return { label: post.preview.slice(0, 22), reactions: base.reactions, replies: base.replies, reposts: base.reposts, zaps: base.zaps };
-  });
-
-  const bestPostingTimes = hourScores
-    .map((score, hour) => ({ hour: `${hour.toString().padStart(2, '0')}:00`, score }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
-
-  const contentTypePerformance = [
-    { type: 'Text', value: contentTypeCounts.text },
-    { type: 'Image', value: contentTypeCounts.image },
-    { type: 'Video', value: contentTypeCounts.video },
-  ];
-
-  const hashtagEngagement = Object.entries(hashtagCounts)
-    .map(([hashtag, value]) => ({ hashtag, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8);
-
-  topPosts.forEach((post) => {
-    const content = postMetrics.get(post.id)?.preview.toLowerCase() || '';
-    if (content.match(/(youtu|video|stream)/)) engagementByType.video += post.score;
-    else if (content.match(/(png|jpg|photo|image)/)) engagementByType.image += post.score;
-    else engagementByType.text += post.score;
-  });
-
-  const viralContent = topPosts.map((post, idx) => ({ id: post.id, preview: post.preview, velocity: Math.round(post.score * (1.2 + idx * 0.08)), engagement: post.score }));
-
-  const overlapCount = Math.max(0, Math.round(following.length * 0.32));
-  const overlap = [
-    { segment: 'Mutual', value: overlapCount },
-    { segment: 'Following only', value: Math.max(0, following.length - overlapCount) },
-    { segment: 'Followers only', value: Math.max(0, followers.length - overlapCount) },
-  ];
-
-  const influentialConnections = following.slice(0, 8).map((target, idx) => ({
-    pubkey: target,
-    influence: Math.max(10, Math.round(100 - (idx * 9) + ((idx % 3) * 2))),
-    sharedFollows: Math.max(1, Math.round((following.length / 9) + (idx % 3))),
-  }));
-
-  const clusters = [
-    { cluster: 'Bitcoiners', users: Math.max(4, Math.round(following.length * 0.34)) },
-    { cluster: 'Builders', users: Math.max(3, Math.round(following.length * 0.23)) },
-    { cluster: 'Media', users: Math.max(2, Math.round(following.length * 0.19)) },
-    { cluster: 'Research', users: Math.max(2, Math.round(following.length * 0.14)) },
-  ];
-
-  const networkNodes = [
-    { id: pubkey, label: 'You', group: 0, influence: 100 },
-    ...influentialConnections.map((c, idx) => ({ id: c.pubkey, label: c.pubkey.slice(0, 10), group: 1 + (idx % 3), influence: c.influence })),
-  ];
-  const networkLinks = influentialConnections.map((c) => ({ source: pubkey, target: c.pubkey, weight: c.sharedFollows }));
-
-  const networkGrowth = seriesDays.map((d, idx) => ({ label: d.label, value: Math.round(following.length * (0.5 + idx / 22)) }));
-
-  const zaps = seriesDays.map((d) => ({ 
-    label: d.label, 
-    value: zapsByDay.get(d.key) || 0, // Count
-    secondary: zapSatsByDay.get(d.key) || 0 // Total sats
-  }));
-
-  // Compute top zappers
-  const topZappers = Array.from(zapperStats.entries())
-    .map(([pubkey, stats]) => ({
-      pubkey,
-      totalSats: stats.totalSats,
-      zapCount: stats.zapCount,
-      averageSats: Math.round(stats.totalSats / stats.zapCount),
-    }))
-    .sort((a, b) => b.totalSats - a.totalSats)
-    .slice(0, 10);
-
   const reactionsByType = Object.entries(reactionTypeCounts)
     .map(([type, value]) => ({ type, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
-
-  const replyQuoteMetrics = [
-    { metric: 'Replies', value: Array.from(repliesByDay.values()).reduce((a, b) => a + b, 0) },
-    { metric: 'Quotes', value: rangedEvents.filter((e) => e.kind === 1 && e.tags.some((t) => t[0] === 'q')).length },
-    { metric: 'Reposts', value: rangedEvents.filter((e) => e.kind === 6).length },
-  ];
-
-  const peakHoursHeatmap = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].flatMap((day, dayIndex) =>
-    Array.from({ length: 24 }).map((_, hour) => ({
-      day,
-      hour,
-      value: Math.max(0, Math.round((hourScores[hour] || 0) * (0.6 + ((dayIndex + 1) / 10)))),
-    })),
-  );
-
-  const relayPerformance = SOCIAL_RELAYS.map((relay, idx) => ({
-    relay,
-    latency: 100 + (idx * 34) + ((idx % 2) * 11),
-    uptime: Math.max(88, 99 - (idx * 1.9)),
-    events: Math.max(8, Math.round((events.length / SOCIAL_RELAYS.length) + (idx * 3))),
-  }));
-
-  const eventDistribution = relayPerformance.map((r) => ({ relay: r.relay.replace('wss://', ''), value: r.events }));
-  const recommendations = [...relayPerformance]
-    .sort((a, b) => (b.uptime - b.latency / 200) - (a.uptime - a.latency / 200))
-    .slice(0, 3)
-    .map((relay) => ({
-      relay: relay.relay,
-      reason: relay.uptime > 96 ? 'Excellent uptime and consistent event propagation' : 'Strong balance of speed and reliability',
-      score: Number((relay.uptime - relay.latency / 250).toFixed(1)),
-    }));
-
-  // Compute summary totals
-  const totalZapsReceived = Array.from(zapsByDay.values()).reduce((sum, count) => sum + count, 0);
-  const totalSatsReceived = Array.from(zapSatsByDay.values()).reduce((sum, sats) => sum + sats, 0);
-  const totalReactions = Array.from(reactionsByDay.values()).reduce((sum, count) => sum + count, 0);
-  const totalReplies = Array.from(repliesByDay.values()).reduce((sum, count) => sum + count, 0);
-  const totalPosts = notes.length;
+    .sort((a, b) => b.value - a.value);
 
   return {
-    generatedAt: new Date().toISOString(),
-    scope,
-    summary: {
-      totalZapsReceived,
-      totalSatsReceived,
-      totalReactions,
-      totalReplies,
-      totalPosts,
-    },
-    profile: { followerGrowth, engagementRate, topPosts, reachEstimate, profileViews },
-    content: {
-      postPerformance,
-      bestPostingTimes,
-      contentTypePerformance,
-      hashtagEngagement,
-      viralContent,
-    },
-    network: {
-      networkGrowth,
-      overlap,
-      influentialConnections,
-      clusters,
-      nodes: networkNodes,
-      links: networkLinks,
-    },
-    engagement: {
-      zaps,
-      topZappers,
-      reactionsByType,
-      replyQuoteMetrics,
-      engagementByContentType: [
-        { type: 'Text', value: engagementByType.text },
-        { type: 'Image', value: engagementByType.image },
-        { type: 'Video', value: engagementByType.video },
-      ],
-      peakHoursHeatmap,
-    },
-    relay: {
-      relayPerformance,
-      eventDistribution,
-      recommendations,
-    },
+    scope: params.scope || 'individual',
+    profile: { topPosts },
+    engagement: { reactionsByType },
   };
-}
-
-async function loadGlobalEvents(since: number, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
-  const pool = new SimplePool();
-  try {
-    const events = await pool.querySync(relays, { kinds: [1, 6, 7, 9735], limit: 1800, since } as any);
-    return events as NostrEvent[];
-  } finally {
-    pool.close(relays);
-  }
-}
-
-async function loadFollowingEvents(pubkey: string, since: number, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
-  const pool = new SimplePool();
-  try {
-    const following = await loadFollowing(pubkey, relays);
-    const authors = [pubkey, ...following].slice(0, 200);
-    if (!authors.length) return [];
-
-    const events = await pool.querySync(relays, { kinds: [1, 6, 7, 9735], authors, limit: 1800, since } as any);
-    return events as NostrEvent[];
-  } finally {
-    pool.close(relays);
-  }
-}
-
-async function loadWotEvents(pubkey: string, since: number, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
-  const pool = new SimplePool();
-  try {
-    const firstHop = await loadFollowing(pubkey, relays);
-    const seeds = firstHop.slice(0, 80);
-    const secondHopContacts = seeds.length
-      ? await pool.querySync(relays, { kinds: [3], authors: seeds, limit: 900 })
-      : [];
-
-    const secondHop = new Set<string>();
-    secondHopContacts.forEach((evt) => {
-      evt.tags.forEach((tag) => {
-        if (tag[0] === 'p' && tag[1] && tag[1] !== pubkey) secondHop.add(tag[1]);
-      });
-    });
-
-    const authors = Array.from(new Set([pubkey, ...firstHop, ...Array.from(secondHop)])).slice(0, 260);
-    if (!authors.length) return [];
-
-    const events = await pool.querySync(relays, { kinds: [1, 6, 7, 9735], authors, limit: 1600, since } as any);
-    return events as NostrEvent[];
-  } finally {
-    pool.close(relays);
-  }
-}
-
-export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsScope = 'individual', range: AnalyticsRange = { interval: '30d' }): Promise<AnalyticsDashboardData> {
-  // Get followers/following from contacts
-  const [followers, following] = await Promise.all([
-    loadFollowers(pubkey),
-    loadFollowing(pubkey),
-  ]);
-
-  const nowTs = Math.floor(Date.now() / 1000);
-  const resolvedSince = range.interval === 'custom' && range.startTs
-    ? range.startTs
-    : range.interval === '7d'
-      ? nowTs - (7 * DAY)
-      : range.interval === '90d'
-        ? nowTs - (90 * DAY)
-        : range.interval === '1y'
-          ? nowTs - (365 * DAY)
-          : range.interval === 'all'
-            ? nowTs - (365 * 5 * DAY)
-            : nowTs - (30 * DAY);
-
-  let finalEvents: NostrEvent[];
-
-  switch (scope) {
-    case 'individual': {
-      // User's own content only
-      const hydrated = await hydrateUserProfileCached({ pubkey });
-      finalEvents = [
-        ...hydrated.notes,
-        ...hydrated.reactions,
-        ...hydrated.zaps,
-        ...hydrated.reposts,
-        ...hydrated.replies,
-        ...hydrated.quotes,
-      ];
-      break;
-    }
-
-    case 'following': {
-      // User + people they follow
-      finalEvents = await loadFollowingEvents(pubkey, resolvedSince);
-      break;
-    }
-
-    case 'wot': {
-      // User + WoT (1st + 2nd hop follows)
-      finalEvents = await loadWotEvents(pubkey, resolvedSince);
-      break;
-    }
-
-    case 'global': {
-      // All public content
-      finalEvents = await loadGlobalEvents(resolvedSince);
-      break;
-    }
-
-    default:
-      // Fallback to individual
-      const hydrated = await hydrateUserProfileCached({ pubkey });
-      finalEvents = [
-        ...hydrated.notes,
-        ...hydrated.reactions,
-        ...hydrated.zaps,
-        ...hydrated.reposts,
-        ...hydrated.replies,
-        ...hydrated.quotes,
-      ];
-  }
-
-  return computeAnalyticsFromEvents({ pubkey, events: finalEvents, followers, following, scope, range });
 }
