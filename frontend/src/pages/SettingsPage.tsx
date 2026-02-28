@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useMuteSettings } from '../hooks/useMuteSettings';
 import { MuteWordsSettings } from '../components/MuteWordsSettings';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { MutedWordsManager } from '../components/settings/MutedWordsManager';
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -42,12 +43,15 @@ export function SettingsPage() {
           summary={`Rules active: ${muteSettings.rules.length} • Sync: ${syncState}`}
           defaultOpen={false}
         >
-          <MuteWordsSettings
-            settings={muteSettings}
-            onChange={setMuteSettings}
-            onSync={runSync}
-            syncStatus={syncState}
-          />
+          <MutedWordsManager />
+          <div className="pt-4 border-t border-swordfish-muted/30">
+            <MuteWordsSettings
+              settings={muteSettings}
+              onChange={setMuteSettings}
+              onSync={runSync}
+              syncStatus={syncState}
+            />
+          </div>
         </CollapsibleSection>
       ) : null}
     </div>

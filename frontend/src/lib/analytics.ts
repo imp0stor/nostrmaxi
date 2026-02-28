@@ -7,6 +7,13 @@ import type { NostrEvent } from '../types';
 export interface TimePoint { label: string; value: number; secondary?: number; }
 
 export type AnalyticsScope = 'individual' | 'following' | 'wot' | 'global';
+export type AnalyticsInterval = '7d' | '30d' | '90d' | '1y' | 'all' | 'custom';
+
+export interface AnalyticsRange {
+  interval: AnalyticsInterval;
+  startTs?: number;
+  endTs?: number;
+}
 
 export interface AnalyticsDashboardData {
   generatedAt: string;
@@ -57,6 +64,27 @@ export interface AnalyticsDashboardData {
 
 const DAY = 24 * 60 * 60;
 
+function resolveWindow(events: NostrEvent[], range?: AnalyticsRange): { startTs: number; endTs: number } {
+  const now = Math.floor(Date.now() / 1000);
+  const latestEventTs = events.length ? Math.max(...events.map((e) => e.created_at)) : now;
+  const earliestEventTs = events.length ? Math.min(...events.map((e) => e.created_at)) : now - (30 * DAY);
+
+  if (!range || range.interval === '30d') {
+    return { startTs: now - (30 * DAY), endTs: now };
+  }
+
+  if (range.interval === 'custom' && range.startTs && range.endTs) {
+    return { startTs: range.startTs, endTs: range.endTs };
+  }
+
+  if (range.interval === '7d') return { startTs: now - (7 * DAY), endTs: now };
+  if (range.interval === '90d') return { startTs: now - (90 * DAY), endTs: now };
+  if (range.interval === '1y') return { startTs: now - (365 * DAY), endTs: now };
+  if (range.interval === 'all') return { startTs: earliestEventTs, endTs: Math.max(now, latestEventTs) };
+
+  return { startTs: now - (30 * DAY), endTs: now };
+}
+
 function keyFromDay(ts: number): string {
   return new Date(ts * 1000).toISOString().slice(0, 10);
 }
@@ -72,13 +100,17 @@ export function computeAnalyticsFromEvents(params: {
   followers: string[];
   following: string[];
   scope?: AnalyticsScope;
+  range?: AnalyticsRange;
 }): AnalyticsDashboardData {
-  const { pubkey, events, followers, following, scope = 'global' } = params;
+  const { pubkey, events, followers, following, scope = 'global', range } = params;
   const sorted = [...events].sort((a, b) => a.created_at - b.created_at);
-  const notes = sorted.filter((evt) => evt.kind === 1);
-  const now = Math.floor(Date.now() / 1000);
-  const last21 = Array.from({ length: 21 }).map((_, idx) => {
-    const ts = now - ((20 - idx) * DAY);
+  const { startTs, endTs } = resolveWindow(sorted, range);
+  const rangedEvents = sorted.filter((evt) => evt.created_at >= startTs && evt.created_at <= endTs);
+  const notes = rangedEvents.filter((evt) => evt.kind === 1);
+  const totalDays = Math.max(1, Math.ceil((endTs - startTs) / DAY));
+  const points = Math.min(120, Math.max(7, totalDays + 1));
+  const seriesDays = Array.from({ length: points }).map((_, idx) => {
+    const ts = startTs + Math.round((idx / Math.max(1, points - 1)) * (endTs - startTs));
     return { ts, key: keyFromDay(ts), label: new Date(ts * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) };
   });
 
@@ -130,7 +162,7 @@ export function computeAnalyticsFromEvents(params: {
     if (lower.includes('@')) mentionsByDay.set(day, (mentionsByDay.get(day) || 0) + 1);
   }
 
-  for (const evt of sorted) {
+  for (const evt of rangedEvents) {
     const eTargets = evt.tags.filter((tag) => tag[0] === 'e' && tag[1]).map((tag) => tag[1]);
     if (eTargets.length === 0) continue;
 
@@ -186,26 +218,26 @@ export function computeAnalyticsFromEvents(params: {
   }
 
   const followerBase = Math.max(1, followers.length);
-  const followerGrowth = last21.map((d, idx) => ({
+  const followerGrowth = seriesDays.map((d, idx) => ({
     label: d.label,
     value: Math.max(1, Math.round(followerBase * (0.58 + (idx / 26)) + Math.sin(idx / 2) * 2)),
   }));
 
-  const engagementRate = last21.map((d) => {
+  const engagementRate = seriesDays.map((d) => {
     const posts = postsByDay.get(d.key) || 0;
     const engagements = (reactionsByDay.get(d.key) || 0) + (repliesByDay.get(d.key) || 0) + (zapsByDay.get(d.key) || 0);
     const value = posts === 0 ? 0 : Number(((engagements / posts) * 100).toFixed(1));
     return { label: d.label, value };
   });
 
-  const reachEstimate = last21.map((d) => {
+  const reachEstimate = seriesDays.map((d) => {
     const posts = postsByDay.get(d.key) || 0;
     const engaged = (reactionsByDay.get(d.key) || 0) + (repliesByDay.get(d.key) || 0) + (zapsByDay.get(d.key) || 0);
     const estimated = posts * Math.max(4, Math.round(followerBase * 0.2)) + engaged * 12;
     return { label: d.label, value: estimated };
   });
 
-  const profileViews = last21.map((d, idx) => {
+  const profileViews = seriesDays.map((d, idx) => {
     const mentions = mentionsByDay.get(d.key) || 0;
     return { label: d.label, value: Math.max(0, Math.round(followerBase * 0.06 + mentions * 4 + Math.cos(idx / 2) * 6)) };
   });
@@ -277,9 +309,9 @@ export function computeAnalyticsFromEvents(params: {
   ];
   const networkLinks = influentialConnections.map((c) => ({ source: pubkey, target: c.pubkey, weight: c.sharedFollows }));
 
-  const networkGrowth = last21.map((d, idx) => ({ label: d.label, value: Math.round(following.length * (0.5 + idx / 22)) }));
+  const networkGrowth = seriesDays.map((d, idx) => ({ label: d.label, value: Math.round(following.length * (0.5 + idx / 22)) }));
 
-  const zaps = last21.map((d) => ({ 
+  const zaps = seriesDays.map((d) => ({ 
     label: d.label, 
     value: zapsByDay.get(d.key) || 0, // Count
     secondary: zapSatsByDay.get(d.key) || 0 // Total sats
@@ -303,8 +335,8 @@ export function computeAnalyticsFromEvents(params: {
 
   const replyQuoteMetrics = [
     { metric: 'Replies', value: Array.from(repliesByDay.values()).reduce((a, b) => a + b, 0) },
-    { metric: 'Quotes', value: sorted.filter((e) => e.kind === 1 && e.tags.some((t) => t[0] === 'q')).length },
-    { metric: 'Reposts', value: sorted.filter((e) => e.kind === 6).length },
+    { metric: 'Quotes', value: rangedEvents.filter((e) => e.kind === 1 && e.tags.some((t) => t[0] === 'q')).length },
+    { metric: 'Reposts', value: rangedEvents.filter((e) => e.kind === 6).length },
   ];
 
   const peakHoursHeatmap = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].flatMap((day, dayIndex) =>
@@ -385,10 +417,9 @@ export function computeAnalyticsFromEvents(params: {
   };
 }
 
-async function loadGlobalEvents(relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
+async function loadGlobalEvents(since: number, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
   const pool = new SimplePool();
   try {
-    const since = Math.floor(Date.now() / 1000) - (21 * DAY);
     const events = await pool.querySync(relays, { kinds: [1, 6, 7, 9735], limit: 1800, since } as any);
     return events as NostrEvent[];
   } finally {
@@ -396,14 +427,13 @@ async function loadGlobalEvents(relays: string[] = SOCIAL_RELAYS): Promise<Nostr
   }
 }
 
-async function loadFollowingEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
+async function loadFollowingEvents(pubkey: string, since: number, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
   const pool = new SimplePool();
   try {
     const following = await loadFollowing(pubkey, relays);
     const authors = [pubkey, ...following].slice(0, 200);
     if (!authors.length) return [];
 
-    const since = Math.floor(Date.now() / 1000) - (21 * DAY);
     const events = await pool.querySync(relays, { kinds: [1, 6, 7, 9735], authors, limit: 1800, since } as any);
     return events as NostrEvent[];
   } finally {
@@ -411,7 +441,7 @@ async function loadFollowingEvents(pubkey: string, relays: string[] = SOCIAL_REL
   }
 }
 
-async function loadWotEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
+async function loadWotEvents(pubkey: string, since: number, relays: string[] = SOCIAL_RELAYS): Promise<NostrEvent[]> {
   const pool = new SimplePool();
   try {
     const firstHop = await loadFollowing(pubkey, relays);
@@ -430,7 +460,6 @@ async function loadWotEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): 
     const authors = Array.from(new Set([pubkey, ...firstHop, ...Array.from(secondHop)])).slice(0, 260);
     if (!authors.length) return [];
 
-    const since = Math.floor(Date.now() / 1000) - (21 * DAY);
     const events = await pool.querySync(relays, { kinds: [1, 6, 7, 9735], authors, limit: 1600, since } as any);
     return events as NostrEvent[];
   } finally {
@@ -438,12 +467,25 @@ async function loadWotEvents(pubkey: string, relays: string[] = SOCIAL_RELAYS): 
   }
 }
 
-export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsScope = 'individual'): Promise<AnalyticsDashboardData> {
+export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsScope = 'individual', range: AnalyticsRange = { interval: '30d' }): Promise<AnalyticsDashboardData> {
   // Get followers/following from contacts
   const [followers, following] = await Promise.all([
     loadFollowers(pubkey),
     loadFollowing(pubkey),
   ]);
+
+  const nowTs = Math.floor(Date.now() / 1000);
+  const resolvedSince = range.interval === 'custom' && range.startTs
+    ? range.startTs
+    : range.interval === '7d'
+      ? nowTs - (7 * DAY)
+      : range.interval === '90d'
+        ? nowTs - (90 * DAY)
+        : range.interval === '1y'
+          ? nowTs - (365 * DAY)
+          : range.interval === 'all'
+            ? nowTs - (365 * 5 * DAY)
+            : nowTs - (30 * DAY);
 
   let finalEvents: NostrEvent[];
 
@@ -464,19 +506,19 @@ export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsSco
 
     case 'following': {
       // User + people they follow
-      finalEvents = await loadFollowingEvents(pubkey);
+      finalEvents = await loadFollowingEvents(pubkey, resolvedSince);
       break;
     }
 
     case 'wot': {
       // User + WoT (1st + 2nd hop follows)
-      finalEvents = await loadWotEvents(pubkey);
+      finalEvents = await loadWotEvents(pubkey, resolvedSince);
       break;
     }
 
     case 'global': {
       // All public content
-      finalEvents = await loadGlobalEvents();
+      finalEvents = await loadGlobalEvents(resolvedSince);
       break;
     }
 
@@ -493,5 +535,5 @@ export async function loadAnalyticsDashboard(pubkey: string, scope: AnalyticsSco
       ];
   }
 
-  return computeAnalyticsFromEvents({ pubkey, events: finalEvents, followers, following, scope });
+  return computeAnalyticsFromEvents({ pubkey, events: finalEvents, followers, following, scope, range });
 }

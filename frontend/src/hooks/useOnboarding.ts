@@ -3,12 +3,24 @@ import { useEffect, useMemo, useState } from 'react';
 export interface RelaySuggestion {
   url: string;
   name: string;
-  description: string;
-  uptime: number;
-  wotScore: number;
-  region: string;
-  type: 'free' | 'paid' | 'private';
-  recommended: boolean;
+  description?: string;
+  uptime?: number;
+  wotScore?: number;
+  region?: string;
+  type?: 'free' | 'paid' | 'private';
+  recommended?: boolean;
+  score?: number;
+  usedByFollows?: number;
+  reason?: string;
+}
+
+interface RelaySuggestionsState {
+  selected: string[];
+  recommended: RelaySuggestion[];
+  forWriting: RelaySuggestion[];
+  forReading: RelaySuggestion[];
+  popular: RelaySuggestion[];
+  sourceKey?: string;
 }
 
 export interface ProfileSuggestion {
@@ -74,10 +86,7 @@ export interface OnboardingState {
     paymentComplete?: boolean;
   };
   profile: OnboardingProfileState;
-  relays: {
-    selected: string[];
-    suggestions: RelaySuggestion[];
-  };
+  relays: RelaySuggestionsState;
   follows: {
     selected: Set<string>;
     byCategory: Map<string, string[]>;
@@ -111,7 +120,14 @@ const initialState: OnboardingState = {
     customInterests: [],
     skippedFields: {},
   },
-  relays: { selected: [], suggestions: [] },
+  relays: {
+    selected: [],
+    recommended: [],
+    forWriting: [],
+    forReading: [],
+    popular: [],
+    sourceKey: undefined,
+  },
   follows: { selected: new Set<string>(), byCategory: new Map<string, string[]>(), categories: [] },
   feeds: { selected: [], available: [] },
   completed: false,
@@ -126,6 +142,47 @@ async function getJson<T>(url: string): Promise<T> {
   return response.json();
 }
 
+const defaultPopularRelays = [
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+  'wss://nos.lol',
+];
+
+const normalizeRelaySuggestion = (raw: unknown): RelaySuggestion | null => {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    return { url: raw, name: raw.replace('wss://', ''), description: 'Popular relay' };
+  }
+  if (typeof raw !== 'object') return null;
+
+  const relay = raw as Record<string, unknown>;
+  const url = typeof relay.url === 'string' ? relay.url : typeof relay.relay === 'string' ? relay.relay : '';
+  if (!url) return null;
+
+  return {
+    url,
+    name: typeof relay.name === 'string' ? relay.name : url.replace('wss://', ''),
+    description: typeof relay.description === 'string' ? relay.description : undefined,
+    uptime: typeof relay.uptime === 'number' ? relay.uptime : undefined,
+    wotScore: typeof relay.wotScore === 'number' ? relay.wotScore : typeof relay.score === 'number' ? relay.score : undefined,
+    region: typeof relay.region === 'string' ? relay.region : undefined,
+    type: relay.type === 'free' || relay.type === 'paid' || relay.type === 'private' ? relay.type : undefined,
+    recommended: typeof relay.recommended === 'boolean' ? relay.recommended : undefined,
+    score: typeof relay.score === 'number' ? relay.score : undefined,
+    usedByFollows: typeof relay.usedByFollows === 'number' ? relay.usedByFollows : undefined,
+    reason: typeof relay.reason === 'string' ? relay.reason : undefined,
+  };
+};
+
+const dedupeRelaySuggestions = (relays: RelaySuggestion[]): RelaySuggestion[] => {
+  const seen = new Set<string>();
+  return relays.filter((relay) => {
+    if (seen.has(relay.url)) return false;
+    seen.add(relay.url);
+    return true;
+  });
+};
+
 export function useOnboarding() {
   const [state, setState] = useState<OnboardingState>(initialState);
   const [loading, setLoading] = useState(true);
@@ -136,8 +193,7 @@ export function useOnboarding() {
     const bootstrap = async () => {
       try {
         setLoading(true);
-        const [relayData, categoryData, feedData] = await Promise.all([
-          getJson<{ suggestions: RelaySuggestion[]; preselected: string[] }>('/api/v1/onboarding/relay-suggestions'),
+        const [categoryData, feedData] = await Promise.all([
           getJson<{ categories: FollowCategory[] }>('/api/v1/onboarding/follow-categories'),
           getJson<{ feeds: FeedDefinition[] }>('/api/v1/onboarding/feeds'),
         ]);
@@ -150,7 +206,6 @@ export function useOnboarding() {
         if (!mounted) return;
         setState((prev) => ({
           ...prev,
-          relays: { selected: relayData.preselected, suggestions: relayData.suggestions },
           follows: { selected: new Set<string>(), byCategory, categories: categoryData.categories },
           feeds: { selected: feedData.feeds.slice(0, 2).map((feed) => feed.id), available: feedData.feeds },
         }));
@@ -166,6 +221,80 @@ export function useOnboarding() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (state.step !== 3) return;
+
+    const sourceKey = state.identity.pubkey ? `wot:${state.identity.pubkey}` : 'popular';
+    if (state.relays.sourceKey === sourceKey) return;
+
+    let cancelled = false;
+
+    const loadRelaySuggestions = async () => {
+      try {
+        setError('');
+
+        if (state.identity.pubkey) {
+          const data = await getJson<{ recommended?: unknown[]; forWriting?: unknown[]; forReading?: unknown[] }>(
+            `/api/relays/suggestions?pubkey=${encodeURIComponent(state.identity.pubkey)}`,
+          );
+
+          const recommended = dedupeRelaySuggestions((data.recommended ?? []).map(normalizeRelaySuggestion).filter((relay): relay is RelaySuggestion => Boolean(relay)));
+          const forWriting = dedupeRelaySuggestions((data.forWriting ?? []).map(normalizeRelaySuggestion).filter((relay): relay is RelaySuggestion => Boolean(relay)));
+          const forReading = dedupeRelaySuggestions((data.forReading ?? []).map(normalizeRelaySuggestion).filter((relay): relay is RelaySuggestion => Boolean(relay)));
+          const popular = dedupeRelaySuggestions(defaultPopularRelays.map((url) => normalizeRelaySuggestion(url)).filter((relay): relay is RelaySuggestion => Boolean(relay)));
+
+          const preselected = recommended.slice(0, 5).map((relay) => relay.url);
+
+          if (cancelled) return;
+          setState((prev) => ({
+            ...prev,
+            relays: {
+              ...prev.relays,
+              recommended,
+              forWriting,
+              forReading,
+              popular,
+              sourceKey,
+              selected: prev.relays.selected.length > 0 ? prev.relays.selected : preselected,
+            },
+          }));
+          return;
+        }
+
+        const stats = await getJson<{ popular?: unknown[] }>('/api/relays/stats');
+        const popular = dedupeRelaySuggestions(
+          (stats.popular && stats.popular.length > 0 ? stats.popular : defaultPopularRelays)
+            .map(normalizeRelaySuggestion)
+            .filter((relay): relay is RelaySuggestion => Boolean(relay)),
+        );
+        const preselected = popular.slice(0, 3).map((relay) => relay.url);
+
+        if (cancelled) return;
+        setState((prev) => ({
+          ...prev,
+          relays: {
+            ...prev.relays,
+            recommended: [],
+            forWriting: [],
+            forReading: [],
+            popular,
+            sourceKey,
+            selected: prev.relays.selected.length > 0 ? prev.relays.selected : preselected,
+          },
+        }));
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Failed to load relay suggestions');
+      }
+    };
+
+    void loadRelaySuggestions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.step, state.identity.pubkey, state.relays.sourceKey]);
 
   const setStep = (step: number) => {
     setState((prev) => ({ ...prev, step: Math.max(0, Math.min(MAX_STEP, step)) }));
@@ -208,6 +337,10 @@ export function useOnboarding() {
         privateKey: randomHex(64),
         pubkey: randomHex(64),
       },
+      relays: {
+        ...prev.relays,
+        sourceKey: undefined,
+      },
     }));
   };
 
@@ -225,6 +358,10 @@ export function useOnboarding() {
         imported: true,
         privateKey: cleaned,
         pubkey: randomHex(64),
+      },
+      relays: {
+        ...prev.relays,
+        sourceKey: undefined,
       },
     }));
     return true;
@@ -253,6 +390,12 @@ export function useOnboarding() {
         nip05: partial.nip05 ?? prev.profile.nip05,
         nip05Verified: partial.nip05 ? true : prev.profile.nip05Verified,
       },
+      relays: partial.pubkey !== undefined
+        ? {
+            ...prev.relays,
+            sourceKey: undefined,
+          }
+        : prev.relays,
     }));
   };
 

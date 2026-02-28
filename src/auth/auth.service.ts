@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Inject, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -7,6 +7,7 @@ import { verifyEvent, nip19, getPublicKey } from 'nostr-tools';
 import { bech32 } from 'bech32';
 import * as crypto from 'crypto';
 import { safeJsonParse } from '../shared/proven-json';
+import { UserSyncService } from '../sync/user-sync.service';
 
 export interface NostrAuthEvent {
   id: string;
@@ -34,6 +35,7 @@ export class AuthService {
     private prisma: PrismaService,
     private config: ConfigService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
+    @Optional() private userSyncService?: UserSyncService,
   ) {
     // ⭐ ENFORCE JWT_SECRET
     const jwtSecret = this.config.get<string>('JWT_SECRET');
@@ -140,6 +142,9 @@ export class AuthService {
 
     // Get or create user
     const user = await this.getOrCreateUser(event.pubkey);
+
+    // Fire-and-forget user note sync on login.
+    this.triggerBackgroundSync(user.pubkey);
 
     // Create session
     const sessionToken = crypto.randomBytes(32).toString('hex');
@@ -511,6 +516,9 @@ export class AuthService {
       // Get or create user with linking key as pubkey
       const user = await this.getOrCreateUser(session.linkingKey);
 
+      // Fire-and-forget user note sync on login.
+      this.triggerBackgroundSync(user.pubkey);
+
       // Link session to user
       await this.prisma.lnurlSession.update({
         where: { k1 },
@@ -550,6 +558,14 @@ export class AuthService {
   }
 
   // Helper methods
+
+  private triggerBackgroundSync(pubkey: string): void {
+    if (!this.userSyncService) return;
+
+    void this.userSyncService.onUserLogin(pubkey).catch((error) => {
+      console.warn(`Background sync failed for ${pubkey}: ${error?.message || error}`);
+    });
+  }
 
   private generateJwt(pubkey: string, sessionId: string, expiresAt: Date): string {
     const payload: JwtPayload = {

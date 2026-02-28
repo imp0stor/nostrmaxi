@@ -9,8 +9,8 @@ import { InlineContent } from '../components/InlineContent';
 import { resolveQuotedEvents } from '../lib/quotes';
 import { fetchProfilesBatchCached } from '../lib/profileCache';
 import { aggregateZaps, buildZapButtonLabel, createPendingZap, formatZapIndicator, getDefaultZapAmountOptions, getZapPreferences, loadZapReceipts, mergePendingIntoAggregates, sendZap, subscribeToZaps, type PendingZap, type ZapAggregate } from '../lib/zaps';
-import { evaluateMute } from '../lib/muteWords';
-import { useMuteSettings } from '../hooks/useMuteSettings';
+import { shouldFilter } from '../lib/contentFilter';
+import { useContentFilters } from '../hooks/useContentFilters';
 import { CONTENT_TYPE_LABELS, detectContentTypes, extractLiveStreamMeta } from '../lib/contentTypes';
 import { LiveStreamCard } from '../components/LiveStreamCard';
 import { ConfigAccordion } from '../components/ConfigAccordion';
@@ -130,7 +130,7 @@ export function FeedPage() {
   const [newFeedIncludeReplies, setNewFeedIncludeReplies] = useState(true);
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [pendingZaps, setPendingZaps] = useState<PendingZap[]>([]);
-  const { settings: muteSettings, syncNow: syncMuteSettings } = useMuteSettings(user?.pubkey);
+  const { filters: contentFilters, syncNow: syncContentFilters } = useContentFilters(user?.pubkey);
   const [liveAlerts, setLiveAlerts] = useState<string[]>([]);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const observerRef = useRef<HTMLDivElement | null>(null);
@@ -145,13 +145,14 @@ export function FeedPage() {
     const map = new Map<string, boolean>();
     for (const item of feed) {
       const quoteIds = extractQuoteRefsFromTokens(parseMediaFromFeedItem(item).tokens);
-      const quotedContents = quoteIds.map((id) => quotedEvents.get(id)?.content).filter((x): x is string => Boolean(x));
-      const displayName = item.profile?.display_name || item.profile?.name || item.profile?.nip05;
-      const result = evaluateMute({ event: item, displayName, quotedContents }, muteSettings);
-      map.set(item.id, result.muted);
+      const quoteMuted = quoteIds.some((id) => {
+        const quoted = quotedEvents.get(id);
+        return quoted ? shouldFilter(quoted, contentFilters) : false;
+      });
+      map.set(item.id, quoteMuted || shouldFilter(item, contentFilters));
     }
     return map;
-  }, [feed, quotedEvents, muteSettings]);
+  }, [feed, quotedEvents, contentFilters]);
 
   const hiddenCount = useMemo(() => Array.from(mutedByEventId.values()).filter(Boolean).length, [mutedByEventId]);
 
@@ -216,7 +217,7 @@ export function FeedPage() {
 
   useEffect(() => {
     if (!user?.pubkey) return;
-    void syncMuteSettings();
+    void syncContentFilters();
     // run on identity change only
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.pubkey]);
@@ -260,10 +261,10 @@ export function FeedPage() {
     try {
       const nextCursor = reset ? undefined : cursor;
       const result = activeCustomFeed
-        ? await loadFeedForCustomDefinition(user.pubkey, activeCustomFeed, nextCursor, undefined, muteSettings)
+        ? await loadFeedForCustomDefinition(user.pubkey, activeCustomFeed, nextCursor, undefined, contentFilters)
         : (feedMode === 'following' && activeCustomFeedId === 'bookmarks')
           ? {
-            items: await loadBookmarkFeed(user.pubkey, undefined, muteSettings),
+            items: await loadBookmarkFeed(user.pubkey, undefined, contentFilters),
             nextCursor: undefined,
             diagnostics: {
               mode: 'following' as FeedMode,
@@ -278,7 +279,7 @@ export function FeedPage() {
             mode: feedMode,
             cursor: nextCursor,
             limit: reset ? 45 : 35,
-          }, undefined, muteSettings);
+          }, undefined, contentFilters);
       setFeed((prev) => {
         if (reset) return result.items;
         const seen = new Set(prev.map((item) => item.id));
@@ -307,7 +308,7 @@ export function FeedPage() {
 
   useEffect(() => {
     void refresh();
-  }, [user?.pubkey, feedMode, activeCustomFeedId, activeCustomFeed?.id, muteSettings]);
+  }, [user?.pubkey, feedMode, activeCustomFeedId, activeCustomFeed?.id, contentFilters]);
 
   useEffect(() => {
     const target = observerRef.current;

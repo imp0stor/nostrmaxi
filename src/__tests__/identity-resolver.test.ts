@@ -1,5 +1,11 @@
 import { selectPrimaryIdentity } from '../../frontend/src/lib/identityResolver';
 
+jest.mock('../../frontend/src/lib/api', () => ({
+  api: {
+    getToken: () => 'token',
+  },
+}));
+
 describe('header identity resolver', () => {
   test('prefers external valid nip05 over managed and npub', () => {
     const out = selectPrimaryIdentity({

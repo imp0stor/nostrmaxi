@@ -14,6 +14,7 @@ import { ExternalIdentityPanel } from '../components/profile/ExternalIdentityPan
 import { useExternalIdentities } from '../hooks/useExternalIdentities';
 import { usePinnedPost } from '../hooks/usePinnedPost';
 import { usePublicLists } from '../hooks/usePublicLists';
+import { useContentFilters } from '../hooks/useContentFilters';
 
 type PanelMode = 'followers' | 'following' | null;
 type PanelSort = 'name' | 'followers' | 'following';
@@ -67,6 +68,7 @@ export function ProfilePage() {
 
   const { pinnedPost } = usePinnedPost(targetPubkey);
   const { lists: curatedLists } = usePublicLists(user?.pubkey, targetPubkey);
+  const { filters: contentFilters } = useContentFilters(user?.pubkey);
 
   const {
     identities: externalIdentities,
@@ -83,7 +85,7 @@ export function ProfilePage() {
       if (!targetPubkey || !user?.pubkey) return;
       const [p, a, flw, flr, viewerFollows] = await Promise.all([
         fetchProfile(targetPubkey),
-        loadProfileActivity(targetPubkey),
+        loadProfileActivity(targetPubkey, undefined, contentFilters),
         loadFollowing(targetPubkey),
         loadFollowers(targetPubkey),
         loadFollowing(user.pubkey),
@@ -95,7 +97,7 @@ export function ProfilePage() {
       setViewerFollowing(viewerFollows);
     };
     run();
-  }, [targetPubkey, user?.pubkey]);
+  }, [targetPubkey, user?.pubkey, contentFilters]);
 
   useEffect(() => {
     const loadQuotes = async () => {

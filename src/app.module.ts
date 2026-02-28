@@ -22,7 +22,11 @@ import { RelaySyncModule } from './relay-sync/relay-sync.module';
 import { AuctionModule } from './auctions/auction.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { MediaDiscoveryModule } from './discovery/media-discovery.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middleware/security.middleware';
+import { SyncModule } from './sync/sync.module';
+import { RelayAggregatorModule } from './relay-aggregator/relay-aggregator.module';
+import { RelayDiscoveryModule } from './relay-discovery/relay-discovery.module';
 
 @Module({
   imports: [
@@ -59,9 +63,13 @@ import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middlewar
     RelayMetricsModule,
     EcosystemCatalogModule,
     RelaySyncModule,
+    SyncModule,
+    RelayAggregatorModule,
+    RelayDiscoveryModule,
     AuctionModule,
     OnboardingModule,
     MediaDiscoveryModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule implements NestModule {
