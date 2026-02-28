@@ -85,10 +85,10 @@ export function ContentFiltersManager() {
   return (
     <div className="space-y-6">
       <FilterSection
-        title="Muted Words"
-        description="Hide posts containing these words"
+        title="Muted Words & Phrases"
+        description="Hide posts containing these words or phrases (e.g. 'breaking news', 'sponsored')"
         items={filters.mutedWords}
-        placeholder="Add word to mute..."
+        placeholder="Add word or phrase to mute..."
         onAdd={(word) => void saveFilters({
           ...filters,
           mutedWords: [...filters.mutedWords, word.toLowerCase()],
@@ -97,7 +97,7 @@ export function ContentFiltersManager() {
           ...filters,
           mutedWords: filters.mutedWords.filter((w) => w !== word),
         })}
-        emptyMessage="No muted words yet. Add words you don't want to see."
+        emptyMessage="No muted words yet. Add words or phrases you don't want to see."
       />
 
       <FilterSection

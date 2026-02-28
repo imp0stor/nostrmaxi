@@ -89,7 +89,7 @@ export function MutedWordsManager() {
           type="text"
           value={newWord}
           onChange={(e) => setNewWord(e.target.value)}
-          placeholder="Add word to mute..."
+          placeholder="Add word or phrase to mute..."
           className="flex-1 bg-gray-800 rounded px-3 py-2"
           onKeyDown={(e) => {
             if (e.key === 'Enter') void addWord();
