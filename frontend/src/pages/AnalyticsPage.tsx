@@ -116,6 +116,154 @@ function mapMetrics(data: AnalyticsDashboardData): UserMetrics {
   };
 }
 
+function ZapperDetailModal({ pubkey, viewerPubkey, onClose }: { pubkey: string | null; viewerPubkey: string; onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
+  const [zaps, setZaps] = useState<Array<{ id: string; createdAt: number; amount: number; message: string }>>([]);
+
+  useEffect(() => {
+    if (!pubkey) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pubkey, onClose]);
+
+  useEffect(() => {
+    if (!pubkey) return;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const pool = new SimplePool();
+        const [events, profiles] = await Promise.all([
+          pool.querySync(FALLBACK_RELAYS, { kinds: [9735], authors: [pubkey], '#p': [viewerPubkey], limit: 300 }) as Promise<NostrEvent[]>,
+          fetchProfilesBatchCached([pubkey]),
+        ]);
+        setProfile(profiles.get(pubkey) ?? null);
+        const parsed = events
+          .map((evt) => ({
+            id: evt.id,
+            createdAt: evt.created_at,
+            amount: parseZapReceipt(evt)?.amountSat ?? 0,
+            message: parseZapReceipt(evt)?.content ?? '',
+          }))
+          .sort((a, b) => b.createdAt - a.createdAt);
+        setZaps(parsed);
+      } catch (error) {
+        console.error('Failed to load zapper details', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [pubkey, viewerPubkey]);
+
+  if (!pubkey) return null;
+  const npub = encodeNpub(pubkey);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 p-3 sm:p-6 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="w-full max-w-2xl rounded-xl border border-cyan-500/30 bg-[#070b16] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b border-cyan-500/20 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">Top Zapper Details</h3>
+          <button type="button" onClick={onClose} className="text-xl text-gray-300 hover:text-white">×</button>
+        </div>
+        <div className="p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <Avatar pubkey={pubkey} size={42} clickable={false} />
+            <div>
+              <p className="text-white font-semibold">{profileDisplayName(pubkey, profile)}</p>
+              <p className="text-xs text-gray-400">{profile?.nip05 || truncateNpub(npub, 8)}</p>
+            </div>
+            <Link to={`/profile/${npub}`} className="ml-auto text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white">Open Profile</Link>
+          </div>
+          {loading ? (
+            <p className="text-gray-300">Loading zap history…</p>
+          ) : zaps.length === 0 ? (
+            <p className="text-gray-400">No zap receipts from this zapper found in the selected relay set.</p>
+          ) : (
+            <div className="space-y-2">
+              {zaps.map((zap) => (
+                <div key={zap.id} className="rounded bg-gray-800/60 p-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-cyan-200">⚡ {zap.amount.toLocaleString()} sats</span>
+                    <span className="text-gray-400">{new Date(zap.createdAt * 1000).toLocaleString()}</span>
+                  </div>
+                  {zap.message && <p className="text-gray-200 text-sm mt-2 whitespace-pre-wrap break-words">{zap.message}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HashtagPostsModal({ hashtag, authorPubkey, onClose }: { hashtag: string | null; authorPubkey: string; onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [posts, setPosts] = useState<NostrEvent[]>([]);
+
+  useEffect(() => {
+    if (!hashtag) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hashtag, onClose]);
+
+  useEffect(() => {
+    if (!hashtag) return;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const pool = new SimplePool();
+        const events = await pool.querySync(FALLBACK_RELAYS, {
+          kinds: [1],
+          authors: [authorPubkey],
+          '#t': [hashtag.toLowerCase()],
+          limit: 100,
+        }) as NostrEvent[];
+        setPosts(events.sort((a, b) => b.created_at - a.created_at));
+      } catch (error) {
+        console.error('Failed to load hashtag posts', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, [hashtag, authorPubkey]);
+
+  if (!hashtag) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 p-3 sm:p-6 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="w-full max-w-3xl rounded-xl border border-cyan-500/30 bg-[#070b16] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b border-cyan-500/20 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white">#{hashtag} posts</h3>
+          <button type="button" onClick={onClose} className="text-xl text-gray-300 hover:text-white">×</button>
+        </div>
+        <div className="p-4 space-y-3">
+          {loading ? (
+            <p className="text-gray-300">Loading posts…</p>
+          ) : posts.length === 0 ? (
+            <p className="text-gray-400">No posts found for this hashtag in the selected time window.</p>
+          ) : (
+            posts.map((post) => (
+              <a key={post.id} href={`https://njump.me/${post.id}`} target="_blank" rel="noreferrer" className="block rounded bg-gray-800/50 p-3 hover:bg-gray-800 transition-colors">
+                <p className="text-gray-200 whitespace-pre-wrap break-words line-clamp-3">{post.content}</p>
+                <p className="text-xs text-gray-500 mt-1">{new Date(post.created_at * 1000).toLocaleString()}</p>
+              </a>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AnalyticsPage() {
   const { user } = useAuth();
   const [metrics, setMetrics] = useState<UserMetrics | null>(null);
@@ -124,6 +272,9 @@ export function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('30d');
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [selectedPost, setSelectedPost] = useState<TopPost | null>(null);
+  const [selectedZapperPubkey, setSelectedZapperPubkey] = useState<string | null>(null);
+  const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.pubkey) return;
@@ -209,7 +360,7 @@ export function AnalyticsPage() {
         ) : (
           <div className="space-y-3">
             {safeMetrics.topPosts.slice(0, 5).map((post, i) => (
-              <TopPostCard key={post.id} rank={i + 1} post={post} />
+              <TopPostCard key={post.id} rank={i + 1} post={post} onClick={() => setSelectedPost(post)} />
             ))}
           </div>
         )}
@@ -223,10 +374,15 @@ export function AnalyticsPage() {
         ) : (
           <div className="space-y-2">
             {safeMetrics.topZappers.slice(0, 5).map((z) => (
-              <div key={z.pubkey} className="flex justify-between text-sm text-gray-300">
+              <button
+                key={z.pubkey}
+                type="button"
+                onClick={() => setSelectedZapperPubkey(z.pubkey)}
+                className="w-full flex justify-between text-sm text-gray-300 hover:bg-gray-800/40 rounded px-2 py-1"
+              >
                 <span className="font-mono">{z.pubkey.slice(0, 12)}…</span>
                 <span>{formatSats(z.sats)} sats ({z.count} zaps)</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -237,7 +393,7 @@ export function AnalyticsPage() {
         {safeMetrics.topHashtags.length === 0 ? (
           <p className="text-gray-400">No hashtag data available yet.</p>
         ) : (
-          <HashtagTable hashtags={safeMetrics.topHashtags} />
+          <HashtagTable hashtags={safeMetrics.topHashtags} onTagClick={(tag) => setSelectedHashtag(tag)} />
         )}
       </section>
 
@@ -256,6 +412,31 @@ export function AnalyticsPage() {
           </div>
         )}
       </section>
+
+      <PostModal
+        eventId={selectedPost?.id ?? null}
+        isOpen={Boolean(selectedPost)}
+        onClose={() => setSelectedPost(null)}
+        initialMetrics={selectedPost ? {
+          reactions: selectedPost.reactions,
+          reposts: selectedPost.reposts,
+          replies: selectedPost.replies,
+          zaps: selectedPost.zaps,
+          zapSats: selectedPost.zapAmount,
+        } : undefined}
+      />
+
+      <ZapperDetailModal
+        pubkey={selectedZapperPubkey}
+        viewerPubkey={user.pubkey}
+        onClose={() => setSelectedZapperPubkey(null)}
+      />
+
+      <HashtagPostsModal
+        hashtag={selectedHashtag}
+        authorPubkey={user.pubkey}
+        onClose={() => setSelectedHashtag(null)}
+      />
     </div>
   );
 }
