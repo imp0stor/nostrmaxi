@@ -5,11 +5,13 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { WotModule } from '../wot/wot.module';
 import { SyncModule } from '../sync/sync.module';
 import { AggregatorService } from './aggregator.service';
+import { AggregatorController } from './aggregator.controller';
 import { IngestionService } from './ingestion.service';
 import { TrendingService } from './trending.service';
 
 @Module({
   imports: [ConfigModule, PrismaModule, AuthModule, WotModule, SyncModule],
+  controllers: [AggregatorController],
   providers: [AggregatorService, IngestionService, TrendingService],
   exports: [AggregatorService],
 })

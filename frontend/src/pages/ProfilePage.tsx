@@ -15,6 +15,7 @@ import { useExternalIdentities } from '../hooks/useExternalIdentities';
 import { usePinnedPost } from '../hooks/usePinnedPost';
 import { usePublicLists } from '../hooks/usePublicLists';
 import { useContentFilters } from '../hooks/useContentFilters';
+import { useMuteActions } from '../hooks/useMuteActions';
 
 type PanelMode = 'followers' | 'following' | null;
 type PanelSort = 'name' | 'followers' | 'following';
@@ -69,6 +70,8 @@ export function ProfilePage() {
   const { pinnedPost } = usePinnedPost(targetPubkey);
   const { lists: curatedLists } = usePublicLists(user?.pubkey, targetPubkey);
   const { filters: contentFilters } = useContentFilters(user?.pubkey);
+  const { mutePubkey, unmutePubkey, isPubkeyMuted } = useMuteActions(user?.pubkey);
+  const isMuted = Boolean(targetPubkey) && isPubkeyMuted(targetPubkey);
 
   const {
     identities: externalIdentities,
@@ -289,6 +292,17 @@ export function ProfilePage() {
         <div className="mt-4 flex items-center gap-2 flex-wrap">
           <span className="cy-chip">{formatZapIndicator(profileZapTotal)}</span>
           <button type="button" className="cy-chip" onClick={onZapProfile} disabled={targetPubkey === user.pubkey || zapBusy}>{targetPubkey === user.pubkey ? '⚡ Zap profile' : buildZapButtonLabel(zapBusy)}</button>
+          {targetPubkey !== user.pubkey ? (
+            <button
+              type="button"
+              onClick={() => {
+                void (isMuted ? unmutePubkey(targetPubkey) : mutePubkey(targetPubkey));
+              }}
+              className={`cy-chip ${isMuted ? 'border-red-500/50 text-red-300' : ''}`}
+            >
+              {isMuted ? '🔇 Unmute' : '🔇 Mute'}
+            </button>
+          ) : null}
         </div>
       </div>
 

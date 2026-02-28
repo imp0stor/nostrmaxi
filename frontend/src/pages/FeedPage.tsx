@@ -22,6 +22,8 @@ import { useSubscriptions } from '../hooks/useSubscriptions';
 import { shouldNotify, shouldPlaySound } from '../lib/subscriptionMatcher';
 import { FeedDiscoveryModal } from '../components/feed/FeedDiscoveryModal';
 import { loadCustomFeedsList, saveCustomFeedsList } from '../lib/subscriptions';
+import { PostActionMenu } from '../components/PostActionMenu';
+import { useMuteActions } from '../hooks/useMuteActions';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -139,6 +141,7 @@ export function FeedPage() {
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [pendingZaps, setPendingZaps] = useState<PendingZap[]>([]);
   const { filters: contentFilters, syncNow: syncContentFilters } = useContentFilters(user?.pubkey);
+  const { muteHashtag, isHashtagMuted } = useMuteActions(user?.pubkey);
   const { topicSubs, userSubs, notifPrefs } = useSubscriptions(user?.pubkey);
   const [notificationQueue, setNotificationQueue] = useState<Array<{ id: string; type: 'topic' | 'keyword' | 'user'; match: string }>>([]);
   const [liveAlerts, setLiveAlerts] = useState<string[]>([]);
@@ -871,6 +874,7 @@ export function FeedPage() {
           const media = parseMediaFromFeedItem(item);
           const contentTypes = Array.from(detectContentTypes(item));
           const liveMeta = extractLiveStreamMeta(item);
+          const postHashtags = [...new Set((item.tags || []).filter((tag) => tag[0] === 't' && tag[1]).map((tag) => tag[1].toLowerCase()))];
           const displayName = item.profile?.display_name || item.profile?.name || 'nostr user';
           const hasNip05 = Boolean(item.profile?.nip05);
           const shortNpub = truncateNpub(item.pubkey, 10);
@@ -911,6 +915,25 @@ export function FeedPage() {
                 {contentTypes.map((type) => (
                   <span key={`${item.id}-${type}`} className="text-[11px] rounded-full border border-cyan-400/40 px-2 py-0.5 text-cyan-200 bg-cyan-500/10">{CONTENT_TYPE_LABELS[type]}</span>
                 ))}
+                {postHashtags.slice(0, 5).map((tag) => {
+                  const muted = isHashtagMuted(tag);
+                  return (
+                    <button
+                      key={`${item.id}-tag-${tag}`}
+                      type="button"
+                      className={`text-[11px] rounded-full border px-2 py-0.5 ${muted ? 'border-red-400/50 text-red-200 bg-red-500/10' : 'border-cyan-500/40 text-cyan-300 bg-cyan-500/5 hover:bg-cyan-500/15'}`}
+                      title={muted ? 'Muted hashtag' : 'Right-click to mute hashtag'}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        if (!muted) {
+                          void muteHashtag(tag);
+                        }
+                      }}
+                    >
+                      #{tag} {muted ? '🔇' : ''}
+                    </button>
+                  );
+                })}
               </div>
               {liveMeta ? <LiveStreamCard meta={liveMeta} /> : null}
               <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
@@ -924,6 +947,7 @@ export function FeedPage() {
                   <button className="cy-chip" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
                   {item.pubkey === user?.pubkey ? <button className="cy-chip" onClick={() => onPin(item)}>📌 Pin to Profile</button> : null}
                   <BookmarkButton eventId={item.id} pubkey={user?.pubkey} />
+                  <PostActionMenu item={item} viewerPubkey={user?.pubkey} />
                 </div>
               </div>
             </article>
