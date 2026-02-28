@@ -11,20 +11,23 @@ export interface RelayConfig {
   enabled: boolean;
 }
 
-const DEFAULT_LOCAL_RELAY_URL = 'ws://localhost:7777';
+// Server's local relay - prioritized for caching
+const SERVER_RELAY_URL = 'ws://10.1.10.143:7777';
+const DEFAULT_LOCAL_RELAY_URL = SERVER_RELAY_URL;
 
-// Expanded fallback relays - mix of large public relays
+// Expanded fallback relays - server relay first, then public relays
 export const FALLBACK_RELAYS = [
+  SERVER_RELAY_URL,  // Our local cache - fast, no rate limits
   'wss://relay.damus.io',
   'wss://relay.primal.net',
-  'wss://nos.lol',
-  'wss://relay.nostr.band',
   'wss://purplepag.es',
-  'wss://relay.snort.social',
   'wss://nostr.wine',
-  'wss://relay.nostr.info',
   'wss://nostr-pub.wellorder.net',
   'wss://offchain.pub',
+  // Rate-limited relays at the end (nos.lol, nostr.band, snort.social often limit)
+  'wss://nos.lol',
+  'wss://relay.nostr.band',
+  'wss://relay.snort.social',
 ];
 
 // Cache user relay lists
