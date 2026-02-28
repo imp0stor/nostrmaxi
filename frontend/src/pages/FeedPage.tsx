@@ -650,27 +650,41 @@ export function FeedPage() {
         </div>
 
         {/* Discover Public Feeds */}
-        {discoverableFeeds.length > 0 && (
-          <div className="mb-4">
-            <p className="text-xs text-gray-400 mb-2">Discover Public Feeds</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {discoverableFeeds.slice(0, 6).map((feedDef) => (
-                <button
-                  key={`${feedDef.ownerPubkey}:${feedDef.id}`}
-                  className="text-left p-3 rounded-lg border border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800/50 transition-colors"
-                  onClick={() => {
-                    setUserCustomFeeds((prev) => prev.some((f) => f.id === feedDef.id) ? prev : [...prev, feedDef]);
-                    setActiveCustomFeedId(feedDef.id);
-                    setFeedMode('following');
-                  }}
-                >
-                  <div className="font-medium text-sm text-cyan-100">{feedDef.title}</div>
-                  {feedDef.description && <div className="text-xs text-gray-400 mt-1 line-clamp-1">{feedDef.description}</div>}
-                </button>
-              ))}
+        {(() => {
+          // Filter out feeds with UUID-like or hex titles (garbage data)
+          const isValidTitle = (title: string) => {
+            if (!title || title.length < 2) return false;
+            // Reject if looks like UUID or hex string
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(title)) return false;
+            if (/^[0-9a-f]{20,}$/i.test(title)) return false;
+            // Reject single word "mute" or similar noise
+            if (['mute', 'test', 'asdf'].includes(title.toLowerCase())) return false;
+            return true;
+          };
+          const validFeeds = discoverableFeeds.filter(f => isValidTitle(f.title));
+          
+          return validFeeds.length > 0 ? (
+            <div className="mb-4">
+              <p className="text-xs text-gray-400 mb-2">Discover Public Feeds</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {validFeeds.slice(0, 6).map((feedDef) => (
+                  <button
+                    key={`${feedDef.ownerPubkey}:${feedDef.id}`}
+                    className="text-left p-3 rounded-lg border border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800/50 transition-colors"
+                    onClick={() => {
+                      setUserCustomFeeds((prev) => prev.some((f) => f.id === feedDef.id) ? prev : [...prev, feedDef]);
+                      setActiveCustomFeedId(feedDef.id);
+                      setFeedMode('following');
+                    }}
+                  >
+                    <div className="font-medium text-sm text-cyan-100">{feedDef.title}</div>
+                    {feedDef.description && <div className="text-xs text-gray-400 mt-1 line-clamp-1">{feedDef.description}</div>}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          ) : null;
+        })()}
 
         {/* Create Feed Form */}
         {showCreateFeed && (
