@@ -625,55 +625,72 @@ export function FeedPage() {
         </div>
       </header>
 
-      <section className="cy-card p-5 space-y-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="cy-kicker">PRIMAL-STYLE CUSTOM FEEDS (NIP-51)</p>
-          <button className="cy-btn-secondary text-xs" onClick={() => setShowCreateFeed((v) => !v)}>{showCreateFeed ? 'Close' : 'Create Feed'}</button>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button className={`cy-chip text-sm ${activeCustomFeedId === 'bookmarks' ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => { setFeedMode('following'); setActiveCustomFeedId('bookmarks'); }}>
-            Saved / Bookmarks
-          </button>
-          {userCustomFeeds.map((feedDef) => (
-            <button key={feedDef.id} className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => { setFeedMode('following'); setActiveCustomFeedId(feedDef.id); }}>
-              {feedDef.title}
+      <ConfigAccordion
+        id="custom-feeds"
+        title="Custom Feeds"
+        subtitle={`${userCustomFeeds.length} saved${discoverableFeeds.length > 0 ? ` · ${discoverableFeeds.length} discoverable` : ''}`}
+        summary="Your feeds, bookmarks, and public feeds to explore"
+        defaultOpen={false}
+        rightSlot={<button className="cy-btn-secondary text-xs" onClick={() => setShowCreateFeed((v) => !v)}>{showCreateFeed ? 'Cancel' : '+ New'}</button>}
+      >
+        {/* Your Feeds */}
+        <div className="mb-4">
+          <p className="text-xs text-gray-400 mb-2">Your Feeds</p>
+          <div className="flex flex-wrap gap-2">
+            <button className={`cy-chip text-sm ${activeCustomFeedId === 'bookmarks' ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`} onClick={() => { setFeedMode('following'); setActiveCustomFeedId('bookmarks'); }}>
+              📑 Bookmarks
             </button>
-          ))}
+            {userCustomFeeds.map((feedDef) => (
+              <button key={feedDef.id} className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`} onClick={() => { setFeedMode('following'); setActiveCustomFeedId(feedDef.id); }}>
+                {feedDef.title}
+              </button>
+            ))}
+            {userCustomFeeds.length === 0 && <span className="text-xs text-gray-500 italic">No custom feeds yet</span>}
+          </div>
         </div>
 
-        {discoverableFeeds.length > 0 ? (
-          <div>
-            <p className="text-xs text-cyan-300/80 mb-2">Discover public feeds</p>
-            <div className="flex flex-wrap gap-2">
-              {discoverableFeeds.slice(0, 10).map((feedDef) => (
-                <button key={`${feedDef.ownerPubkey}:${feedDef.id}`} className="cy-chip text-xs" onClick={() => {
-                  setUserCustomFeeds((prev) => prev.some((f) => f.id === feedDef.id) ? prev : [...prev, feedDef]);
-                  setActiveCustomFeedId(feedDef.id);
-                  setFeedMode('following');
-                }}>
-                  {feedDef.title}
+        {/* Discover Public Feeds */}
+        {discoverableFeeds.length > 0 && (
+          <div className="mb-4">
+            <p className="text-xs text-gray-400 mb-2">Discover Public Feeds</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {discoverableFeeds.slice(0, 6).map((feedDef) => (
+                <button
+                  key={`${feedDef.ownerPubkey}:${feedDef.id}`}
+                  className="text-left p-3 rounded-lg border border-gray-700 hover:border-cyan-500/50 hover:bg-gray-800/50 transition-colors"
+                  onClick={() => {
+                    setUserCustomFeeds((prev) => prev.some((f) => f.id === feedDef.id) ? prev : [...prev, feedDef]);
+                    setActiveCustomFeedId(feedDef.id);
+                    setFeedMode('following');
+                  }}
+                >
+                  <div className="font-medium text-sm text-cyan-100">{feedDef.title}</div>
+                  {feedDef.description && <div className="text-xs text-gray-400 mt-1 line-clamp-1">{feedDef.description}</div>}
                 </button>
               ))}
             </div>
           </div>
-        ) : null}
+        )}
 
-        {showCreateFeed ? (
-          <div className="grid md:grid-cols-2 gap-3">
-            <input className="cy-input" placeholder="Feed title" value={newFeedTitle} onChange={(e) => setNewFeedTitle(e.target.value)} />
-            <input className="cy-input" placeholder="Description" value={newFeedDescription} onChange={(e) => setNewFeedDescription(e.target.value)} />
-            <input className="cy-input" placeholder="Topics (comma-separated hashtags)" value={newFeedTopics} onChange={(e) => setNewFeedTopics(e.target.value)} />
-            <input className="cy-input" placeholder="Authors (comma-separated pubkeys)" value={newFeedAuthors} onChange={(e) => setNewFeedAuthors(e.target.value)} />
-            <label className="flex items-center gap-2 text-sm text-cyan-100">
-              <input type="checkbox" checked={newFeedIncludeReplies} onChange={(e) => setNewFeedIncludeReplies(e.target.checked)} /> Include replies
-            </label>
-            <div className="flex justify-end">
-              <button className="cy-btn" onClick={onCreateCustomFeed}>Save to Nostr</button>
+        {/* Create Feed Form */}
+        {showCreateFeed && (
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <p className="text-xs text-gray-400 mb-3">Create New Feed</p>
+            <div className="grid md:grid-cols-2 gap-3">
+              <input className="cy-input" placeholder="Feed title" value={newFeedTitle} onChange={(e) => setNewFeedTitle(e.target.value)} />
+              <input className="cy-input" placeholder="Description" value={newFeedDescription} onChange={(e) => setNewFeedDescription(e.target.value)} />
+              <input className="cy-input" placeholder="Topics (comma-separated hashtags)" value={newFeedTopics} onChange={(e) => setNewFeedTopics(e.target.value)} />
+              <input className="cy-input" placeholder="Authors (comma-separated pubkeys)" value={newFeedAuthors} onChange={(e) => setNewFeedAuthors(e.target.value)} />
+              <label className="flex items-center gap-2 text-sm text-cyan-100">
+                <input type="checkbox" checked={newFeedIncludeReplies} onChange={(e) => setNewFeedIncludeReplies(e.target.checked)} /> Include replies
+              </label>
+              <div className="flex justify-end">
+                <button className="cy-btn" onClick={onCreateCustomFeed}>Save Feed</button>
+              </div>
             </div>
           </div>
-        ) : null}
-      </section>
+        )}
+      </ConfigAccordion>
 
       <section className="cy-card p-5">
         <p className="cy-kicker mb-2">COMPOSER / KIND-1</p>
