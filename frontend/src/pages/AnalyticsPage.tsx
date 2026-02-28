@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { SimplePool } from 'nostr-tools';
 import { useAuth } from '../hooks/useAuth';
@@ -60,6 +60,78 @@ interface UserMetrics {
   noHistoricalDataMessage?: string;
 }
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function useDialogA11y(isOpen: boolean, onClose: () => void, closeButtonRef: RefObject<HTMLButtonElement | null>, modalRef: RefObject<HTMLDivElement | null>, openAnnouncement: string, closeAnnouncement: string) {
+  const [announceText, setAnnounceText] = useState('');
+  const [isVisible, setIsVisible] = useState(false);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsVisible(false);
+      return;
+    }
+
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    setAnnounceText(openAnnouncement);
+
+    const frame = window.requestAnimationFrame(() => {
+      setIsVisible(true);
+      closeButtonRef.current?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      restoreFocusRef.current?.focus();
+      setAnnounceText(closeAnnouncement);
+    };
+  }, [isOpen, openAnnouncement, closeAnnouncement, closeButtonRef]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key !== 'Tab' || !modalRef.current) return;
+
+      const focusable = Array.from(modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose, modalRef]);
+
+  return { announceText, isVisible };
+}
+
 function formatSats(value: number): string {
   return Math.round(value).toLocaleString();
 }
@@ -118,44 +190,45 @@ function mapMetrics(data: AnalyticsDashboardData): UserMetrics {
 
 function ZapperDetailModal({ pubkey, viewerPubkey, onClose }: { pubkey: string | null; viewerPubkey: string; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<any>(null);
   const [zaps, setZaps] = useState<Array<{ id: string; createdAt: number; amount: number; message: string }>>([]);
 
-  useEffect(() => {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const { announceText, isVisible } = useDialogA11y(Boolean(pubkey), onClose, closeButtonRef, modalRef, 'Zapper details dialog opened', 'Zapper details dialog closed');
+
+  const load = async () => {
     if (!pubkey) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pubkey, onClose]);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const pool = new SimplePool();
+      const [events, profiles] = await Promise.all([
+        pool.querySync(FALLBACK_RELAYS, { kinds: [9735], authors: [pubkey], '#p': [viewerPubkey], limit: 300 }) as Promise<NostrEvent[]>,
+        fetchProfilesBatchCached([pubkey]),
+      ]);
+      setProfile(profiles.get(pubkey) ?? null);
+      const parsed = events
+        .map((evt) => ({
+          id: evt.id,
+          createdAt: evt.created_at,
+          amount: parseZapReceipt(evt)?.amountSat ?? 0,
+          message: parseZapReceipt(evt)?.content ?? '',
+        }))
+        .sort((a, b) => b.createdAt - a.createdAt);
+      setZaps(parsed);
+    } catch (loadError) {
+      console.error('Failed to load zapper details', loadError);
+      setError('Could not load zapper details. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!pubkey) return;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const pool = new SimplePool();
-        const [events, profiles] = await Promise.all([
-          pool.querySync(FALLBACK_RELAYS, { kinds: [9735], authors: [pubkey], '#p': [viewerPubkey], limit: 300 }) as Promise<NostrEvent[]>,
-          fetchProfilesBatchCached([pubkey]),
-        ]);
-        setProfile(profiles.get(pubkey) ?? null);
-        const parsed = events
-          .map((evt) => ({
-            id: evt.id,
-            createdAt: evt.created_at,
-            amount: parseZapReceipt(evt)?.amountSat ?? 0,
-            message: parseZapReceipt(evt)?.content ?? '',
-          }))
-          .sort((a, b) => b.createdAt - a.createdAt);
-        setZaps(parsed);
-      } catch (error) {
-        console.error('Failed to load zapper details', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     void load();
   }, [pubkey, viewerPubkey]);
 
@@ -163,104 +236,201 @@ function ZapperDetailModal({ pubkey, viewerPubkey, onClose }: { pubkey: string |
   const npub = encodeNpub(pubkey);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 p-3 sm:p-6 flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-xl border border-cyan-500/30 bg-[#070b16] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b border-cyan-500/20 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">Top Zapper Details</h3>
-          <button type="button" onClick={onClose} className="text-xl text-gray-300 hover:text-white">×</button>
-        </div>
-        <div className="p-4 space-y-4">
-          <div className="flex items-center gap-3">
-            <Avatar pubkey={pubkey} size={42} clickable={false} />
-            <div>
-              <p className="text-white font-semibold">{profileDisplayName(pubkey, profile)}</p>
-              <p className="text-xs text-gray-400">{profile?.nip05 || truncateNpub(npub, 8)}</p>
-            </div>
-            <Link to={`/profile/${npub}`} className="ml-auto text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white">Open Profile</Link>
+    <>
+      <div className="sr-only" aria-live="polite">{announceText}</div>
+      <div
+        className={`fixed inset-0 z-50 p-0 sm:p-6 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity duration-200 ${
+          isVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onClose}
+        role="presentation"
+      >
+        <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="zapper-modal-title"
+          className={`w-full sm:max-w-2xl rounded-t-2xl sm:rounded-xl border border-cyan-500/30 bg-[#070b16] max-h-[90vh] overflow-y-auto shadow-2xl transition-all duration-200 ease-out transform ${
+            isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-4 border-b border-cyan-500/20 flex items-center justify-between bg-[#070b16]/95 backdrop-blur-sm sticky top-0">
+            <h3 id="zapper-modal-title" className="text-lg font-semibold text-white">Top Zapper Details</h3>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={onClose}
+              className="text-xl text-gray-300 hover:text-white rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+              aria-label="Close zapper details"
+            >
+              ×
+            </button>
           </div>
-          {loading ? (
-            <p className="text-gray-300">Loading zap history…</p>
-          ) : zaps.length === 0 ? (
-            <p className="text-gray-400">No zap receipts from this zapper found in the selected relay set.</p>
-          ) : (
-            <div className="space-y-2">
-              {zaps.map((zap) => (
-                <div key={zap.id} className="rounded bg-gray-800/60 p-3">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-cyan-200">⚡ {zap.amount.toLocaleString()} sats</span>
-                    <span className="text-gray-400">{new Date(zap.createdAt * 1000).toLocaleString()}</span>
-                  </div>
-                  {zap.message && <p className="text-gray-200 text-sm mt-2 whitespace-pre-wrap break-words">{zap.message}</p>}
-                </div>
-              ))}
+          <div className="p-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <Avatar pubkey={pubkey} size={42} clickable={false} />
+              <div>
+                <p className="text-white font-semibold">{profileDisplayName(pubkey, profile)}</p>
+                <p className="text-xs text-gray-400">{profile?.nip05 || truncateNpub(npub, 8)}</p>
+              </div>
+              <Link to={`/profile/${npub}`} className="ml-auto text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">Open Profile</Link>
             </div>
-          )}
+
+            {loading ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-gray-300 text-sm">
+                  <span className="inline-block h-4 w-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                  Loading...
+                </div>
+                {[...Array.from({ length: 4 })].map((_, i) => (
+                  <div key={i} className="h-16 rounded bg-gray-800/60 animate-pulse" />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="space-y-3">
+                <p className="text-red-300">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="px-3 py-2 rounded-md bg-red-700/80 hover:bg-red-700 text-white text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : zaps.length === 0 ? (
+              <p className="text-gray-400">⚡ No zaps yet from this zapper in the selected relay set.</p>
+            ) : (
+              <div className="space-y-2">
+                {zaps.map((zap) => (
+                  <div key={zap.id} className="rounded border border-gray-700/60 bg-gray-800/60 p-3 shadow-sm transition-colors hover:border-cyan-500/30">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-cyan-200">⚡ {zap.amount.toLocaleString()} sats</span>
+                      <span className="text-gray-400">{new Date(zap.createdAt * 1000).toLocaleString()}</span>
+                    </div>
+                    {zap.message && <p className="text-gray-200 text-sm mt-2 whitespace-pre-wrap break-words">{zap.message}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
 function HashtagPostsModal({ hashtag, authorPubkey, onClose }: { hashtag: string | null; authorPubkey: string; onClose: () => void }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [posts, setPosts] = useState<NostrEvent[]>([]);
 
-  useEffect(() => {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const { announceText, isVisible } = useDialogA11y(Boolean(hashtag), onClose, closeButtonRef, modalRef, 'Hashtag posts dialog opened', 'Hashtag posts dialog closed');
+
+  const load = async () => {
     if (!hashtag) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [hashtag, onClose]);
+    setLoading(true);
+    setError(null);
+    try {
+      const pool = new SimplePool();
+      const events = await pool.querySync(FALLBACK_RELAYS, {
+        kinds: [1],
+        authors: [authorPubkey],
+        '#t': [hashtag.toLowerCase()],
+        limit: 100,
+      }) as NostrEvent[];
+      setPosts(events.sort((a, b) => b.created_at - a.created_at));
+    } catch (loadError) {
+      console.error('Failed to load hashtag posts', loadError);
+      setError('Could not load hashtag posts. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!hashtag) return;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const pool = new SimplePool();
-        const events = await pool.querySync(FALLBACK_RELAYS, {
-          kinds: [1],
-          authors: [authorPubkey],
-          '#t': [hashtag.toLowerCase()],
-          limit: 100,
-        }) as NostrEvent[];
-        setPosts(events.sort((a, b) => b.created_at - a.created_at));
-      } catch (error) {
-        console.error('Failed to load hashtag posts', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     void load();
   }, [hashtag, authorPubkey]);
 
   if (!hashtag) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 p-3 sm:p-6 flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="w-full max-w-3xl rounded-xl border border-cyan-500/30 bg-[#070b16] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 border-b border-cyan-500/20 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">#{hashtag} posts</h3>
-          <button type="button" onClick={onClose} className="text-xl text-gray-300 hover:text-white">×</button>
-        </div>
-        <div className="p-4 space-y-3">
-          {loading ? (
-            <p className="text-gray-300">Loading posts…</p>
-          ) : posts.length === 0 ? (
-            <p className="text-gray-400">No posts found for this hashtag in the selected time window.</p>
-          ) : (
-            posts.map((post) => (
-              <a key={post.id} href={`https://njump.me/${post.id}`} target="_blank" rel="noreferrer" className="block rounded bg-gray-800/50 p-3 hover:bg-gray-800 transition-colors">
-                <p className="text-gray-200 whitespace-pre-wrap break-words line-clamp-3">{post.content}</p>
-                <p className="text-xs text-gray-500 mt-1">{new Date(post.created_at * 1000).toLocaleString()}</p>
-              </a>
-            ))
-          )}
+    <>
+      <div className="sr-only" aria-live="polite">{announceText}</div>
+      <div
+        className={`fixed inset-0 z-50 p-0 sm:p-6 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity duration-200 ${
+          isVisible ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onClose}
+        role="presentation"
+      >
+        <div
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="hashtag-modal-title"
+          className={`w-full sm:max-w-3xl rounded-t-2xl sm:rounded-xl border border-cyan-500/30 bg-[#070b16] max-h-[90vh] overflow-y-auto shadow-2xl transition-all duration-200 ease-out transform ${
+            isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="p-4 border-b border-cyan-500/20 flex items-center justify-between bg-[#070b16]/95 backdrop-blur-sm sticky top-0">
+            <h3 id="hashtag-modal-title" className="text-lg font-semibold text-white">#{hashtag} posts</h3>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={onClose}
+              className="text-xl text-gray-300 hover:text-white rounded-md p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+              aria-label="Close hashtag posts"
+            >
+              ×
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            {loading ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-gray-300 text-sm">
+                  <span className="inline-block h-4 w-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                  Loading...
+                </div>
+                {[...Array.from({ length: 4 })].map((_, i) => (
+                  <div key={i} className="h-16 rounded bg-gray-800/60 animate-pulse" />
+                ))}
+              </div>
+            ) : error ? (
+              <div className="space-y-3">
+                <p className="text-red-300">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="px-3 py-2 rounded-md bg-red-700/80 hover:bg-red-700 text-white text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : posts.length === 0 ? (
+              <p className="text-gray-400">📭 No posts found for this hashtag in the selected time window.</p>
+            ) : (
+              posts.map((post) => (
+                <a
+                  key={post.id}
+                  href={`https://njump.me/${post.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block rounded border border-gray-700/60 bg-gray-800/50 p-3 hover:bg-gray-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                >
+                  <p className="text-gray-200 whitespace-pre-wrap break-words line-clamp-3">{post.content}</p>
+                  <p className="text-xs text-gray-500 mt-1">{new Date(post.created_at * 1000).toLocaleString()}</p>
+                </a>
+              ))
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -317,7 +487,7 @@ export function AnalyticsPage() {
               clearAnalyticsCache();
               setRefreshTick((v) => v + 1);
             }}
-            className="px-3 py-2 rounded-md bg-cyan-700 hover:bg-cyan-600 text-white text-sm"
+            className="px-3 py-2 rounded-md bg-cyan-700 hover:bg-cyan-600 active:bg-cyan-500 text-white text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
             disabled={refreshing}
           >
             {refreshing ? 'Refreshing…' : 'Refresh'}
@@ -325,7 +495,21 @@ export function AnalyticsPage() {
         </div>
       </header>
 
-      {error && <div className="cy-card p-4 text-red-300">{error}</div>}
+      {error && (
+        <div className="cy-card p-4 text-red-300 flex flex-wrap items-center justify-between gap-3">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setRefreshing(true);
+              setRefreshTick((v) => v + 1);
+            }}
+            className="px-3 py-2 rounded-md bg-red-700/80 hover:bg-red-700 active:bg-red-600 text-white text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard label="Followers" value={formatNumber(safeMetrics.followerCount)} icon="👥" />
@@ -356,7 +540,7 @@ export function AnalyticsPage() {
       <section className="cy-card p-5">
         <h2 className="text-lg font-semibold text-white mb-4">🏆 Top Posts (Real Engagement)</h2>
         {safeMetrics.topPosts.length === 0 ? (
-          <p className="text-gray-400">No post engagement data available yet.</p>
+          <p className="text-gray-400">📭 No posts found yet. Publish a post to start tracking engagement.</p>
         ) : (
           <div className="space-y-3">
             {safeMetrics.topPosts.slice(0, 5).map((post, i) => (
@@ -370,7 +554,7 @@ export function AnalyticsPage() {
         <h2 className="text-lg font-semibold text-white mb-4">⚡ Zap Stats</h2>
         <p className="text-gray-300 mb-3">Average zap amount: {formatSats(safeMetrics.averageZapAmount)} sats</p>
         {safeMetrics.topZappers.length === 0 ? (
-          <p className="text-gray-400">No zap data available yet.</p>
+          <p className="text-gray-400">⚡ No zaps yet.</p>
         ) : (
           <div className="space-y-2">
             {safeMetrics.topZappers.slice(0, 5).map((z) => (
@@ -378,7 +562,7 @@ export function AnalyticsPage() {
                 key={z.pubkey}
                 type="button"
                 onClick={() => setSelectedZapperPubkey(z.pubkey)}
-                className="w-full flex justify-between text-sm text-gray-300 hover:bg-gray-800/40 rounded px-2 py-1"
+                className="w-full flex justify-between text-sm text-gray-300 hover:bg-gray-800/40 active:bg-gray-800/70 rounded px-2 py-1 border border-transparent hover:border-cyan-500/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
               >
                 <span className="font-mono">{z.pubkey.slice(0, 12)}…</span>
                 <span>{formatSats(z.sats)} sats ({z.count} zaps)</span>
@@ -391,7 +575,7 @@ export function AnalyticsPage() {
       <section className="cy-card p-5">
         <h2 className="text-lg font-semibold text-white mb-4">#️⃣ Hashtag Performance</h2>
         {safeMetrics.topHashtags.length === 0 ? (
-          <p className="text-gray-400">No hashtag data available yet.</p>
+          <p className="text-gray-400">🏷️ No hashtag data yet.</p>
         ) : (
           <HashtagTable hashtags={safeMetrics.topHashtags} onTagClick={(tag) => setSelectedHashtag(tag)} />
         )}
@@ -400,11 +584,11 @@ export function AnalyticsPage() {
       <section className="cy-card p-5">
         <h2 className="text-lg font-semibold text-white mb-4">Recent Posts</h2>
         {safeMetrics.recentPosts.length === 0 ? (
-          <p className="text-gray-400">No recent posts found.</p>
+          <p className="text-gray-400">📭 No recent posts found.</p>
         ) : (
           <div className="space-y-2">
             {safeMetrics.recentPosts.slice(0, 8).map((post) => (
-              <div key={post.id} className="p-3 rounded bg-gray-800/50">
+              <div key={post.id} className="p-3 rounded border border-gray-700/60 bg-gray-800/50 shadow-sm">
                 <p className="text-gray-200 line-clamp-2">{post.preview}</p>
                 <p className="text-xs text-gray-500 mt-1">{new Date(post.createdAt * 1000).toLocaleString()}</p>
               </div>
