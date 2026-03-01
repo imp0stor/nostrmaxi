@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Put, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Put, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Prisma } from '@prisma/client';
 import { AdminService } from './admin.service';
@@ -38,7 +38,19 @@ export class AdminController {
   @Get('users')
   @ApiBearerAuth()
   async listUsers(@Query('page') page?: string, @Query('limit') limit?: string) {
-    return this.adminService.listUsers(page ? parseInt(page, 10) : undefined, limit ? parseInt(limit, 10) : undefined);
+    return this.adminService.listUsersWithRoles(page ? parseInt(page, 10) : undefined, limit ? parseInt(limit, 10) : undefined);
+  }
+
+  @Patch('users/:pubkey/role')
+  @ApiBearerAuth()
+  async updateUserRole(
+    @Req() req: any,
+    @Param('pubkey') pubkey: string,
+    @Body() body: { isAdmin?: boolean; tier?: string },
+  ) {
+    const result = await this.adminService.updateUserRole(pubkey, body);
+    await this.adminService.logAdminAction(req.pubkey, 'user.role.update', pubkey, body);
+    return result;
   }
 
   @Get('nip05')

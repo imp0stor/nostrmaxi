@@ -139,7 +139,8 @@ export default function App() {
   }, [isAuthenticated, user, showIdentityMenu]);
 
   const sidebarWidthClass = collapsed ? 'md:pl-[60px]' : 'md:pl-[200px]';
-  const hasPaidEntitlement = Boolean(user && user.tier !== 'FREE');
+  const entitlementTier = user?.subscription?.tier || user?.tier || 'FREE';
+  const hasPaidEntitlement = Boolean(user && (user.isAdmin || ['PRO', 'BUSINESS', 'LIFETIME'].includes(entitlementTier)));
 
   return (
     <div className="swordfish-shell min-h-screen flex cyber-grid bg-swordfish-bg text-swordfish-text">

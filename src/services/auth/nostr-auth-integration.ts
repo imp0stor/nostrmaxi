@@ -20,9 +20,16 @@ try {
         let pubkey = decoded.sub || decoded.pubkey || '';
         let npub = decoded.npub || '';
         
+        console.log('[AUTH] JWT decoded:', { sub: decoded.sub, pubkey: decoded.pubkey, npub: decoded.npub });
+        
         // If we have pubkey but not npub, encode it
         if (pubkey && !npub) {
-          npub = nip19.npubEncode(pubkey);
+          try {
+            npub = nip19.npubEncode(pubkey);
+            console.log('[AUTH] Encoded npub:', npub);
+          } catch (encErr) {
+            console.error('[AUTH] Failed to encode npub:', encErr);
+          }
         }
         // If we have npub but not pubkey, decode it
         if (npub && !pubkey) {
@@ -32,8 +39,10 @@ try {
           } catch {}
         }
         
+        console.log('[AUTH] Final user:', { pubkey: pubkey?.substring(0, 16), npub: npub?.substring(0, 16) });
         req.user = { pubkey, npub, role: decoded.role || 'user' };
-      } catch {
+      } catch (jwtErr: any) {
+        console.error('[AUTH] JWT verify failed:', jwtErr?.message);
         // If JWT decode fails, check if token itself is an npub
         if (token.startsWith('npub1')) {
           try {
@@ -43,6 +52,8 @@ try {
           } catch {}
         }
       }
+    } else {
+      console.log('[AUTH] No token in request');
     }
     next();
   };

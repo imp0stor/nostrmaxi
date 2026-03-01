@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { SimplePool } from 'nostr-tools';
 import { Avatar } from '../components/Avatar';
 import { useAuth } from '../hooks/useAuth';
-import { encodeNpub, truncateNpub } from '../lib/nostr';
+import { encodeNpub, publishEvent, signEvent, truncateNpub } from '../lib/nostr';
 import { fetchProfilesBatchCached } from '../lib/profileCache';
 import { getDefaultRelays, getRelaysForUser } from '../lib/relayConfig';
-import { loadFollowers, loadFollowing } from '../lib/social';
+import { followPubkey, loadFollowers, loadFollowing, unfollowPubkey } from '../lib/social';
 import type { NostrProfile } from '../types';
 import connectionsIcon from '../assets/icons/connections.png';
 
@@ -20,9 +20,12 @@ type ConnectionsState = {
   following: string[];
   followers: string[];
   mutuals: string[];
-  mutedBlocked: string[];
+  muted: string[];
+  blocked: string[];
   profiles: Map<string, NostrProfile | null>;
 };
+
+type BusyAction = 'follow' | 'unfollow' | 'mute' | 'unmute' | 'block' | 'unblock';
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
@@ -58,16 +61,33 @@ function buildCard(pubkey: string, profiles: Map<string, NostrProfile | null>): 
   };
 }
 
+async function publishPubkeyListUpdate(kind: 10000 | 10001, ownerPubkey: string, nextPubkeys: string[]) {
+  const unsigned = {
+    kind,
+    content: '',
+    tags: unique(nextPubkeys).map((pk) => ['p', pk]),
+    pubkey: ownerPubkey,
+    created_at: Math.floor(Date.now() / 1000),
+  };
+
+  const signed = await signEvent(unsigned);
+  if (!signed) return false;
+  const result = await publishEvent(signed);
+  return Boolean(result?.success);
+}
+
 function ConnectionColumn({
   title,
   cards,
   loading,
   emptyLabel,
+  renderActions,
 }: {
   title: string;
   cards: ConnectionCard[];
   loading: boolean;
   emptyLabel: string;
+  renderActions?: (card: ConnectionCard) => ReactNode;
 }) {
   return (
     <section className="cy-card nm-surface p-4 md:p-5 flex flex-col min-h-[320px]" aria-label={`${title} connections`}>
@@ -84,20 +104,23 @@ function ConnectionColumn({
         cards.length > 0 ? (
           <ul className="space-y-2 overflow-y-auto pr-1 max-h-[58vh]" aria-live="polite">
             {cards.map((card) => (
-              <li key={card.pubkey}>
-                <Link
-                  to={`/profile/${card.pubkey}`}
-                  className="block rounded-lg border border-swordfish-muted/35 bg-black/20 hover:border-orange-400/55 hover:bg-orange-500/10 px-3 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
-                  aria-label={`Open profile for ${card.name}`}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Avatar pubkey={card.pubkey} size={36} clickable={false} className="shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm text-orange-100 font-medium truncate">{card.name}</p>
-                      <p className="text-xs text-swordfish-muted truncate font-mono">{card.npub}</p>
+              <li key={card.pubkey} className="rounded-lg border border-swordfish-muted/35 bg-black/20 hover:border-orange-400/55 hover:bg-orange-500/10 px-3 py-2 transition group">
+                <div className="flex items-center gap-2 justify-between">
+                  <Link
+                    to={`/profile/${card.pubkey}`}
+                    className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
+                    aria-label={`Open profile for ${card.name}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar pubkey={card.pubkey} size={36} clickable={false} className="shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm text-orange-100 font-medium truncate">{card.name}</p>
+                        <p className="text-xs text-swordfish-muted truncate font-mono">{card.npub}</p>
+                      </div>
                     </div>
-                  </div>
-                </Link>
+                  </Link>
+                  {renderActions ? <div className="flex items-center gap-1 flex-wrap justify-end">{renderActions(card)}</div> : null}
+                </div>
               </li>
             ))}
           </ul>
@@ -117,9 +140,11 @@ export function ConnectionsPage() {
     following: [],
     followers: [],
     mutuals: [],
-    mutedBlocked: [],
+    muted: [],
+    blocked: [],
     profiles: new Map(),
   });
+  const [busyByPubkey, setBusyByPubkey] = useState<Record<string, BusyAction | undefined>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -152,9 +177,8 @@ export function ConnectionsPage() {
         const followingSet = new Set(following);
         const followersSet = new Set(followers);
         const mutuals = following.filter((pubkey) => followersSet.has(pubkey));
-        const mutedBlocked = unique([...muted, ...blocked]);
 
-        const allPubkeys = unique([...following, ...followers, ...mutuals, ...mutedBlocked]);
+        const allPubkeys = unique([...following, ...followers, ...mutuals, ...muted, ...blocked]);
         const profiles = allPubkeys.length > 0
           ? await fetchProfilesBatchCached(allPubkeys, relays)
           : new Map<string, NostrProfile | null>();
@@ -165,7 +189,8 @@ export function ConnectionsPage() {
           following: unique([...followingSet]),
           followers: unique([...followersSet]),
           mutuals,
-          mutedBlocked,
+          muted,
+          blocked,
           profiles,
         });
       } catch (err) {
@@ -187,7 +212,87 @@ export function ConnectionsPage() {
   const followingCards = useMemo(() => state.following.map((pk) => buildCard(pk, state.profiles)), [state.following, state.profiles]);
   const mutualCards = useMemo(() => state.mutuals.map((pk) => buildCard(pk, state.profiles)), [state.mutuals, state.profiles]);
   const followerCards = useMemo(() => state.followers.map((pk) => buildCard(pk, state.profiles)), [state.followers, state.profiles]);
-  const mutedBlockedCards = useMemo(() => state.mutedBlocked.map((pk) => buildCard(pk, state.profiles)), [state.mutedBlocked, state.profiles]);
+  const mutedBlockedPubkeys = useMemo(() => unique([...state.muted, ...state.blocked]), [state.muted, state.blocked]);
+  const mutedBlockedCards = useMemo(() => mutedBlockedPubkeys.map((pk) => buildCard(pk, state.profiles)), [mutedBlockedPubkeys, state.profiles]);
+
+  const setBusy = (pubkey: string, action?: BusyAction) => {
+    setBusyByPubkey((prev) => ({ ...prev, [pubkey]: action }));
+  };
+
+  const updateFollowOptimistic = (targetPubkey: string, shouldFollow: boolean) => {
+    setState((prev) => {
+      const nextFollowing = shouldFollow
+        ? unique([...prev.following, targetPubkey])
+        : prev.following.filter((pk) => pk !== targetPubkey);
+      const nextFollowers = prev.followers;
+      const followersSet = new Set(nextFollowers);
+      return {
+        ...prev,
+        following: nextFollowing,
+        mutuals: nextFollowing.filter((pk) => followersSet.has(pk)),
+      };
+    });
+  };
+
+  const updateListOptimistic = (kind: 10000 | 10001, targetPubkey: string, include: boolean) => {
+    setState((prev) => {
+      if (kind === 10000) {
+        const next = include
+          ? unique([...prev.muted, targetPubkey])
+          : prev.muted.filter((pk) => pk !== targetPubkey);
+        return { ...prev, muted: next };
+      }
+      const next = include
+        ? unique([...prev.blocked, targetPubkey])
+        : prev.blocked.filter((pk) => pk !== targetPubkey);
+      return { ...prev, blocked: next };
+    });
+  };
+
+  const onToggleFollow = async (targetPubkey: string, shouldFollow: boolean) => {
+    if (!user?.pubkey) return;
+    if (!shouldFollow && !window.confirm('Unfollow this user?')) return;
+
+    const previous = state;
+    setBusy(targetPubkey, shouldFollow ? 'follow' : 'unfollow');
+    updateFollowOptimistic(targetPubkey, shouldFollow);
+
+    const ok = shouldFollow
+      ? await followPubkey(user.pubkey, targetPubkey, signEvent, publishEvent)
+      : await unfollowPubkey(user.pubkey, targetPubkey, signEvent, publishEvent);
+
+    if (!ok) {
+      setState(previous);
+      setError(`Failed to ${shouldFollow ? 'follow' : 'unfollow'} user. Please try again.`);
+    }
+
+    setBusy(targetPubkey, undefined);
+  };
+
+  const onToggleList = async (kind: 10000 | 10001, targetPubkey: string, include: boolean) => {
+    if (!user?.pubkey) return;
+
+    const label = kind === 10000 ? 'mute' : 'block';
+    if (include && !window.confirm(`Are you sure you want to ${label} this user?`)) return;
+
+    const previous = state;
+    setBusy(targetPubkey, include ? label as BusyAction : (`un${label}` as BusyAction));
+    updateListOptimistic(kind, targetPubkey, include);
+
+    const currentList = kind === 10000 ? previous.muted : previous.blocked;
+    const nextList = include
+      ? unique([...currentList, targetPubkey])
+      : currentList.filter((pk) => pk !== targetPubkey);
+
+    const ok = await publishPubkeyListUpdate(kind, user.pubkey, nextList);
+
+    if (!ok) {
+      setState(previous);
+      setError(`Failed to ${include ? label : `un${label}`} user. Please try again.`);
+    }
+
+    setBusy(targetPubkey, undefined);
+  };
 
   if (!isAuthenticated) {
     return (
@@ -210,10 +315,117 @@ export function ConnectionsPage() {
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <ConnectionColumn title="Following" cards={followingCards} loading={loading} emptyLabel="You are not following anyone yet." />
-        <ConnectionColumn title="Mutuals" cards={mutualCards} loading={loading} emptyLabel="No mutual follows yet." />
-        <ConnectionColumn title="Followers" cards={followerCards} loading={loading} emptyLabel="No followers found yet." />
-        <ConnectionColumn title="Muted / Blocked" cards={mutedBlockedCards} loading={loading} emptyLabel="No muted or blocked users in your lists." />
+        <ConnectionColumn
+          title="Following"
+          cards={followingCards}
+          loading={loading}
+          emptyLabel="You are not following anyone yet."
+          renderActions={(card) => (
+            <button
+              type="button"
+              className="cy-chip"
+              onClick={() => void onToggleFollow(card.pubkey, false)}
+              disabled={Boolean(busyByPubkey[card.pubkey])}
+            >
+              {busyByPubkey[card.pubkey] === 'unfollow' ? 'Updating…' : '➖ Unfollow'}
+            </button>
+          )}
+        />
+        <ConnectionColumn
+          title="Mutuals"
+          cards={mutualCards}
+          loading={loading}
+          emptyLabel="No mutual follows yet."
+          renderActions={(card) => (
+            <>
+              <button
+                type="button"
+                className="cy-chip"
+                onClick={() => void onToggleFollow(card.pubkey, false)}
+                disabled={Boolean(busyByPubkey[card.pubkey])}
+              >
+                {busyByPubkey[card.pubkey] === 'unfollow' ? 'Updating…' : '➖ Unfollow'}
+              </button>
+              <button
+                type="button"
+                className="nm-pill text-xs"
+                onClick={() => void onToggleList(10000, card.pubkey, true)}
+                disabled={Boolean(busyByPubkey[card.pubkey]) || state.muted.includes(card.pubkey)}
+              >
+                {busyByPubkey[card.pubkey] === 'mute' ? 'Updating…' : (state.muted.includes(card.pubkey) ? 'Muted' : '🔇 Mute')}
+              </button>
+            </>
+          )}
+        />
+        <ConnectionColumn
+          title="Followers"
+          cards={followerCards}
+          loading={loading}
+          emptyLabel="No followers found yet."
+          renderActions={(card) => {
+            const alreadyFollowing = state.following.includes(card.pubkey);
+            return (
+              <>
+                {!alreadyFollowing ? (
+                  <button
+                    type="button"
+                    className="cy-chip"
+                    onClick={() => void onToggleFollow(card.pubkey, true)}
+                    disabled={Boolean(busyByPubkey[card.pubkey])}
+                  >
+                    {busyByPubkey[card.pubkey] === 'follow' ? 'Updating…' : '➕ Follow back'}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="nm-pill text-xs"
+                  onClick={() => void onToggleList(10000, card.pubkey, true)}
+                  disabled={Boolean(busyByPubkey[card.pubkey]) || state.muted.includes(card.pubkey)}
+                >
+                  {busyByPubkey[card.pubkey] === 'mute' ? 'Updating…' : (state.muted.includes(card.pubkey) ? 'Muted' : '🔇 Mute')}
+                </button>
+                <button
+                  type="button"
+                  className="nm-pill text-xs border-red-400/40 text-red-200"
+                  onClick={() => void onToggleList(10001, card.pubkey, true)}
+                  disabled={Boolean(busyByPubkey[card.pubkey]) || state.blocked.includes(card.pubkey)}
+                >
+                  {busyByPubkey[card.pubkey] === 'block' ? 'Updating…' : (state.blocked.includes(card.pubkey) ? 'Blocked' : '⛔ Block')}
+                </button>
+              </>
+            );
+          }}
+        />
+        <ConnectionColumn
+          title="Muted / Blocked"
+          cards={mutedBlockedCards}
+          loading={loading}
+          emptyLabel="No muted or blocked users in your lists."
+          renderActions={(card) => (
+            <>
+              {state.muted.includes(card.pubkey) ? (
+                <button
+                  type="button"
+                  className="nm-pill text-xs"
+                  onClick={() => void onToggleList(10000, card.pubkey, false)}
+                  disabled={Boolean(busyByPubkey[card.pubkey])}
+                >
+                  {busyByPubkey[card.pubkey] === 'unmute' ? 'Updating…' : '🔈 Unmute'}
+                </button>
+              ) : null}
+              {state.blocked.includes(card.pubkey) ? (
+                <button
+                  type="button"
+                  className="nm-pill text-xs border-red-400/40 text-red-200"
+                  onClick={() => void onToggleList(10001, card.pubkey, false)}
+                  disabled={Boolean(busyByPubkey[card.pubkey])}
+                >
+                  {busyByPubkey[card.pubkey] === 'unblock' ? 'Updating…' : '✅ Unblock'}
+                </button>
+              ) : null}
+            </>
+          )}
+        />
       </div>
     </div>
   );

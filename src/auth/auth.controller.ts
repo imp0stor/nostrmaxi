@@ -87,6 +87,7 @@ export class AuthController {
       pubkey: user.pubkey,
       npub: user.npub,
       tier: user.subscription?.tier || 'FREE',
+      isAdmin: user.isAdmin,
       nip05s: user.nip05s,
       wotScore: 0,
       subscription: user.subscription ? {
@@ -157,8 +158,16 @@ export class AuthController {
       pubkey: user.pubkey,
       npub: user.npub,
       tier: user.subscription?.tier || 'FREE',
+      isAdmin: user.isAdmin,
       nip05s: user.nip05s,
       wotScore: 0,
+      subscription: user.subscription ? {
+        tier: user.subscription.tier,
+        expiresAt: user.subscription.expiresAt,
+        isActive: user.subscription.expiresAt
+          ? user.subscription.expiresAt > new Date()
+          : user.subscription.tier === 'FREE',
+      } : null,
     };
   }
 }

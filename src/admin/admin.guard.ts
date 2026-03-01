@@ -1,13 +1,17 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AdminGuard implements CanActivate {
-  private readonly adminPubkeys: Set<string>;
+  private readonly bootstrapAdminPubkeys: Set<string>;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     const raw = this.config.get<string>('ADMIN_PUBKEYS', '');
-    this.adminPubkeys = new Set(
+    this.bootstrapAdminPubkeys = new Set(
       raw
         .split(',')
         .map((pubkey) => pubkey.trim().toLowerCase())
@@ -15,14 +19,28 @@ export class AdminGuard implements CanActivate {
     );
   }
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<{ pubkey?: string }>();
     const pubkey = req.pubkey?.trim().toLowerCase();
 
-    if (!pubkey || !this.adminPubkeys.has(pubkey)) {
+    if (!pubkey) {
       throw new ForbiddenException('Admin access required');
     }
 
-    return true;
+    const user = await this.prisma.user.findUnique({
+      where: { pubkey },
+      select: { isAdmin: true },
+    });
+
+    if (user?.isAdmin) {
+      return true;
+    }
+
+    // Bootstrap fallback: allow env admins even before/without DB sync.
+    if (this.bootstrapAdminPubkeys.has(pubkey)) {
+      return true;
+    }
+
+    throw new ForbiddenException('Admin access required');
   }
 }

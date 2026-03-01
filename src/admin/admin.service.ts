@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { WotService } from '../wot/wot.service';
@@ -6,8 +6,8 @@ import { AuctionService } from '../auctions/auction.service';
 import { AuctionState } from '../auctions/auction.types';
 
 @Injectable()
-export class AdminService {
-  private adminPubkeys: string[];
+export class AdminService implements OnModuleInit {
+  private readonly bootstrapAdminPubkeys: string[];
 
   constructor(
     private prisma: PrismaService,
@@ -15,7 +15,34 @@ export class AdminService {
     private wotService: WotService,
     private readonly auctionService: AuctionService,
   ) {
-    this.adminPubkeys = this.config.get('ADMIN_PUBKEYS', '').split(',').filter(Boolean);
+    this.bootstrapAdminPubkeys = (this.config.get<string>('ADMIN_PUBKEYS', '') || '')
+      .split(',')
+      .map((pubkey) => pubkey.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  async onModuleInit() {
+    await this.syncBootstrapAdminsToDatabase();
+  }
+
+  private async syncBootstrapAdminsToDatabase() {
+    if (!this.bootstrapAdminPubkeys.length) {
+      return;
+    }
+
+    await Promise.all(
+      this.bootstrapAdminPubkeys.map((pubkey) =>
+        this.prisma.user.upsert({
+          where: { pubkey },
+          update: { isAdmin: true },
+          create: {
+            pubkey,
+            npub: `npub_${pubkey.slice(0, 16)}`,
+            isAdmin: true,
+          },
+        }),
+      ),
+    );
   }
 
   async logAdminAction(adminId: string, action: string, targetId?: string, details?: unknown) {
@@ -78,6 +105,55 @@ export class AdminService {
       total,
       page,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async listUsersWithRoles(page = 1, limit = 50) {
+    return this.listUsers(page, limit);
+  }
+
+  async updateUserRole(pubkey: string, updates: { isAdmin?: boolean; tier?: string }) {
+    const normalizedPubkey = pubkey.trim().toLowerCase();
+
+    if (typeof updates.isAdmin !== 'boolean' && !updates.tier) {
+      throw new BadRequestException('At least one of isAdmin or tier is required');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { pubkey: normalizedPubkey } });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const data: { isAdmin?: boolean } = {};
+    if (typeof updates.isAdmin === 'boolean') {
+      data.isAdmin = updates.isAdmin;
+    }
+
+    const updatedUser = Object.keys(data).length
+      ? await this.prisma.user.update({
+          where: { pubkey: normalizedPubkey },
+          data,
+        })
+      : user;
+
+    if (updates.tier) {
+      await this.prisma.subscription.upsert({
+        where: { userId: user.id },
+        update: { tier: updates.tier },
+        create: {
+          userId: user.id,
+          tier: updates.tier,
+        },
+      });
+    }
+
+    const subscription = await this.prisma.subscription.findUnique({ where: { userId: user.id } });
+
+    return {
+      pubkey: updatedUser.pubkey,
+      isAdmin: updatedUser.isAdmin,
+      tier: subscription?.tier || 'FREE',
     };
   }
 

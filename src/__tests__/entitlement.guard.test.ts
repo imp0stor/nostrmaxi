@@ -2,18 +2,32 @@ import { ForbiddenException } from '@nestjs/common';
 import { EntitlementGuard } from '../auth/guards/entitlement.guard';
 
 describe('EntitlementGuard', () => {
-  it('allows paid users', async () => {
+  const context = {
+    switchToHttp: () => ({
+      getRequest: () => ({ user: { pubkey: 'abc' }, query: {}, params: {} }),
+    }),
+  } as any;
+
+  it('allows PRO/BUSINESS/LIFETIME users', async () => {
+    for (const tier of ['PRO', 'BUSINESS', 'LIFETIME']) {
+      const prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue({ subscription: { tier } }),
+        },
+      } as any;
+      const guard = new EntitlementGuard(prisma);
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+    }
+  });
+
+  it('allows admins regardless of tier', async () => {
     const prisma = {
       user: {
-        findUnique: jest.fn().mockResolvedValue({ subscription: { tier: 'PRO' } }),
+        findUnique: jest.fn().mockResolvedValue({ isAdmin: true, subscription: { tier: 'FREE' } }),
       },
     } as any;
     const guard = new EntitlementGuard(prisma);
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({ user: { pubkey: 'abc' }, query: {}, params: {} }),
-      }),
-    } as any;
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
   });
@@ -21,15 +35,10 @@ describe('EntitlementGuard', () => {
   it('rejects free tier users with upgrade payload', async () => {
     const prisma = {
       user: {
-        findUnique: jest.fn().mockResolvedValue({ subscription: { tier: 'FREE' } }),
+        findUnique: jest.fn().mockResolvedValue({ isAdmin: false, subscription: { tier: 'FREE' } }),
       },
     } as any;
     const guard = new EntitlementGuard(prisma);
-    const context = {
-      switchToHttp: () => ({
-        getRequest: () => ({ user: { pubkey: 'abc' }, query: {}, params: {} }),
-      }),
-    } as any;
 
     await expect(guard.canActivate(context)).rejects.toMatchObject({
       response: {
@@ -42,10 +51,10 @@ describe('EntitlementGuard', () => {
   it('rejects when no pubkey is present', async () => {
     const prisma = { user: { findUnique: jest.fn() } } as any;
     const guard = new EntitlementGuard(prisma);
-    const context = {
+    const noPubkeyContext = {
       switchToHttp: () => ({ getRequest: () => ({ user: undefined, query: {}, params: {} }) }),
     } as any;
 
-    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(guard.canActivate(noPubkeyContext)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

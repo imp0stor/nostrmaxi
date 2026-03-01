@@ -38,13 +38,14 @@ export interface User {
   pubkey: string;
   npub: string;
   tier: SubscriptionTier;
+  isAdmin?: boolean;
   nip05s: Nip05[];
   wotScore: number;
   subscription?: {
     tier: SubscriptionTier;
     expiresAt: string | null;
     isActive: boolean;
-  };
+  } | null;
 }
 
 export interface Nip05 {

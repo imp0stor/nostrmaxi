@@ -169,8 +169,16 @@ export class AuthService {
         pubkey: user.pubkey,
         npub: user.npub,
         tier: user.subscription?.tier || 'FREE',
+        isAdmin: user.isAdmin,
         nip05s: user.nip05s,
         wotScore: 0,
+        subscription: user.subscription ? {
+          tier: user.subscription.tier,
+          expiresAt: user.subscription.expiresAt,
+          isActive: user.subscription.expiresAt
+            ? user.subscription.expiresAt > new Date()
+            : user.subscription.tier === 'FREE',
+        } : null,
       },
       expiresAt: Math.floor(expiresAt.getTime() / 1000),
     };
@@ -548,7 +556,15 @@ export class AuthService {
           pubkey: user.pubkey,
           npub: user.npub,
           tier: user.subscription?.tier || 'FREE',
+          isAdmin: user.isAdmin,
           nip05s: user.nip05s,
+          subscription: user.subscription ? {
+            tier: user.subscription.tier,
+            expiresAt: user.subscription.expiresAt,
+            isActive: user.subscription.expiresAt
+              ? user.subscription.expiresAt > new Date()
+              : user.subscription.tier === 'FREE',
+          } : null,
         },
         expiresAt: Math.floor(expiresAt.getTime() / 1000),
       };
