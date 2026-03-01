@@ -378,9 +378,20 @@ function appendTagOnlyTokens(item: FeedItem, tokens: ContentToken[]): ContentTok
   }
 
   for (const tag of item.tags || []) {
-    if (tag[0] !== 'e' || !tag[1] || presentQuoteIds.has(tag[1])) continue;
-    out.push({ type: 'quote', ref: tag[1], eventId: tag[1], raw: tag[1] });
-    presentQuoteIds.add(tag[1]);
+    if ((tag[0] !== 'e' && tag[0] !== 'q') || !tag[1]) continue;
+
+    let eventId = tag[1];
+    let ref = tag[1];
+
+    if (tag[0] === 'q') {
+      const decoded = decodeRef(tag[1]);
+      eventId = decoded.eventId || tag[1];
+      ref = decoded.ref || tag[1];
+    }
+
+    if (presentQuoteIds.has(eventId)) continue;
+    out.push({ type: 'quote', ref, eventId, raw: tag[1] });
+    presentQuoteIds.add(eventId);
   }
 
   return out;

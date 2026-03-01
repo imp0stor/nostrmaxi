@@ -24,7 +24,7 @@ import { FeedDiscoveryModal } from '../components/feed/FeedDiscoveryModal';
 import { loadCustomFeedsList, saveCustomFeedsList } from '../lib/subscriptions';
 import { PostActionMenu } from '../components/PostActionMenu';
 import { useMuteActions } from '../hooks/useMuteActions';
-import { MediaUploader } from '../components/MediaUploader';
+import { uploadMediaWithFallback } from '../lib/blossom';
 import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
 import { api } from '../lib/api';
 import { mapPrimitiveWotToFeedMetric, type FeedWotMetric } from '../lib/wotScore';
@@ -207,6 +207,10 @@ export function FeedPage() {
   const [liveAlerts, setLiveAlerts] = useState<string[]>([]);
   const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
   const observerRef = useRef<HTMLDivElement | null>(null);
+  const composerFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [composerDragging, setComposerDragging] = useState(false);
+  const [composerUploadError, setComposerUploadError] = useState<string | null>(null);
+  const [composerUploading, setComposerUploading] = useState(false);
   const { selectedTags, logic, setSelectedTags, setLogic } = useTagFilter({
     storageKey: 'nostrmaxi.feed.tag-filter',
     defaultLogic: 'or',
@@ -797,6 +801,21 @@ export function FeedPage() {
     }
   }, [feed, followingSet]);
 
+  const addComposerMedia = async (file?: File) => {
+    if (!file) return;
+    setComposerUploadError(null);
+    setComposerUploading(true);
+    try {
+      const result = await uploadMediaWithFallback(file, signEvent);
+      const type = inferMediaType(result.url);
+      setComposerMedia((prev) => [...prev, { url: result.url, type }]);
+    } catch (error) {
+      setComposerUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+    } finally {
+      setComposerUploading(false);
+    }
+  };
+
   const onPublish = async () => {
     if (!user?.pubkey) return;
     const mediaUrls = composerMedia.map((media) => media.url).filter(Boolean);
@@ -808,6 +827,7 @@ export function FeedPage() {
     if (ok) {
       setComposer('');
       setComposerMedia([]);
+      setComposerUploadError(null);
       setSuccessState('post');
       setTimeout(() => setSuccessState(null), 1800);
       await refresh();
@@ -1022,14 +1042,50 @@ export function FeedPage() {
           onChange={(e) => setComposer(e.target.value)}
         />
         <div className="mt-3">
-          <MediaUploader
-            label="Attach media via Blossom"
-            signEvent={signEvent}
-            onUploaded={(result) => {
-              const type = inferMediaType(result.url);
-              setComposerMedia((prev) => [...prev, { url: result.url, type }]);
+          <div
+            className={`rounded-lg border border-dashed transition ${composerDragging ? 'border-orange-400/70 bg-orange-500/10 p-3' : 'border-transparent p-0'}`}
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (!composerDragging) setComposerDragging(true);
             }}
-          />
+            onDragLeave={() => setComposerDragging(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setComposerDragging(false);
+              void addComposerMedia(event.dataTransfer.files?.[0]);
+            }}
+          >
+            {composerDragging ? <p className="text-xs text-orange-200">Drop media to attach</p> : null}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="nm-pill"
+                onClick={() => composerFileInputRef.current?.click()}
+                aria-label="Attach media"
+                disabled={composerUploading}
+              >
+                <span aria-hidden="true">📎</span>
+                {composerUploading ? 'Uploading…' : 'Attach'}
+              </button>
+              <input
+                ref={composerFileInputRef}
+                type="file"
+                accept="image/*,video/*,audio/*"
+                className="hidden"
+                onChange={(event) => {
+                  void addComposerMedia(event.target.files?.[0]);
+                  event.currentTarget.value = '';
+                }}
+              />
+              <p className="text-xs text-slate-400">Drag & drop or tap attach</p>
+            </div>
+          </div>
+
+          {composerUploadError ? <p className="mt-2 text-xs text-red-300">{composerUploadError}</p> : null}
+
           {composerMedia.length > 0 ? (
             <div className="mt-3 space-y-2">
               <p className="text-xs text-cyan-200">Attached media previews</p>
@@ -1048,7 +1104,6 @@ export function FeedPage() {
               </div>
             </div>
           ) : null}
-          <p className="mt-2 text-xs text-slate-400">Uploads are added to the post payload automatically — we keep raw URLs out of the composer.</p>
         </div>
         <div className="mt-4 flex justify-end">
           <button className="nm-pill nm-pill-primary" onClick={onPublish} disabled={!canPost || busyId === 'composer'} aria-label="Publish post">

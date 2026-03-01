@@ -170,6 +170,25 @@ export function parseQuotedEventRefs(event: Pick<NostrEvent, 'tags' | 'content'>
   return [...ids];
 }
 
+function normalizeQuoteEventId(input: string): string | null {
+  const raw = input.trim().replace(/^nostr:/i, '');
+  if (/^[a-f0-9]{64}$/i.test(raw)) return raw.toLowerCase();
+
+  const candidate = (raw.match(/(note1[0-9a-z]+|nevent1[0-9a-z]+)/i)?.[1] || raw).toLowerCase();
+  try {
+    const decoded = nip19.decode(candidate);
+    if (decoded.type === 'note' && typeof decoded.data === 'string') return decoded.data.toLowerCase();
+    if (decoded.type === 'nevent') {
+      const id = (decoded.data as any)?.id;
+      if (typeof id === 'string' && /^[a-f0-9]{64}$/i.test(id)) return id.toLowerCase();
+    }
+  } catch {
+    // ignore invalid refs
+  }
+
+  return null;
+}
+
 function mergeRelayCandidates(
   relays: string[],
   unresolved: string[],
@@ -200,17 +219,35 @@ export async function resolveQuotedEvents(
   options?: ResolveQuotedEventsOptions,
 ): Promise<Map<string, NostrEvent>> {
   hydrateQuoteCacheOnce();
-  const uniq = [...new Set(ids.filter(Boolean))].slice(0, 60);
+
+  const aliasToCanonical = new Map<string, string>();
+  const canonicalToAliases = new Map<string, Set<string>>();
+  for (const rawId of ids) {
+    if (!rawId) continue;
+    const canonical = normalizeQuoteEventId(rawId) || rawId;
+    aliasToCanonical.set(rawId, canonical);
+    if (!canonicalToAliases.has(canonical)) canonicalToAliases.set(canonical, new Set());
+    canonicalToAliases.get(canonical)!.add(rawId);
+  }
+
+  const uniq = [...new Set(aliasToCanonical.values())].slice(0, 60);
   if (uniq.length === 0) return new Map();
 
   const now = Date.now();
   const out = new Map<string, NostrEvent>();
+  const setResolved = (canonicalId: string, event: NostrEvent) => {
+    out.set(canonicalId, event);
+    const aliases = canonicalToAliases.get(canonicalId);
+    if (!aliases) return;
+    for (const alias of aliases) out.set(alias, event);
+  };
+
   let unresolved = uniq.filter((id) => {
     const cached = quoteCache.get(id);
     if (!cached) return true;
     const ttl = cached.event ? QUOTE_CACHE_TTL_MS : QUOTE_NEGATIVE_CACHE_TTL_MS;
     if ((now - cached.at) > ttl) return true;
-    if (cached.event) out.set(id, cached.event);
+    if (cached.event) setResolved(id, cached.event);
     return false;
   });
 
@@ -232,10 +269,11 @@ export async function resolveQuotedEvents(
 
       const localResolved = new Set<string>();
       for (const evt of localEvents as any[]) {
-        const prev = out.get(evt.id);
-        if (!prev || evt.created_at > prev.created_at) out.set(evt.id, evt as NostrEvent);
-        localResolved.add(evt.id);
-        quoteCache.set(evt.id, { event: evt as NostrEvent, at: Date.now() });
+        const canonicalId = normalizeQuoteEventId(evt.id) || evt.id;
+        const prev = out.get(canonicalId);
+        if (!prev || evt.created_at > prev.created_at) setResolved(canonicalId, evt as NostrEvent);
+        localResolved.add(canonicalId);
+        quoteCache.set(canonicalId, { event: evt as NostrEvent, at: Date.now() });
       }
       unresolved = unresolved.filter((id) => !localResolved.has(id));
 
@@ -251,10 +289,11 @@ export async function resolveQuotedEvents(
 
         const retryResolved = new Set<string>();
         for (const evt of retryEvents as any[]) {
-          const prev = out.get(evt.id);
-          if (!prev || evt.created_at > prev.created_at) out.set(evt.id, evt as NostrEvent);
-          retryResolved.add(evt.id);
-          quoteCache.set(evt.id, { event: evt as NostrEvent, at: Date.now() });
+          const canonicalId = normalizeQuoteEventId(evt.id) || evt.id;
+          const prev = out.get(canonicalId);
+          if (!prev || evt.created_at > prev.created_at) setResolved(canonicalId, evt as NostrEvent);
+          retryResolved.add(canonicalId);
+          quoteCache.set(canonicalId, { event: evt as NostrEvent, at: Date.now() });
         }
         unresolved = unresolved.filter((id) => !retryResolved.has(id));
       }
@@ -276,10 +315,11 @@ export async function resolveQuotedEvents(
 
       const resolved = new Set<string>();
       for (const evt of events) {
-        const prev = out.get(evt.id);
-        if (!prev || evt.created_at > prev.created_at) out.set(evt.id, evt);
-        resolved.add(evt.id);
-        quoteCache.set(evt.id, { event: evt, at: Date.now() });
+        const canonicalId = normalizeQuoteEventId(evt.id) || evt.id;
+        const prev = out.get(canonicalId);
+        if (!prev || evt.created_at > prev.created_at) setResolved(canonicalId, evt);
+        resolved.add(canonicalId);
+        quoteCache.set(canonicalId, { event: evt, at: Date.now() });
 
         if (canUseLocalRelay) {
           try {

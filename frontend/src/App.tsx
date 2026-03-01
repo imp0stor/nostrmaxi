@@ -139,8 +139,13 @@ export default function App() {
   }, [isAuthenticated, user, showIdentityMenu]);
 
   const sidebarWidthClass = collapsed ? 'md:pl-[60px]' : 'md:pl-[200px]';
-  const entitlementTier = user?.subscription?.tier || user?.tier || 'FREE';
-  const hasPaidEntitlement = Boolean(user && (user.isAdmin || ['PRO', 'BUSINESS', 'LIFETIME'].includes(entitlementTier)));
+  const tierCandidates = [user?.tier, user?.subscription?.tier].filter(Boolean) as string[];
+  const hasPaidEntitlement = Boolean(
+    user && (
+      user.isAdmin ||
+      tierCandidates.some((tier) => ['PRO', 'BUSINESS', 'LIFETIME'].includes(String(tier).toUpperCase()))
+    )
+  );
 
   return (
     <div className="swordfish-shell min-h-screen flex cyber-grid bg-swordfish-bg text-swordfish-text">
