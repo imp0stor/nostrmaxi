@@ -1,32 +1,33 @@
 # NostrMaxi TODO List
 
 ## Status: Active Development
-**Last Updated:** 2026-03-01 11:10 EST
+**Last Updated:** 2026-03-01 11:30 EST
 
 ---
 
 ## 🔴 Critical (Must Fix Now)
 
 ### Auth & Access
-- [ ] Analytics access - LOCKED despite LIFETIME tier
-  - User: pubkey `9fdd0d57238ba01f8c04199ca3c0174fa17c19d28e9de610b9db22729e57310e`
-  - DB has: tier=LIFETIME, isAdmin=true
-  - Frontend check: `hasPaidEntitlement` not recognizing tier
-  - **Action:** Debug auth flow, ensure tier is in JWT/response
+- [x] Analytics access - FIXED (2026-03-01)
+  - Fixed tier normalization in frontend (useAuth.ts)
+  - Fixed `subscription.isActive` for non-expiring paid tiers
+  - Added JWT recovery layer in auth middleware
+  - **Needs:** User to logout/login for fresh JWT to verify
 
 ### Notifications
-- [ ] Notifications page shows "Invalid npub in auth token"
-  - Auth middleware still flaky
-  - **Action:** Test with registered user, fix remaining auth issues
+- [x] Notifications page auth - FIXED (2026-03-01)
+  - Added auth guard recovery layer
+  - JWT identity normalization handles hex pubkey in `sub` claim
+  - Regression tests added
 
 ### Messages/DMs
-- [ ] DM support for all 3 types:
-  - NIP-04 (kind:4) - legacy encrypted
-  - NIP-44 (kind:14 wrapped in kind:1059) - new encrypted
-  - Unencrypted (if any)
-- [ ] DM reading works
-- [ ] DM composing works with default to NIP-44
-- [ ] Encryption indicator on messages
+- [x] DM support for all 3 types - IMPLEMENTED (2026-03-01)
+  - NIP-04 (kind:4) - legacy encrypted ✅
+  - NIP-44 (kind:14 wrapped in kind:1059) - new encrypted ✅
+  - Unencrypted fallback ✅
+- [x] DM reading works
+- [x] DM composing works with default to NIP-44
+- [x] Encryption indicator badges (🔒 NIP-44 | 🔐 NIP-04 | ⚠️ Unencrypted)
 
 ---
 
@@ -46,12 +47,12 @@
 - [ ] Media attachments work properly
 - [ ] Link previews render
 
-### Nostr Primitives Integration
-- [ ] **nostr-profile**: Enhanced profile display/caching
-- [ ] **nostr-engagement**: Zap analytics, reaction counts
-- [ ] **nostr-wot-voting**: Trust score visualization
-- [ ] **nostr-kb**: Knowledge base articles display
-- [ ] **nostr-relay-tooling**: Relay health monitoring
+### Nostr Primitives Integration - IMPLEMENTED (2026-03-01)
+- [x] **nostr-profile**: Profile verification chip, validation hints on ProfilePage
+- [x] **nostr-engagement**: Engagement API (`/api/v1/primitives/engagement/profile/:pubkey`), metrics on profile
+- [x] **nostr-wot-voting**: WoT score on profiles, trust filter toggle on FeedPage
+- [x] **nostr-kb**: KB API endpoints wired
+- [x] **nostr-relay-tooling**: Relay health tab in Settings, sync status display
 
 ---
 
@@ -73,31 +74,34 @@
 
 ---
 
-## 🟣 NIP-05 Marketplace (New Feature)
+## 🟣 NIP-05 Marketplace - FOUNDATION COMPLETE (2026-03-01)
 
 ### Payment & Registration
-- [ ] Verify payment flow works
-- [ ] Reserved names restricted from purchase
-- [ ] Premium pricing tiers
+- [x] Reserved names restricted (availability API checks)
+- [x] Premium pricing tiers (name-pricing.ts)
+- [ ] Verify payment flow works end-to-end
 
-### Auction System
-- [ ] Auction database schema (auctions, bids)
-- [ ] Bidding API endpoints
-- [ ] Auction UX (current bid, time remaining, history)
-- [ ] Outbid notifications
-- [ ] Auction end handling
+### Auction System - BACKEND COMPLETE
+- [x] Database schema: `Nip05Auction`, `Nip05Bid`, `Nip05Transfer` models
+- [x] API endpoints: `/api/v1/nip05/marketplace/auctions/*`
+- [x] Bidding with min increment enforcement
+- [x] Auction finalization endpoint
+- [x] Frontend: Auction cards, bid history, time remaining
+- [ ] Outbid notifications (push)
+- [ ] Scheduled auction end job
 
-### Flat Price Marketplace
-- [ ] Curated premium NIP-05s with fixed prices
-- [ ] Browse/filter premium names
-- [ ] Direct purchase flow
+### Flat Price Marketplace - BACKEND COMPLETE
+- [x] API: `/api/v1/nip05/marketplace/listings`
+- [x] Browse/filter premium names (MarketplacePage tabs)
+- [x] Direct purchase flow endpoint
+- [ ] Actual payment integration
 
-### User Resale Marketplace
-- [ ] Users list owned NIP-05s for sale
-- [ ] Sell lease remainder OR lifetime
-- [ ] Transfer initiation system
-- [ ] 5% platform fee on sales
-- [ ] Escrow handling
+### User Resale Marketplace - BACKEND COMPLETE  
+- [x] Listing creation for owned NIP-05s
+- [x] Lease remainder vs lifetime sale mode
+- [x] Transfer initiation with escrow records
+- [x] 5% platform fee calculation
+- [ ] Actual escrow funds handling
 
 ### Database Schema
 - [ ] Auctions table
