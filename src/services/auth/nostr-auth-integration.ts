@@ -15,9 +15,10 @@ try {
     if (token) {
       try {
         // Try to decode as JWT first
-        const decoded = jwt.verify(token, jwtSecret) as { npub?: string; pubkey?: string; role?: string };
+        const decoded = jwt.verify(token, jwtSecret) as { sub?: string; npub?: string; pubkey?: string; role?: string };
+        // sub is the hex pubkey in our JWT implementation
+        let pubkey = decoded.sub || decoded.pubkey || '';
         let npub = decoded.npub || '';
-        let pubkey = decoded.pubkey || '';
         
         // If we have pubkey but not npub, encode it
         if (pubkey && !npub) {
