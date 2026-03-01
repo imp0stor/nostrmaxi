@@ -14,6 +14,109 @@ function unique<T>(arr: T[]): T[] {
   return [...new Set(arr)];
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizedRelaySet(relays: string[]): string[] {
+  return unique(relays.filter(Boolean));
+}
+
+function normalizePubkey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+interface FollowersQueryDiagnostics {
+  attempts: number;
+  hadPartialSuccess: boolean;
+  relayErrors: string[];
+  usedCached: boolean;
+}
+
+interface FollowersCacheEntry {
+  at: number;
+  followers: string[];
+}
+
+const FOLLOWERS_QUERY_TIMEOUT_MS = 12000;
+const FOLLOWERS_MAX_RETRIES = 3;
+const FOLLOWERS_INITIAL_BACKOFF_MS = 450;
+const FOLLOWERS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getFollowersCacheKey(pubkey: string): string {
+  return `nostrmaxi:followers:${pubkey}`;
+}
+
+function readFollowersCache(pubkey: string): FollowersCacheEntry | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    const raw = window.localStorage.getItem(getFollowersCacheKey(pubkey));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as FollowersCacheEntry;
+    if (!parsed?.at || !Array.isArray(parsed.followers)) return null;
+    if ((Date.now() - parsed.at) > FOLLOWERS_CACHE_TTL_MS) return null;
+    return {
+      at: parsed.at,
+      followers: unique(parsed.followers.map(normalizePubkey)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeFollowersCache(pubkey: string, followers: string[]): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const payload: FollowersCacheEntry = {
+      at: Date.now(),
+      followers: unique(followers.map(normalizePubkey)),
+    };
+    window.localStorage.setItem(getFollowersCacheKey(pubkey), JSON.stringify(payload));
+  } catch {
+    // Non-fatal cache write failure.
+  }
+}
+
+async function queryFollowersFromRelays(
+  pool: SimplePool,
+  pubkey: string,
+  relays: string[],
+): Promise<{ followers: string[]; partial: boolean; relayErrors: string[] }> {
+  const settled = await Promise.allSettled(relays.map(async (relay) => {
+    const events = await pool.querySync(
+      [relay],
+      {
+        kinds: [3],
+        '#p': [pubkey],
+        limit: 1000,
+      } as any,
+      { maxWait: FOLLOWERS_QUERY_TIMEOUT_MS },
+    );
+    return events;
+  }));
+
+  const followers = new Set<string>();
+  const relayErrors: string[] = [];
+  let successCount = 0;
+
+  settled.forEach((result, idx) => {
+    if (result.status === 'fulfilled') {
+      successCount += 1;
+      result.value.forEach((event) => {
+        if (event?.pubkey) followers.add(normalizePubkey(event.pubkey));
+      });
+      return;
+    }
+    relayErrors.push(`${relays[idx]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`);
+  });
+
+  return {
+    followers: [...followers],
+    partial: successCount > 0 && successCount < relays.length,
+    relayErrors,
+  };
+}
+
 export async function loadFollowing(pubkey: string, relays: string[] = DEFAULT_RELAYS): Promise<string[]> {
   const pool = new SimplePool();
   try {
@@ -243,18 +346,73 @@ export async function loadProfileActivity(pubkey: string, relays?: string[], con
   }
 }
 
-export async function loadFollowers(pubkey: string, relays: string[] = DEFAULT_RELAYS): Promise<string[]> {
-  const pool = new SimplePool();
-  try {
-    const contactEvents = await pool.querySync(relays, {
-      kinds: [3],
-      '#p': [pubkey],
-      limit: 500,
-    } as any);
-    return unique(contactEvents.map((e) => e.pubkey));
-  } finally {
-    pool.close(relays);
+export async function loadFollowersWithDiagnostics(pubkey: string, relays: string[] = DEFAULT_RELAYS): Promise<{ followers: string[]; diagnostics: FollowersQueryDiagnostics }> {
+  const relayPoolCandidates: string[][] = [];
+  const requested = normalizedRelaySet(relays);
+  const defaults = normalizedRelaySet(DEFAULT_RELAYS);
+  const fallback = normalizedRelaySet(FALLBACK_RELAYS);
+
+  if (requested.length > 0) relayPoolCandidates.push(requested);
+  if (defaults.length > 0 && defaults.join(',') !== requested.join(',')) relayPoolCandidates.push(defaults);
+  if (fallback.length > 0 && fallback.join(',') !== requested.join(',') && fallback.join(',') !== defaults.join(',')) {
+    relayPoolCandidates.push(fallback);
   }
+
+  const cached = readFollowersCache(pubkey);
+  const diagnostics: FollowersQueryDiagnostics = {
+    attempts: 0,
+    hadPartialSuccess: false,
+    relayErrors: [],
+    usedCached: false,
+  };
+
+  for (const relaySet of relayPoolCandidates) {
+    let backoffMs = FOLLOWERS_INITIAL_BACKOFF_MS;
+    for (let attempt = 0; attempt < FOLLOWERS_MAX_RETRIES; attempt += 1) {
+      const pool = new SimplePool();
+      try {
+        diagnostics.attempts += 1;
+        const { followers, partial, relayErrors } = await queryFollowersFromRelays(pool, pubkey, relaySet);
+        diagnostics.hadPartialSuccess = diagnostics.hadPartialSuccess || partial;
+        if (relayErrors.length > 0) diagnostics.relayErrors.push(...relayErrors);
+
+        if (followers.length > 0 || partial) {
+          writeFollowersCache(pubkey, followers);
+          return {
+            followers,
+            diagnostics,
+          };
+        }
+      } catch (error) {
+        diagnostics.relayErrors.push(error instanceof Error ? error.message : String(error));
+      } finally {
+        pool.close(relaySet);
+      }
+
+      if (attempt < FOLLOWERS_MAX_RETRIES - 1) {
+        await delay(backoffMs);
+        backoffMs *= 2;
+      }
+    }
+  }
+
+  if (cached && cached.followers.length > 0) {
+    diagnostics.usedCached = true;
+    return {
+      followers: cached.followers,
+      diagnostics,
+    };
+  }
+
+  return {
+    followers: [],
+    diagnostics,
+  };
+}
+
+export async function loadFollowers(pubkey: string, relays: string[] = DEFAULT_RELAYS): Promise<string[]> {
+  const { followers } = await loadFollowersWithDiagnostics(pubkey, relays);
+  return followers;
 }
 
 export async function followPubkey(currentPubkey: string, targetPubkey: string, signEventFn: (evt: Omit<NostrEvent, 'id' | 'sig'>) => Promise<NostrEvent | null>, publishFn: (evt: NostrEvent) => Promise<any>, relays: string[] = DEFAULT_RELAYS): Promise<boolean> {

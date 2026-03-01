@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { encodeNpub, publishEvent, signEvent, truncateNpub } from '../lib/nostr';
 import { fetchProfilesBatchCached } from '../lib/profileCache';
 import { getDefaultRelays, getRelaysForUser } from '../lib/relayConfig';
-import { followPubkey, loadFollowers, loadFollowing, unfollowPubkey } from '../lib/social';
+import { followPubkey, loadFollowersWithDiagnostics, loadFollowing, unfollowPubkey } from '../lib/social';
 import type { NostrProfile } from '../types';
 import connectionsIcon from '../assets/icons/connections.png';
 
@@ -27,8 +27,12 @@ type ConnectionsState = {
 
 type BusyAction = 'follow' | 'unfollow' | 'mute' | 'unmute' | 'block' | 'unblock';
 
+function normalizePubkey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function unique(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
+  return [...new Set(values.filter(Boolean).map(normalizePubkey))];
 }
 
 function parsePubkeysFromListEvents(events: Array<{ kind: number; tags: string[][] }>): { muted: string[]; blocked: string[] } {
@@ -160,10 +164,17 @@ export function ConnectionsPage() {
 
       try {
         const relays = await getRelaysForUser(user.pubkey).catch(() => getDefaultRelays());
-        const [following, followers] = await Promise.all([
+        const [following, followersResult] = await Promise.all([
           loadFollowing(user.pubkey, relays),
-          loadFollowers(user.pubkey, relays),
+          loadFollowersWithDiagnostics(user.pubkey, relays),
         ]);
+        const followers = followersResult.followers;
+
+        if (followersResult.diagnostics.usedCached) {
+          setError('Live follower query timed out on relays. Showing recently cached followers.');
+        } else if (followersResult.diagnostics.hadPartialSuccess) {
+          setError('Some relays failed during follower lookup. Showing partial results from reachable relays.');
+        }
 
         const pool = new SimplePool();
         let listEvents: Array<{ kind: number; tags: string[][] }> = [];
@@ -174,11 +185,13 @@ export function ConnectionsPage() {
         }
 
         const { muted, blocked } = parsePubkeysFromListEvents(listEvents);
-        const followingSet = new Set(following);
-        const followersSet = new Set(followers);
-        const mutuals = following.filter((pubkey) => followersSet.has(pubkey));
+        const normalizedFollowing = unique(following);
+        const normalizedFollowers = unique(followers);
+        const followingSet = new Set(normalizedFollowing);
+        const followersSet = new Set(normalizedFollowers);
+        const mutuals = normalizedFollowing.filter((pubkey) => followersSet.has(pubkey));
 
-        const allPubkeys = unique([...following, ...followers, ...mutuals, ...muted, ...blocked]);
+        const allPubkeys = unique([...normalizedFollowing, ...normalizedFollowers, ...mutuals, ...muted, ...blocked]);
         const profiles = allPubkeys.length > 0
           ? await fetchProfilesBatchCached(allPubkeys, relays)
           : new Map<string, NostrProfile | null>();
@@ -212,6 +225,7 @@ export function ConnectionsPage() {
   const followingCards = useMemo(() => state.following.map((pk) => buildCard(pk, state.profiles)), [state.following, state.profiles]);
   const mutualCards = useMemo(() => state.mutuals.map((pk) => buildCard(pk, state.profiles)), [state.mutuals, state.profiles]);
   const followerCards = useMemo(() => state.followers.map((pk) => buildCard(pk, state.profiles)), [state.followers, state.profiles]);
+  const followingSet = useMemo(() => new Set(state.following.map(normalizePubkey)), [state.following]);
   const mutedBlockedPubkeys = useMemo(() => unique([...state.muted, ...state.blocked]), [state.muted, state.blocked]);
   const mutedBlockedCards = useMemo(() => mutedBlockedPubkeys.map((pk) => buildCard(pk, state.profiles)), [mutedBlockedPubkeys, state.profiles]);
 
@@ -220,10 +234,11 @@ export function ConnectionsPage() {
   };
 
   const updateFollowOptimistic = (targetPubkey: string, shouldFollow: boolean) => {
+    const normalizedTarget = normalizePubkey(targetPubkey);
     setState((prev) => {
       const nextFollowing = shouldFollow
-        ? unique([...prev.following, targetPubkey])
-        : prev.following.filter((pk) => pk !== targetPubkey);
+        ? unique([...prev.following, normalizedTarget])
+        : prev.following.filter((pk) => pk !== normalizedTarget);
       const nextFollowers = prev.followers;
       const followersSet = new Set(nextFollowers);
       return {
@@ -235,16 +250,17 @@ export function ConnectionsPage() {
   };
 
   const updateListOptimistic = (kind: 10000 | 10001, targetPubkey: string, include: boolean) => {
+    const normalizedTarget = normalizePubkey(targetPubkey);
     setState((prev) => {
       if (kind === 10000) {
         const next = include
-          ? unique([...prev.muted, targetPubkey])
-          : prev.muted.filter((pk) => pk !== targetPubkey);
+          ? unique([...prev.muted, normalizedTarget])
+          : prev.muted.filter((pk) => pk !== normalizedTarget);
         return { ...prev, muted: next };
       }
       const next = include
-        ? unique([...prev.blocked, targetPubkey])
-        : prev.blocked.filter((pk) => pk !== targetPubkey);
+        ? unique([...prev.blocked, normalizedTarget])
+        : prev.blocked.filter((pk) => pk !== normalizedTarget);
       return { ...prev, blocked: next };
     });
   };
@@ -253,20 +269,21 @@ export function ConnectionsPage() {
     if (!user?.pubkey) return;
     if (!shouldFollow && !window.confirm('Unfollow this user?')) return;
 
+    const normalizedTarget = normalizePubkey(targetPubkey);
     const previous = state;
-    setBusy(targetPubkey, shouldFollow ? 'follow' : 'unfollow');
-    updateFollowOptimistic(targetPubkey, shouldFollow);
+    setBusy(normalizedTarget, shouldFollow ? 'follow' : 'unfollow');
+    updateFollowOptimistic(normalizedTarget, shouldFollow);
 
     const ok = shouldFollow
-      ? await followPubkey(user.pubkey, targetPubkey, signEvent, publishEvent)
-      : await unfollowPubkey(user.pubkey, targetPubkey, signEvent, publishEvent);
+      ? await followPubkey(user.pubkey, normalizedTarget, signEvent, publishEvent)
+      : await unfollowPubkey(user.pubkey, normalizedTarget, signEvent, publishEvent);
 
     if (!ok) {
       setState(previous);
       setError(`Failed to ${shouldFollow ? 'follow' : 'unfollow'} user. Please try again.`);
     }
 
-    setBusy(targetPubkey, undefined);
+    setBusy(normalizedTarget, undefined);
   };
 
   const onToggleList = async (kind: 10000 | 10001, targetPubkey: string, include: boolean) => {
@@ -275,14 +292,15 @@ export function ConnectionsPage() {
     const label = kind === 10000 ? 'mute' : 'block';
     if (include && !window.confirm(`Are you sure you want to ${label} this user?`)) return;
 
+    const normalizedTarget = normalizePubkey(targetPubkey);
     const previous = state;
-    setBusy(targetPubkey, include ? label as BusyAction : (`un${label}` as BusyAction));
-    updateListOptimistic(kind, targetPubkey, include);
+    setBusy(normalizedTarget, include ? label as BusyAction : (`un${label}` as BusyAction));
+    updateListOptimistic(kind, normalizedTarget, include);
 
     const currentList = kind === 10000 ? previous.muted : previous.blocked;
     const nextList = include
-      ? unique([...currentList, targetPubkey])
-      : currentList.filter((pk) => pk !== targetPubkey);
+      ? unique([...currentList, normalizedTarget])
+      : currentList.filter((pk) => pk !== normalizedTarget);
 
     const ok = await publishPubkeyListUpdate(kind, user.pubkey, nextList);
 
@@ -291,7 +309,7 @@ export function ConnectionsPage() {
       setError(`Failed to ${include ? label : `un${label}`} user. Please try again.`);
     }
 
-    setBusy(targetPubkey, undefined);
+    setBusy(normalizedTarget, undefined);
   };
 
   if (!isAuthenticated) {
@@ -363,7 +381,7 @@ export function ConnectionsPage() {
           loading={loading}
           emptyLabel="No followers found yet."
           renderActions={(card) => {
-            const alreadyFollowing = state.following.includes(card.pubkey);
+            const alreadyFollowing = followingSet.has(normalizePubkey(card.pubkey));
             return (
               <>
                 {!alreadyFollowing ? (
