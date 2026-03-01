@@ -1149,21 +1149,6 @@ export function FeedPage() {
           </div>
         ) : null}
 
-        {diagnostics ? (
-          <div className="cy-card p-4 text-sm">
-            <p className="cy-kicker">RELAY STATUS</p>
-            <p className="text-cyan-200 mt-1">
-              Mode: <span className="font-semibold">{activeCustomFeedId === 'bookmarks' ? 'Saved / Bookmarks' : (activeCustomFeed?.title || FEED_MODE_LABELS[diagnostics.mode])}</span> · Following: {diagnostics.followingCount} · Events: {diagnostics.eventCount}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {diagnostics.relayStatuses.map((relay) => (
-                <button key={relay.relay} type="button" className={`cy-chip ${relay.ok ? '' : 'border-red-500/60 text-red-300'}`} onClick={() => { setRelayInput(relay.relay); setShowRelayModal(true); }} aria-label={`Open relay details for ${relay.relay}`}>
-                  {relay.ok ? '●' : '○'} {relay.relay.replace('wss://', '')}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         {loading ? <div className="cy-card p-6">Loading feed from relays…</div> : null}
         {loadError ? <div className="cy-card p-6 text-red-300">Feed failed to load: {loadError}</div> : null}
