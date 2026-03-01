@@ -57,6 +57,7 @@ import { Nip05MarketplaceModule } from './nip05-marketplace/nip05-marketplace.mo
     HealthModule,
     MetricsModule,
     AuthModule,
+    Nip05MarketplaceModule,  // Must be before Nip05Module to avoid :address wildcard matching
     Nip05Module,
     WotModule,
     PaymentsModule,
@@ -79,7 +80,6 @@ import { Nip05MarketplaceModule } from './nip05-marketplace/nip05-marketplace.mo
     AnalyticsModule,
     NotificationsModule,
     PrimitivesModule,
-    Nip05MarketplaceModule,
   ],
 })
 export class AppModule implements NestModule {
