@@ -169,7 +169,8 @@ export default function App() {
         />
 
         <main className="flex-1">
-          <Routes>
+          <div key={location.pathname} className="nm-route-transition">
+            <Routes>
             <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
             <Route path="/pricing" element={<PricingPage />} />
             <Route path="/register" element={<RegistrationPage />} />
@@ -212,7 +213,8 @@ export default function App() {
               }
             />
             <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
-          </Routes>
+            </Routes>
+          </div>
         </main>
 
         <footer className="border-t border-swordfish-muted/30 py-6 text-center text-xs text-swordfish-muted tracking-[0.12em]">

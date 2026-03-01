@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { fetchProfilesBatchCached, profileDisplayName } from '../lib/profileCache';
 import { signEvent, truncateNpub } from '../lib/nostr';
-import { deriveConversationList, loadDirectMessages, sendDirectMessage, type DMConversation } from '../lib/directMessages';
+import { deriveConversationList, loadDirectMessages, sendDirectMessage, type DMConversation, type DMEncryption } from '../lib/directMessages';
 import messagesIcon from '../assets/icons/messages.png';
 
 function parseNsecHex(): string | null {
@@ -11,6 +11,12 @@ function parseNsecHex(): string | null {
   const value = sessionStorage.getItem('nostrmaxi_nsec_hex');
   if (!value || !/^[a-f0-9]{64}$/i.test(value)) return null;
   return value;
+}
+
+function encryptionBadge(mode: DMEncryption): string {
+  if (mode === 'nip44') return '🔒 NIP-44';
+  if (mode === 'nip04') return '🔐 NIP-04';
+  return '⚠️ Unencrypted';
 }
 
 export function MessagesPage() {
@@ -22,6 +28,7 @@ export function MessagesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [manualPubkey, setManualPubkey] = useState('');
+  const [sendMode, setSendMode] = useState<DMEncryption>('nip44');
   const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
 
@@ -33,9 +40,15 @@ export function MessagesPage() {
 
   const canDecryptWithExtension = typeof window !== 'undefined' && Boolean(window.nostr?.nip04?.decrypt);
   const canEncryptWithExtension = typeof window !== 'undefined' && Boolean(window.nostr?.nip04?.encrypt);
+  const canNip44DecryptWithExtension = typeof window !== 'undefined' && Boolean(window.nostr?.nip44?.decrypt);
+  const canSignWithExtension = typeof window !== 'undefined' && Boolean(window.nostr?.signEvent);
+
   const nsecHex = parseNsecHex();
-  const canDecrypt = Boolean(nsecHex || canDecryptWithExtension);
-  const canSend = Boolean(user?.pubkey && (nsecHex || canEncryptWithExtension));
+  const canDecrypt = Boolean(nsecHex || canDecryptWithExtension || canNip44DecryptWithExtension);
+  const canUseNip44Send = Boolean(nsecHex);
+  const canUseNip04Send = Boolean(nsecHex || canEncryptWithExtension);
+  const canUseUnencryptedSend = Boolean(nsecHex || canSignWithExtension);
+  const canSend = sendMode === 'nip44' ? canUseNip44Send : sendMode === 'nip04' ? canUseNip04Send : canUseUnencryptedSend;
 
   const refresh = async () => {
     if (!user?.pubkey) return;
@@ -47,6 +60,7 @@ export function MessagesPage() {
         mePubkey: user.pubkey,
         myPrivateKeyHex: nsecHex,
         nip04Decrypt: window.nostr?.nip04?.decrypt,
+        nip44Decrypt: window.nostr?.nip44?.decrypt,
       });
       const convos = deriveConversationList(items);
       setConversations(convos);
@@ -100,6 +114,7 @@ export function MessagesPage() {
         senderPubkey: user.pubkey,
         recipientPubkey: selectedPubkey,
         message: draft,
+        encryption: sendMode,
         myPrivateKeyHex: nsecHex,
         nip04Encrypt: window.nostr?.nip04?.encrypt,
         signEventFn: signEvent,
@@ -131,9 +146,9 @@ export function MessagesPage() {
     <div className="nm-page max-w-6xl py-6">
       <section className="cy-card p-4">
         <h1 className="text-2xl font-semibold text-cyan-100 flex items-center gap-2"><img src={messagesIcon} alt="" aria-hidden className="nm-icon" />Direct Messages</h1>
-        <p className="cy-muted mt-1">NIP-04 private messaging shell with safe fallbacks.</p>
-        {!canDecrypt ? <p className="text-xs text-amber-300 mt-2">Cannot decrypt existing messages: no nsec session key and signer NIP-04 decrypt is unavailable.</p> : null}
-        {!canSend ? <p className="text-xs text-amber-300 mt-1">Cannot send: signer does not expose NIP-04 encrypt, and no nsec session key is present.</p> : null}
+        <p className="cy-muted mt-1">NIP-44 default DMs with NIP-04 + legacy fallback.</p>
+        {!canDecrypt ? <p className="text-xs text-amber-300 mt-2">Cannot decrypt existing messages: no local nsec key and signer decrypt support is unavailable.</p> : null}
+        {!canUseNip44Send ? <p className="text-xs text-amber-300 mt-1">NIP-44 sending requires local nsec/private key in session (gift-wrap kind 1059).</p> : null}
       </section>
 
       {loadError ? <div className="cy-card p-3 text-sm text-red-200 border border-red-400/50">{loadError}</div> : null}
@@ -200,6 +215,7 @@ export function MessagesPage() {
                       className={`rounded-lg px-3 py-2 border text-sm ${message.outgoing ? 'ml-auto max-w-[80%] border-cyan-300/60 bg-cyan-500/10 text-cyan-50' : 'mr-auto max-w-[80%] border-cyan-500/30 bg-slate-950/40 text-cyan-100'}`}
                     >
                       <p>{message.plaintext || '🔒 Encrypted message (unable to decrypt in current session)'}</p>
+                      <p className="mt-1 text-[11px] text-cyan-300">{encryptionBadge(message.encryption)}</p>
                       {message.decryptionError ? <p className="mt-1 text-[11px] text-amber-300">Decrypt error: {message.decryptionError}</p> : null}
                       <p className="mt-1 text-[11px] text-cyan-400">{new Date(message.createdAt * 1000).toLocaleString()}</p>
                     </div>
@@ -208,15 +224,33 @@ export function MessagesPage() {
               </div>
 
               <footer className="pt-3 mt-3 border-t border-cyan-500/25 space-y-2">
+                <div className="rounded-lg border border-cyan-500/25 p-2">
+                  <p className="text-xs text-cyan-300 mb-1">Encryption for new message</p>
+                  <div className="flex flex-wrap gap-3 text-xs text-cyan-100">
+                    <label className="inline-flex items-center gap-1">
+                      <input type="radio" name="send-mode" checked={sendMode === 'nip44'} onChange={() => setSendMode('nip44')} />
+                      🔒 NIP-44
+                    </label>
+                    <label className="inline-flex items-center gap-1">
+                      <input type="radio" name="send-mode" checked={sendMode === 'nip04'} onChange={() => setSendMode('nip04')} />
+                      🔐 NIP-04
+                    </label>
+                    <label className="inline-flex items-center gap-1">
+                      <input type="radio" name="send-mode" checked={sendMode === 'unencrypted'} onChange={() => setSendMode('unencrypted')} />
+                      ⚠️ Unencrypted
+                    </label>
+                  </div>
+                </div>
+
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
-                  placeholder={canSend ? 'Write a private message…' : 'Cannot send in this session (missing NIP-04 encrypt capability)'}
+                  placeholder={canSend ? 'Write a private message…' : `Cannot send using ${encryptionBadge(sendMode)} with current signer/session capabilities`}
                   className="w-full rounded-lg bg-slate-950/80 border border-cyan-500/30 px-3 py-2 min-h-[88px] text-sm"
                   disabled={!canSend || sendState === 'sending'}
                 />
                 {sendError ? <p className="text-xs text-red-300">{sendError}</p> : null}
-                {sendState === 'sent' ? <p className="text-xs text-emerald-300">Message sent.</p> : null}
+                {sendState === 'sent' ? <p className="text-xs text-emerald-300">Message sent ({encryptionBadge(sendMode)}).</p> : null}
                 <div className="flex justify-end">
                   <button
                     type="button"

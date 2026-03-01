@@ -150,7 +150,13 @@ export function OnboardingPage() {
         </div>
       </header>
 
-      {loading ? <div className="cy-card p-4 text-cyan-200">Loading onboarding data…</div> : null}
+      {loading ? (
+        <div className="cy-card p-4 space-y-3" aria-label="Loading onboarding data">
+          <div className="nm-skeleton h-4 w-1/3" />
+          <div className="nm-skeleton h-3 w-full" />
+          <div className="nm-skeleton h-3 w-5/6" />
+        </div>
+      ) : null}
       {error ? <div className="cy-card p-4 border-red-400/40 text-red-200 text-sm">{error}</div> : null}
 
       {!loading ? renderStep() : null}

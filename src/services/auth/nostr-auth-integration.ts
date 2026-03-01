@@ -1,3 +1,6 @@
+import * as jwt from 'jsonwebtoken';
+import { nip19 } from 'nostr-tools';
+
 let verifyNostrAuth: (jwtSecret: string) => (req: any, res: any, next: () => void) => void;
 let requireAuth: (req: any, res: any, next: () => void) => void;
 let requireAdmin: (adminList?: string[]) => (req: any, res: any, next: () => void) => void;
@@ -10,7 +13,35 @@ try {
     const authHeader = req?.headers?.authorization || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (token) {
-      req.user = req.user || { pubkey: token, npub: token, role: 'user', jwtSecret };
+      try {
+        // Try to decode as JWT first
+        const decoded = jwt.verify(token, jwtSecret) as { npub?: string; pubkey?: string; role?: string };
+        let npub = decoded.npub || '';
+        let pubkey = decoded.pubkey || '';
+        
+        // If we have pubkey but not npub, encode it
+        if (pubkey && !npub) {
+          npub = nip19.npubEncode(pubkey);
+        }
+        // If we have npub but not pubkey, decode it
+        if (npub && !pubkey) {
+          try {
+            const dec = nip19.decode(npub);
+            pubkey = typeof dec.data === 'string' ? dec.data : '';
+          } catch {}
+        }
+        
+        req.user = { pubkey, npub, role: decoded.role || 'user' };
+      } catch {
+        // If JWT decode fails, check if token itself is an npub
+        if (token.startsWith('npub1')) {
+          try {
+            const dec = nip19.decode(token);
+            const pubkey = typeof dec.data === 'string' ? dec.data : '';
+            req.user = { pubkey, npub: token, role: 'user' };
+          } catch {}
+        }
+      }
     }
     next();
   };

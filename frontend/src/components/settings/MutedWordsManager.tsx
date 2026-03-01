@@ -111,7 +111,12 @@ export function MutedWordsManager() {
         ))}
       </div>
 
-      {loading ? <div className="text-sm text-cyan-400">Loading...</div> : null}
+      {loading ? (
+        <div className="space-y-2" aria-label="Loading muted words">
+          <div className="nm-skeleton h-8 w-44 rounded-full" />
+          <div className="nm-skeleton h-8 w-36 rounded-full" />
+        </div>
+      ) : null}
       {saving ? <div className="text-sm text-cyan-400">Saving...</div> : null}
       {error ? <div className="text-sm text-red-400">{error}</div> : null}
     </div>

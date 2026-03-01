@@ -1010,7 +1010,7 @@ export function FeedPage() {
 
   return (
     <div className="nm-page max-w-5xl">
-      <section className="cy-card nm-surface p-6">
+      <section className={`cy-card nm-surface p-6 ${successState === 'post' ? 'nm-publish-ripple' : ''}`}>
         <p className="cy-kicker mb-2">COMPOSER / KIND-1</p>
         <label htmlFor="feed-composer" className="sr-only">Compose event</label>
         <textarea
@@ -1158,16 +1158,24 @@ export function FeedPage() {
 
 
         {successState ? (
-          <div className="cy-card p-4 border border-orange-400/45 bg-orange-500/10 flex items-center gap-3">
+          <div className={`cy-card p-4 border flex items-center gap-3 ${successState === 'post' ? 'border-emerald-400/45 bg-emerald-500/10 nm-publish-ripple' : 'border-orange-400/45 bg-orange-500/10 nm-zap-flash'}`}>
             <img src={composeIcon} alt="" aria-hidden className="nm-icon" />
-            <p className="text-sm text-orange-100">{successState === 'post' ? 'Post published successfully.' : 'Zap sent successfully.'}</p>
+            <p className={`text-sm ${successState === 'post' ? 'text-emerald-100' : 'text-orange-100'}`}>{successState === 'post' ? 'Post published successfully.' : 'Zap sent successfully.'}</p>
           </div>
         ) : null}
 
         {loading ? (
-          <div className="cy-card p-6 flex items-center justify-center gap-3 text-orange-200">
-            <img src={feedIcon} alt="" aria-hidden className="nm-icon animate-pulse" />
-            <span>Loading feed from relays…</span>
+          <div className="cy-card p-6 space-y-4" aria-label="Loading feed">
+            <div className="flex items-center gap-3">
+              <div className="nm-skeleton h-10 w-10 rounded-full" />
+              <div className="space-y-2 flex-1">
+                <div className="nm-skeleton h-3 w-1/3" />
+                <div className="nm-skeleton h-3 w-1/4" />
+              </div>
+            </div>
+            <div className="nm-skeleton h-3 w-full" />
+            <div className="nm-skeleton h-3 w-5/6" />
+            <div className="nm-skeleton h-24 w-full rounded-xl" />
           </div>
         ) : null}
         {loadError ? <div className="cy-card p-6 text-red-300">Feed failed to load: {loadError}</div> : null}
@@ -1200,7 +1208,7 @@ export function FeedPage() {
                 <div className="flex items-center gap-3">
                   <Avatar pubkey={item.pubkey} size={44} />
                   <div>
-                    <Link to={`/profile/${item.pubkey}`} className="text-cyan-300 font-semibold">
+                    <Link to={`/profile/${item.pubkey}`} className="text-cyan-300 font-semibold nm-link-underline">
                       {hasNip05 ? item.profile?.nip05 : displayName}
                     </Link>
                     {!hasNip05 ? <p className="text-xs text-cyan-400/80">{displayName}</p> : null}
@@ -1258,7 +1266,7 @@ export function FeedPage() {
                   {hasZapData ? (
                     <button
                       type="button"
-                      className="inline-flex items-center gap-2 rounded-full border border-orange-500/25 bg-orange-500/[0.05] px-2.5 py-1 text-xs text-orange-100 hover:border-orange-400/45 hover:bg-orange-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
+                      className={`inline-flex items-center gap-2 rounded-full border border-orange-500/25 bg-orange-500/[0.05] px-2.5 py-1 text-xs text-orange-100 hover:border-orange-400/45 hover:bg-orange-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80 ${successState === 'zap' ? 'nm-zap-flash' : ''}`}
                       onClick={() => setZapBreakdownEventId(item.id)}
                       aria-label={`Open zap details for post ${item.id}`}
                     >
@@ -1312,7 +1320,7 @@ export function FeedPage() {
                   <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('like', item)} disabled={busyId === `like-${item.id}`}>Like</button>
                   <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('repost', item)} disabled={busyId === `repost-${item.id}`}>Repost</button>
                   <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('reply', item)} disabled={busyId === `reply-${item.id}`}>Reply</button>
-                  <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
+                  <button className={`cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80 ${successState === 'zap' ? 'nm-zap-flash' : ''}`} onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
                   {item.pubkey === user?.pubkey ? <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onPin(item)}>📌 Pin to Profile</button> : null}
                   <BookmarkButton eventId={item.id} pubkey={user?.pubkey} />
                   <PostActionMenu item={item} viewerPubkey={user?.pubkey} />
@@ -1323,7 +1331,7 @@ export function FeedPage() {
         })}
 
         <div ref={observerRef} className="h-4" />
-        {loadingMore ? <div className="cy-card p-4 text-sm">Loading more events…</div> : null}
+        {loadingMore ? <div className="cy-card p-4 space-y-2" aria-label="Loading more events"><div className="nm-skeleton h-3 w-1/2" /><div className="nm-skeleton h-3 w-2/3" /></div> : null}
       </section>
 
       {showMuteModal ? (

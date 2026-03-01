@@ -109,9 +109,14 @@
   .cy-btn:focus-visible,
   .cy-btn-secondary:focus-visible,
   .nav-link:focus-visible,
-  a:focus-visible {
-    outline: 2px solid rgba(251, 146, 60, 0.85);
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid rgba(249, 115, 22, 0.92);
     outline-offset: 2px;
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.2), 0 0 18px rgba(249, 115, 22, 0.18);
   }
 
   .cy-title {
@@ -312,6 +317,69 @@
 @keyframes content-fade-cinematic {
   0% { opacity: 0; transform: translateY(6px) scale(0.995); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes nm-zap-flash {
+  0% { box-shadow: 0 0 0 rgba(249, 115, 22, 0); background-color: rgba(249, 115, 22, 0); }
+  25% { box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.8), 0 0 26px rgba(249, 115, 22, 0.46); background-color: rgba(249, 115, 22, 0.2); }
+  100% { box-shadow: 0 0 0 rgba(249, 115, 22, 0); background-color: rgba(249, 115, 22, 0); }
+}
+
+@keyframes nm-publish-ripple {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.35); }
+  60% { transform: scale(1.008); box-shadow: 0 0 0 12px rgba(34, 197, 94, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@keyframes nm-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@layer components {
+  .nm-zap-flash {
+    animation: nm-zap-flash 220ms ease-out;
+  }
+
+  .nm-publish-ripple {
+    animation: nm-publish-ripple 280ms ease-out;
+  }
+
+  .nm-skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    background: linear-gradient(90deg, rgba(38, 38, 38, 0.95) 25%, rgba(64, 64, 64, 0.95) 50%, rgba(38, 38, 38, 0.95) 75%);
+    background-size: 220% 100%;
+    animation: nm-shimmer 1.3s ease-in-out infinite;
+  }
+
+  .nm-link-underline {
+    position: relative;
+    text-decoration: none;
+  }
+
+  .nm-link-underline::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: -0.08rem;
+    width: 100%;
+    height: 1px;
+    background: rgba(249, 115, 22, 0.8);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 200ms ease;
+  }
+
+  .nm-link-underline:hover::after,
+  .nm-link-underline:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  .nm-route-transition {
+    animation: content-fade-cinematic 220ms ease;
+  }
 }
 
 *::-webkit-scrollbar {

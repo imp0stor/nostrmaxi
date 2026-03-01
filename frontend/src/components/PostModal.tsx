@@ -199,14 +199,11 @@ export function PostModal({ eventId, isOpen, onClose, initialMetrics }: PostModa
           </div>
 
           {loading ? (
-            <div className="p-6 space-y-3">
-              <div className="flex items-center gap-2 text-gray-300 text-sm">
-                <span className="inline-block h-4 w-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" aria-hidden="true" />
-                Loading...
-              </div>
-              <div className="h-4 bg-gray-800/70 rounded animate-pulse" />
-              <div className="h-4 w-10/12 bg-gray-800/70 rounded animate-pulse" />
-              <div className="h-20 bg-gray-800/70 rounded animate-pulse" />
+            <div className="p-6 space-y-3" aria-label="Loading post details">
+              <div className="nm-skeleton h-4 w-28" />
+              <div className="nm-skeleton h-4 w-full" />
+              <div className="nm-skeleton h-4 w-10/12" />
+              <div className="nm-skeleton h-20 w-full" />
             </div>
           ) : error ? (
             <div className="p-6 space-y-3">
@@ -241,8 +238,8 @@ export function PostModal({ eventId, isOpen, onClose, initialMetrics }: PostModa
                 <div className="rounded bg-gray-800/60 px-3 py-2 border border-gray-700/60">❤️ {metrics.reactions}</div>
                 <div className="rounded bg-gray-800/60 px-3 py-2 border border-gray-700/60">🔁 {metrics.reposts}</div>
                 <div className="rounded bg-gray-800/60 px-3 py-2 border border-gray-700/60">💬 {metrics.replies}</div>
-                <div className="rounded bg-gray-800/60 px-3 py-2 border border-gray-700/60">⚡ {metrics.zaps}</div>
-                <div className="rounded bg-gray-800/60 px-3 py-2 border border-gray-700/60">{metrics.zapSats.toLocaleString()} sats</div>
+                <div className="rounded bg-gray-800/60 px-3 py-2 border border-gray-700/60 nm-zap-flash">⚡ {metrics.zaps}</div>
+                <div className="rounded bg-gray-800/60 px-3 py-2 border border-gray-700/60 nm-zap-flash">{metrics.zapSats.toLocaleString()} sats</div>
               </div>
 
               <div className="flex flex-wrap gap-2 pt-2">
