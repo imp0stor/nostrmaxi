@@ -28,13 +28,21 @@
   - Fixed: normalize note1/nevent1 refs, handle q tags
   - Commit: `4674378`
 
-- [ ] Missing sidebar icons
-  - Home, Media, Lists, Marketplace, Manage, Ecosystem, NIP-05
-  - Subagent working on this
+- [x] Missing sidebar icons
+  - Fixed: All 7 icons generated and wired up
+  - Commit: `d4669db`
 
-- [ ] Connection actions need testing
-  - Follow/Unfollow/Mute/Block buttons added
-  - Need user verification
+- [x] Simplify Mute/Block to single Mute button
+  - Fixed: Removed Block (same as Mute on Nostr)
+  - Commit: `d4669db`
+
+- [ ] Followers list fails to load sometimes
+  - Relay query unreliable for #p tag search
+  - Subagent working on retry logic
+
+- [ ] Some followers missing "Follow back" button
+  - Should show for anyone not in Following list
+  - Investigating
 
 ---
 
