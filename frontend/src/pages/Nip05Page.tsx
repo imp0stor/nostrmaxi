@@ -175,15 +175,15 @@ export function Nip05Page() {
       </p>
 
       {externalIdentities.length > 0 && (
-        <div className="mb-6 p-4 rounded-xl border border-blue-500/40 bg-blue-500/10">
-          <p className="text-blue-200 font-medium">External NIP-05 detected on your profile.</p>
-          <p className="text-sm text-blue-100/90 mt-1">
+        <div className="mb-6 p-4 rounded-xl border border-orange-500/35 bg-orange-500/10">
+          <p className="text-neutral-300 font-medium">External NIP-05 detected on your profile.</p>
+          <p className="text-sm text-neutral-300/90 mt-1">
             {hasVerifiedExternal
               ? 'Your existing external NIP-05 is active and recognized. Managed NIP-05 + Lightning is optional.'
               : 'We found an external NIP-05. You can keep using it, or optionally upgrade for managed identity + Lightning tools.'}
           </p>
           <div className="mt-3">
-            <Link to="/pricing" className="inline-flex px-4 py-2 rounded-lg bg-blue-600/70 hover:bg-blue-600 text-white text-sm font-medium">
+            <Link to="/pricing" className="inline-flex px-4 py-2 rounded-lg bg-orange-600/70 hover:bg-orange-600 text-white text-sm font-medium">
               Get NIP-05 + Lightning Address
             </Link>
           </div>
@@ -456,9 +456,9 @@ export function Nip05Page() {
               ) : (
                 <div className="space-y-3">
                   {externalIdentities.map((identity) => (
-                    <div key={identity.address} className="flex items-center justify-between p-4 bg-nostr-darker rounded-lg border border-blue-500/20">
+                    <div key={identity.address} className="flex items-center justify-between p-4 bg-nostr-darker rounded-lg border border-orange-500/20">
                       <div>
-                        <p className="text-blue-300 font-medium">{identity.address}</p>
+                        <p className="text-orange-300 font-medium">{identity.address}</p>
                         <p className="text-gray-500 text-sm">{identity.verificationMessage}</p>
                         <p className="text-xs text-gray-500">Not managed here (read-only)</p>
                       </div>

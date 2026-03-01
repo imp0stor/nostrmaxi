@@ -260,7 +260,7 @@ export function InlineContent({
                 return <PlatformIframeEmbed key={`vid-platform-${token.video.url}-${i}`} title={`${token.video.type} embed`} embedUrl={token.video.embedUrl} sourceUrl={token.video.url} aspect="video" />;
               }
               return (
-                <div key={`vid-${token.video.url}-${i}`} className="overflow-hidden rounded-md border border-blue-900/70 bg-[#060a1a]">
+                <div key={`vid-${token.video.url}-${i}`} className="overflow-hidden rounded-md border border-neutral-800 bg-[#0a0a0a]">
                   <video controls preload="metadata" className="w-full max-h-[26rem] bg-black"><source src={token.video.url} /></video>
                 </div>
               );

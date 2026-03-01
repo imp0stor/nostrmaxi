@@ -21,7 +21,7 @@ const phases = [
     title: 'Phase 2: Content Primitives 📅',
     timeline: 'Weeks 5-8',
     items: ['Book Authorship (Week 5-6)', 'Gift Cards (Week 7)', 'Shopping & Stores (Week 8)'],
-    tone: 'border-blue-500/40 bg-blue-500/5',
+    tone: 'border-orange-500/35 bg-orange-500/5',
   },
   {
     title: 'Phase 3: Community 📅',

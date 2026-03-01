@@ -34,7 +34,7 @@ export function SettingsPage() {
       <header className="cy-card cinematic-card p-5">
         <p className="cy-kicker">PROFILE SETTINGS</p>
         <h1 className="cy-title">Privacy & Safety</h1>
-        <p className="text-blue-200 mt-2 text-sm">Compress controls by default and expand only what you need.</p>
+        <p className="text-neutral-300 mt-2 text-sm">Compress controls by default and expand only what you need.</p>
         <div className="mt-4 flex items-center gap-2">
           <button
             className={`cy-chip text-sm ${tab === 'muted-words' ? 'border-cyan-300 text-cyan-100' : ''}`}

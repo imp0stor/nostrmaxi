@@ -38,7 +38,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = ({ preview }) => 
         {preview.description && (
           <p className="text-gray-400 text-sm line-clamp-3">{preview.description}</p>
         )}
-        <div className="text-blue-400 text-sm mt-2 break-all">{preview.url}</div>
+        <div className="text-orange-400 text-sm mt-2 break-all">{preview.url}</div>
       </div>
     </a>
   );

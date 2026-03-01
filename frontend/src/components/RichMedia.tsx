@@ -157,7 +157,7 @@ export function RichMedia({ images, videos, audios = [], links, compact = false 
         if (video.type === 'vimeo') return <VimeoEmbed key={`${video.url}-${i}`} video={video} />;
         if (video.type !== 'direct') return <PlatformIframeEmbed key={`${video.url}-${i}`} title={`${video.type} embed`} embedUrl={video.embedUrl} sourceUrl={video.url} aspect="video" />;
         return (
-          <div key={`${video.url}-${i}`} className="rounded-md border border-blue-900/80 bg-[#060a1a] overflow-hidden">
+          <div key={`${video.url}-${i}`} className="rounded-md border border-neutral-800 bg-[#0a0a0a] overflow-hidden">
             <video controls preload="metadata" className="w-full max-h-[30rem] bg-black" poster={video.thumbnail}>
               <source src={video.url} />
             </video>

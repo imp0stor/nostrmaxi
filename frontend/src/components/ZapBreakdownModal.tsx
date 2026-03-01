@@ -162,7 +162,7 @@ export function ZapBreakdownModal({ eventId, onClose }: ZapBreakdownModalProps) 
                       </div>
                       
                       {zap.content && (
-                        <p className="mt-2 text-sm text-blue-100/90 break-words">
+                        <p className="mt-2 text-sm text-neutral-300/90 break-words">
                           "{zap.content}"
                         </p>
                       )}

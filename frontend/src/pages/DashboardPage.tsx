@@ -34,7 +34,7 @@ export function DashboardPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`w-full min-h-11 text-left px-3 py-2 border rounded-md ${activeTab === tab.id ? 'border-cyan-400 text-cyan-100 bg-cyan-500/10' : 'border-blue-900/60 text-blue-200'}`}
+              className={`w-full min-h-11 text-left px-3 py-2 border rounded-md ${activeTab === tab.id ? 'border-cyan-400 text-cyan-100 bg-cyan-500/10' : 'border-neutral-800 text-neutral-300'}`}
             >
               {tab.label}
             </button>
@@ -48,13 +48,13 @@ export function DashboardPage() {
             <div className="cy-card cinematic-card p-5">
               <p className="cy-kicker">MANAGE DASHBOARD</p>
               <h1 className="cy-title">Account + NIP-05 + Trust</h1>
-              <p className="text-blue-200 mt-2">Core account controls are grouped into collapsible sections to reduce visual noise.</p>
+              <p className="text-neutral-300 mt-2">Core account controls are grouped into collapsible sections to reduce visual noise.</p>
             </div>
 
             <div className="grid md:grid-cols-3 gap-4">
               <div className="cy-panel p-4"><p className="cy-kicker">TIER</p><p className="text-2xl text-cyan-300 font-semibold">{user?.tier || 'FREE'}</p></div>
               <div className="cy-panel p-4"><p className="cy-kicker">NIP-05</p><p className="text-2xl text-green-300 font-semibold">{user?.nip05s?.length || 0}</p></div>
-              <div className="cy-panel p-4"><p className="cy-kicker">WOT SCORE</p><p className="text-2xl text-blue-300 font-semibold">{user?.wotScore ?? 0}</p></div>
+              <div className="cy-panel p-4"><p className="cy-kicker">WOT SCORE</p><p className="text-2xl text-orange-300 font-semibold">{user?.wotScore ?? 0}</p></div>
             </div>
 
             <CollapsibleSection

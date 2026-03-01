@@ -1191,7 +1191,7 @@ export function FeedPage() {
                     </details>
                   </div>
                 </div>
-                <span className="cy-mono text-xs text-blue-300">{formatTime(item.created_at)}</span>
+                <span className="cy-mono text-xs text-orange-300">{formatTime(item.created_at)}</span>
               </div>
               {notifyByEventId.has(item.id) ? (
                 <div className="mt-2">

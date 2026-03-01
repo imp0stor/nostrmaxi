@@ -57,7 +57,7 @@ export function CollapsibleSection({
               <h3 className="text-cyan-100 text-base sm:text-lg font-semibold tracking-[0.06em]">{title}</h3>
               <span className="text-cyan-300 text-xs">{open ? '▾' : '▸'}</span>
             </div>
-            {subtitle ? <p className="text-xs text-blue-200 mt-1">{subtitle}</p> : null}
+            {subtitle ? <p className="text-xs text-neutral-300 mt-1">{subtitle}</p> : null}
             {!open && summary ? <div className="mt-2 text-xs text-cyan-300/90">{summary}</div> : null}
           </button>
           {rightSlot ? <div className="pt-1">{rightSlot}</div> : null}

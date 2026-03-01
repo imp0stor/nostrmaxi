@@ -23,7 +23,7 @@ interface ProfileCardProps {
 
 const HOP_STYLES: Record<WotHop, string> = {
   1: 'text-emerald-200 border-emerald-400/40 bg-emerald-500/10',
-  2: 'text-blue-200 border-blue-400/40 bg-blue-500/10',
+  2: 'text-neutral-300 border-orange-500/30 bg-orange-500/10',
   3: 'text-slate-300 border-slate-500/40 bg-slate-500/10',
 };
 

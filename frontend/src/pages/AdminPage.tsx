@@ -4,8 +4,8 @@ import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
 import { RelaySyncDebugPanel } from '../components/admin/RelaySyncDebugPanel';
 
-type AdminSectionKey = 'system' | 'relaySync' | 'moderation' | 'names';
-type SystemTabKey = 'identities' | 'sales' | 'audit';
+type AdminSectionKey = 'overview' | 'users' | 'moderation' | 'relayConfig' | 'systemHealth' | 'audit' | 'names';
+type OverviewTabKey = 'identities' | 'sales';
 
 type Identity = {
   id: string;
@@ -28,17 +28,38 @@ type AuditLogRow = {
   createdAt: string;
 };
 
+type AdminUser = {
+  id: string;
+  pubkey: string;
+  npub: string;
+  tier: string;
+  isAdmin: boolean;
+  nip05s: string[];
+  wotScore: number;
+  createdAt: string;
+};
+
+type RelayConfigRow = {
+  key: string;
+  value: unknown;
+  type: string;
+  category: string;
+  description: string;
+};
+
 const adminSections: Array<{ key: AdminSectionKey; label: string; description: string }> = [
-  { key: 'system', label: 'System', description: 'Identity operations, sales snapshots, and audit trail.' },
-  { key: 'relaySync', label: 'Relay Sync', description: 'Relay health, adaptive limiter, and sync diagnostics.' },
-  { key: 'moderation', label: 'Moderation', description: 'Auction and market-intervention actions.' },
-  { key: 'names', label: 'Names', description: 'Reserved, premium, and blocked naming controls.' },
+  { key: 'overview', label: 'Overview', description: 'Identity operations and sales pulse with drillable controls.' },
+  { key: 'users', label: 'User Actions', description: 'User lookup, trust context, and identity ownership drill-down.' },
+  { key: 'moderation', label: 'Moderation', description: 'Auction intervention controls with explicit safety confirmations.' },
+  { key: 'relayConfig', label: 'Relay Config', description: 'Manage relay and blossom configuration, plus discovery actions.' },
+  { key: 'systemHealth', label: 'System Health', description: 'Live service health and relay sync telemetry.' },
+  { key: 'audit', label: 'Audit Logs', description: 'Review all sensitive changes in reverse chronological order.' },
+  { key: 'names', label: 'Name Controls', description: 'Reserved, premium, and blocked naming policy controls.' },
 ];
 
-const systemTabs: Array<{ key: SystemTabKey; label: string }> = [
+const overviewTabs: Array<{ key: OverviewTabKey; label: string }> = [
   { key: 'identities', label: 'Identity Ops' },
   { key: 'sales', label: 'Sales Pulse' },
-  { key: 'audit', label: 'Audit Trail' },
 ];
 
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -57,14 +78,32 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
+async function authenticatedFetch<T>(path: string): Promise<T> {
+  const token = api.getToken();
+  const response = await fetch(path, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Request failed (${response.status})`);
+  }
+  return response.json();
+}
+
 function confirmDangerAction(title: string, message: string): boolean {
   return window.confirm(`${title}\n\n${message}\n\nThis action is logged in the admin audit trail.`);
 }
 
+async function runConfirmedAction(args: { title: string; message: string; onConfirm: () => Promise<void> }) {
+  if (!confirmDangerAction(args.title, args.message)) return;
+  await args.onConfirm();
+}
+
 export function AdminPage() {
   const { isAuthenticated } = useAuth();
-  const [section, setSection] = useState<AdminSectionKey>('system');
-  const [systemTab, setSystemTab] = useState<SystemTabKey>('identities');
+  const [section, setSection] = useState<AdminSectionKey>('overview');
+  const [overviewTab, setOverviewTab] = useState<OverviewTabKey>('identities');
   const [toast, setToast] = useState<string | null>(null);
 
   const notify = (msg: string) => {
@@ -82,13 +121,13 @@ export function AdminPage() {
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-4" aria-label="Admin console">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-orange-100">Admin Console</h1>
-        <p className="text-sm text-orange-200/80">Secure operational controls for live platform management.</p>
+        <p className="text-sm text-orange-200/80">Isolated operations surface for platform safety, reliability, and intervention.</p>
       </header>
 
       {toast ? <div className="cy-card p-2 text-cyan-200" role="status" aria-live="polite">{toast}</div> : null}
 
       <section className="cy-card p-3 space-y-2" aria-labelledby="admin-sections-label">
-        <div id="admin-sections-label" className="text-xs uppercase tracking-wide text-orange-200/70">Sections</div>
+        <div id="admin-sections-label" className="text-xs uppercase tracking-wide text-orange-200/70">Admin IA</div>
         <div className="flex gap-2 flex-wrap" role="tablist" aria-label="Admin sections">
           {adminSections.map((item) => (
             <button
@@ -107,31 +146,126 @@ export function AdminPage() {
       </section>
 
       <section id={`section-panel-${section}`} role="tabpanel" aria-label={activeSection?.label} className="space-y-3">
-        {section === 'system' ? (
+        {section === 'overview' ? (
           <div className="space-y-3">
-            <div className="flex gap-2 flex-wrap" role="tablist" aria-label="System tools">
-              {systemTabs.map((item) => (
+            <div className="flex gap-2 flex-wrap" role="tablist" aria-label="Overview tools">
+              {overviewTabs.map((item) => (
                 <button
                   key={item.key}
                   role="tab"
-                  aria-selected={systemTab === item.key}
-                  className={`cy-chip ${systemTab === item.key ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.22)]' : ''}`}
-                  onClick={() => setSystemTab(item.key)}
+                  aria-selected={overviewTab === item.key}
+                  className={`cy-chip ${overviewTab === item.key ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.22)]' : ''}`}
+                  onClick={() => setOverviewTab(item.key)}
                 >
                   {item.label}
                 </button>
               ))}
             </div>
-            {systemTab === 'identities' ? <IdentitiesTab notify={notify} /> : null}
-            {systemTab === 'sales' ? <SalesTab /> : null}
-            {systemTab === 'audit' ? <AuditTrailTab /> : null}
+            {overviewTab === 'identities' ? <IdentitiesTab notify={notify} /> : null}
+            {overviewTab === 'sales' ? <SalesTab /> : null}
           </div>
         ) : null}
 
-        {section === 'relaySync' ? <RelaySyncDebugPanel /> : null}
+        {section === 'users' ? <UserActionsTab notify={notify} /> : null}
         {section === 'moderation' ? <AuctionsTab notify={notify} /> : null}
+        {section === 'relayConfig' ? <RelayConfigTab notify={notify} /> : null}
+        {section === 'systemHealth' ? <SystemHealthTab /> : null}
+        {section === 'audit' ? <AuditTrailTab /> : null}
         {section === 'names' ? <NamesTab notify={notify} /> : null}
       </section>
+    </div>
+  );
+}
+
+function UserActionsTab({ notify }: { notify: (msg: string) => void }) {
+  const [rows, setRows] = useState<AdminUser[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [selectedPubkey, setSelectedPubkey] = useState('');
+  const [identityRows, setIdentityRows] = useState<Identity[]>([]);
+
+  const loadUsers = async () => {
+    const data = await adminFetch<{ users: AdminUser[]; totalPages: number }>(`/users?page=${page}&limit=20`);
+    setRows(data.users || []);
+    setTotalPages(data.totalPages || 1);
+  };
+
+  const loadUserIdentities = async (pubkey: string) => {
+    const data = await adminFetch<{ data: Identity[]; totalPages: number }>(`/nip05?page=1&limit=25&pubkey=${encodeURIComponent(pubkey)}`);
+    setIdentityRows(data.data || []);
+  };
+
+  useEffect(() => {
+    void loadUsers();
+  }, [page]);
+
+  return (
+    <div className="space-y-3">
+      <div className="cy-card p-3 text-sm text-orange-200/80">
+        User actions are drill-through by design: inspect trust/tier posture here, then jump to Identity Ops for state-changing actions.
+      </div>
+      <div className="cy-card p-3 overflow-x-auto">
+        <table className="w-full text-sm min-w-[900px]">
+          <thead><tr className="text-left"><th>Pubkey</th><th>Npub</th><th>Tier</th><th>Admin</th><th>WoT</th><th>NIP-05</th><th>Created</th><th>Actions</th></tr></thead>
+          <tbody>
+            {rows.map((user) => (
+              <tr key={user.id} className="border-t border-white/10">
+                <td className="font-mono text-xs">{user.pubkey.slice(0, 16)}…</td>
+                <td className="font-mono text-xs">{user.npub.slice(0, 16)}…</td>
+                <td>{user.tier}</td>
+                <td>{user.isAdmin ? 'yes' : 'no'}</td>
+                <td>{user.wotScore}</td>
+                <td>{user.nip05s.length || 0}</td>
+                <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                <td className="space-x-1">
+                  <button
+                    className="cy-chip"
+                    onClick={async () => {
+                      setSelectedPubkey(user.pubkey);
+                      await loadUserIdentities(user.pubkey);
+                    }}
+                  >
+                    Drill identities
+                  </button>
+                  <button
+                    className="cy-chip"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(user.pubkey);
+                      notify('Pubkey copied');
+                    }}
+                  >
+                    Copy pubkey
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex gap-2 items-center">
+        <button className="cy-chip" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</button>
+        <span className="text-sm">Page {page}/{totalPages}</span>
+        <button className="cy-chip" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</button>
+      </div>
+
+      {selectedPubkey ? (
+        <div className="cy-card p-3 space-y-2">
+          <div className="font-semibold">Identity ownership for {selectedPubkey.slice(0, 16)}…</div>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left"><th>Identity</th><th>Tier</th><th>Status</th><th>Expires</th></tr></thead>
+            <tbody>
+              {identityRows.map((idn) => (
+                <tr key={idn.id} className="border-t border-white/10">
+                  <td>{idn.username}@{idn.domain}</td>
+                  <td>{idn.tier}</td>
+                  <td>{idn.status}</td>
+                  <td>{idn.expires ? new Date(idn.expires).toLocaleDateString() : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -193,16 +327,15 @@ function IdentitiesTab({ notify }: { notify: (msg: string) => void }) {
                     className="cy-chip"
                     onClick={async () => {
                       const nextState = r.status === 'active' ? 'suspend' : 'restore';
-                      const ok = confirmDangerAction(
-                        `${nextState === 'suspend' ? 'Suspend' : 'Restore'} identity ${r.username}@${r.domain}?`,
-                        nextState === 'suspend'
-                          ? 'This prevents the identity from being active until restored.'
-                          : 'This reactivates the identity and restores its availability.'
-                      );
-                      if (!ok) return;
-                      await adminFetch(`/nip05/${r.id}/suspend`, { method: 'POST', body: JSON.stringify({ suspended: r.status === 'active' }) });
-                      notify('Identity status updated');
-                      await load();
+                      await runConfirmedAction({
+                        title: `${nextState === 'suspend' ? 'Suspend' : 'Restore'} identity ${r.username}@${r.domain}?`,
+                        message: nextState === 'suspend' ? 'This prevents the identity from being active until restored.' : 'This reactivates the identity and restores its availability.',
+                        onConfirm: async () => {
+                          await adminFetch(`/nip05/${r.id}/suspend`, { method: 'POST', body: JSON.stringify({ suspended: r.status === 'active' }) });
+                          notify('Identity status updated');
+                          await load();
+                        },
+                      });
                     }}
                   >
                     {r.status === 'active' ? 'Suspend' : 'Unsuspend'}
@@ -210,10 +343,15 @@ function IdentitiesTab({ notify }: { notify: (msg: string) => void }) {
                   <button
                     className="cy-chip"
                     onClick={async () => {
-                      if (!confirmDangerAction(`Delete identity ${r.username}@${r.domain}?`, 'This permanently removes the registration.')) return;
-                      await adminFetch(`/nip05/${r.id}`, { method: 'DELETE' });
-                      notify('Identity deleted');
-                      await load();
+                      await runConfirmedAction({
+                        title: `Delete identity ${r.username}@${r.domain}?`,
+                        message: 'This permanently removes the registration.',
+                        onConfirm: async () => {
+                          await adminFetch(`/nip05/${r.id}`, { method: 'DELETE' });
+                          notify('Identity deleted');
+                          await load();
+                        },
+                      });
                     }}
                   >
                     Delete
@@ -243,9 +381,15 @@ function IdentitiesTab({ notify }: { notify: (msg: string) => void }) {
             <button
               className="cy-chip"
               onClick={async () => {
-                await adminFetch(`/nip05/${selected.id}`, { method: 'PUT', body: JSON.stringify({ tier: editTier, extendDays }) });
-                notify('Identity updated');
-                await load();
+                await runConfirmedAction({
+                  title: `Apply account changes to ${selected.username}@${selected.domain}?`,
+                  message: `Tier -> ${editTier}, extension -> ${extendDays} day(s).`,
+                  onConfirm: async () => {
+                    await adminFetch(`/nip05/${selected.id}`, { method: 'PUT', body: JSON.stringify({ tier: editTier, extendDays }) });
+                    notify('Identity updated');
+                    await load();
+                  },
+                });
               }}
             >
               Save
@@ -257,17 +401,187 @@ function IdentitiesTab({ notify }: { notify: (msg: string) => void }) {
               className="cy-chip"
               onClick={async () => {
                 if (!transferPubkey.trim()) return;
-                if (!confirmDangerAction('Transfer identity ownership?', `This will move ${selected.username}@${selected.domain} to a new pubkey.`)) return;
-                await adminFetch(`/nip05/${selected.id}/transfer`, { method: 'POST', body: JSON.stringify({ pubkey: transferPubkey }) });
-                notify('Identity transferred');
-                setTransferPubkey('');
-                await load();
+                await runConfirmedAction({
+                  title: 'Transfer identity ownership?',
+                  message: `Move ${selected.username}@${selected.domain} to a new pubkey.`,
+                  onConfirm: async () => {
+                    await adminFetch(`/nip05/${selected.id}/transfer`, { method: 'POST', body: JSON.stringify({ pubkey: transferPubkey }) });
+                    notify('Identity transferred');
+                    setTransferPubkey('');
+                    await load();
+                  },
+                });
               }}
             >
               Transfer
             </button>
           </div>
           <button className="cy-chip" onClick={() => setSelected(null)}>Close</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RelayConfigTab({ notify }: { notify: (msg: string) => void }) {
+  const [relayConfig, setRelayConfig] = useState<string>('[]');
+  const [blossomConfig, setBlossomConfig] = useState<string>('[]');
+  const [rows, setRows] = useState<RelayConfigRow[]>([]);
+
+  const load = async () => {
+    const relays = await adminFetch<RelayConfigRow[]>('/config/relays');
+    const blossom = await adminFetch<RelayConfigRow[]>('/config/blossom');
+    setRows([...(relays || []), ...(blossom || [])]);
+
+    const relayEntry = (relays || []).find((r) => r.key === 'relays.discovery');
+    const blossomEntry = (blossom || []).find((r) => r.key === 'blossom.servers');
+
+    setRelayConfig(JSON.stringify(relayEntry?.value || [], null, 2));
+    setBlossomConfig(JSON.stringify(blossomEntry?.value || [], null, 2));
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <RelaySyncDebugPanel />
+
+      <div className="cy-card p-3 space-y-2">
+        <div className="font-semibold">Relay discovery list (relays.discovery)</div>
+        <textarea className="cy-input w-full min-h-[110px] font-mono text-xs" value={relayConfig} onChange={(e) => setRelayConfig(e.target.value)} aria-label="Relay discovery config JSON" />
+        <div className="flex gap-2 flex-wrap">
+          <button className="cy-chip" onClick={async () => {
+            await runConfirmedAction({
+              title: 'Save relay discovery config?',
+              message: 'This overwrites relays.discovery and impacts feed relay fanout.',
+              onConfirm: async () => {
+                await adminFetch('/config/relays.discovery', { method: 'PUT', body: JSON.stringify({ value: JSON.parse(relayConfig), type: 'array', category: 'relays', description: 'Admin-managed relay discovery list' }) });
+                notify('Relay config saved');
+                await load();
+              },
+            });
+          }}>Save relays.discovery</button>
+          <button className="cy-chip" onClick={async () => {
+            await runConfirmedAction({
+              title: 'Auto-discover relay list?',
+              message: 'This replaces relays.discovery using current relay popularity snapshot.',
+              onConfirm: async () => {
+                await adminFetch('/discover/relays', { method: 'POST' });
+                notify('Relay discovery refreshed');
+                await load();
+              },
+            });
+          }}>Discover relays</button>
+        </div>
+      </div>
+
+      <div className="cy-card p-3 space-y-2">
+        <div className="font-semibold">Blossom servers (blossom.servers)</div>
+        <textarea className="cy-input w-full min-h-[110px] font-mono text-xs" value={blossomConfig} onChange={(e) => setBlossomConfig(e.target.value)} aria-label="Blossom server config JSON" />
+        <div className="flex gap-2 flex-wrap">
+          <button className="cy-chip" onClick={async () => {
+            await runConfirmedAction({
+              title: 'Save blossom server config?',
+              message: 'This overwrites blossom.servers for media upload and retrieval.',
+              onConfirm: async () => {
+                await adminFetch('/config/blossom.servers', { method: 'PUT', body: JSON.stringify({ value: JSON.parse(blossomConfig), type: 'array', category: 'blossom', description: 'Admin-managed blossom server list' }) });
+                notify('Blossom config saved');
+                await load();
+              },
+            });
+          }}>Save blossom.servers</button>
+          <button className="cy-chip" onClick={async () => {
+            await runConfirmedAction({
+              title: 'Auto-discover blossom servers?',
+              message: 'This replaces blossom.servers from ecosystem infrastructure entries.',
+              onConfirm: async () => {
+                await adminFetch('/discover/blossom', { method: 'POST' });
+                notify('Blossom discovery refreshed');
+                await load();
+              },
+            });
+          }}>Discover blossom</button>
+        </div>
+      </div>
+
+      <div className="cy-card p-3 overflow-x-auto">
+        <div className="font-semibold mb-2">Tracked configuration keys</div>
+        <table className="w-full text-sm min-w-[900px]">
+          <thead><tr className="text-left"><th>Key</th><th>Category</th><th>Type</th><th>Description</th><th>Value</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key} className="border-t border-white/10 align-top">
+                <td className="font-mono text-xs">{r.key}</td>
+                <td>{r.category || '—'}</td>
+                <td>{r.type || '—'}</td>
+                <td>{r.description || '—'}</td>
+                <td className="font-mono text-[11px] break-all">{JSON.stringify(r.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function SystemHealthTab() {
+  const [serviceHealth, setServiceHealth] = useState<any>(null);
+  const [relayStatus, setRelayStatus] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [health, relay, adminStats] = await Promise.all([
+          authenticatedFetch('/health'),
+          authenticatedFetch('/api/v1/relay-sync/status').catch(() => null),
+          adminFetch('/stats').catch(() => null),
+        ]);
+        setServiceHealth(health);
+        setRelayStatus(relay);
+        setStats(adminStats);
+      } catch (err) {
+        setError((err as Error).message || 'Failed to load health signals');
+      }
+    })();
+  }, []);
+
+  if (error) return <div className="cy-card p-4">{error}</div>;
+  if (!serviceHealth) return <div className="cy-card p-4">Loading system health…</div>;
+
+  const healthState = String(serviceHealth.status || '').toLowerCase();
+  const accent = healthState === 'healthy' ? 'text-cyan-200' : 'text-orange-200';
+
+  return (
+    <div className="space-y-3">
+      <div className="grid md:grid-cols-3 gap-3">
+        <div className="cy-card p-3">
+          <div className="text-xs uppercase text-orange-200/65">Service status</div>
+          <div className={`text-lg font-semibold ${accent}`}>{serviceHealth.status}</div>
+          <div className="text-xs text-orange-200/70">{serviceHealth.timestamp}</div>
+        </div>
+        <div className="cy-card p-3">
+          <div className="text-xs uppercase text-orange-200/65">Database</div>
+          <div className="text-lg font-semibold text-cyan-200">{serviceHealth.services?.database || 'unknown'}</div>
+          <div className="text-xs text-orange-200/70">version {serviceHealth.version || 'n/a'}</div>
+        </div>
+        <div className="cy-card p-3">
+          <div className="text-xs uppercase text-orange-200/65">Relay sync</div>
+          <div className="text-lg font-semibold text-cyan-200">{relayStatus?.running ? 'running' : 'idle'}</div>
+          <div className="text-xs text-orange-200/70">queue {relayStatus?.queueSize ?? 'n/a'} / processed {relayStatus?.processedCount ?? 'n/a'}</div>
+        </div>
+      </div>
+
+      {stats ? (
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="cy-card p-3">Users: <strong>{stats.totalUsers}</strong></div>
+          <div className="cy-card p-3">NIP-05 Active: <strong>{stats.totalNip05s}</strong></div>
+          <div className="cy-card p-3">Paid Subs: <strong>{stats.paidSubscriptions}</strong></div>
+          <div className="cy-card p-3">New users (7d): <strong>{stats.newUsersLast7Days}</strong></div>
         </div>
       ) : null}
     </div>
@@ -326,10 +640,16 @@ function NamesTab({ notify }: { notify: (msg: string) => void }) {
           <button
             className="cy-chip"
             onClick={async () => {
-              await adminFetch(`/names/${listType}`, { method: 'POST', body: JSON.stringify({ name: form.name, reason: form.reason, minimumPrice: form.minimumPrice ? Number(form.minimumPrice) : undefined }) });
-              notify('Name added');
-              setForm({ name: '', reason: '', minimumPrice: '' });
-              await load();
+              await runConfirmedAction({
+                title: `Add ${form.name || 'name'} to ${listType} list?`,
+                message: 'This immediately affects registration policy checks.',
+                onConfirm: async () => {
+                  await adminFetch(`/names/${listType}`, { method: 'POST', body: JSON.stringify({ name: form.name, reason: form.reason, minimumPrice: form.minimumPrice ? Number(form.minimumPrice) : undefined }) });
+                  notify('Name added');
+                  setForm({ name: '', reason: '', minimumPrice: '' });
+                  await load();
+                },
+              });
             }}
           >
             Add
@@ -344,10 +664,15 @@ function NamesTab({ notify }: { notify: (msg: string) => void }) {
           <button
             className="cy-chip"
             onClick={async () => {
-              if (!confirmDangerAction('Import JSON list?', 'This may insert many records into the selected list.')) return;
-              await adminFetch('/names/import', { method: 'POST', body: JSON.stringify({ list: listType, format: 'json', content: importText }) });
-              notify('Imported JSON');
-              await load();
+              await runConfirmedAction({
+                title: 'Import JSON list?',
+                message: 'This may insert many records into the selected list.',
+                onConfirm: async () => {
+                  await adminFetch('/names/import', { method: 'POST', body: JSON.stringify({ list: listType, format: 'json', content: importText }) });
+                  notify('Imported JSON');
+                  await load();
+                },
+              });
             }}
           >
             Import JSON
@@ -355,10 +680,15 @@ function NamesTab({ notify }: { notify: (msg: string) => void }) {
           <button
             className="cy-chip"
             onClick={async () => {
-              if (!confirmDangerAction('Import CSV list?', 'This may insert many records into the selected list.')) return;
-              await adminFetch('/names/import', { method: 'POST', body: JSON.stringify({ list: listType, format: 'csv', content: importText }) });
-              notify('Imported CSV');
-              await load();
+              await runConfirmedAction({
+                title: 'Import CSV list?',
+                message: 'This may insert many records into the selected list.',
+                onConfirm: async () => {
+                  await adminFetch('/names/import', { method: 'POST', body: JSON.stringify({ list: listType, format: 'csv', content: importText }) });
+                  notify('Imported CSV');
+                  await load();
+                },
+              });
             }}
           >
             Import CSV
@@ -377,10 +707,15 @@ function NamesTab({ notify }: { notify: (msg: string) => void }) {
                   <button
                     className="cy-chip"
                     onClick={async () => {
-                      if (!confirmDangerAction(`Remove ${r.name}?`, 'This deletes the name entry from the current list.')) return;
-                      await adminFetch(`/names/${listType}/${encodeURIComponent(r.name)}`, { method: 'DELETE' });
-                      notify('Removed');
-                      await load();
+                      await runConfirmedAction({
+                        title: `Remove ${r.name}?`,
+                        message: 'This deletes the name entry from the current list.',
+                        onConfirm: async () => {
+                          await adminFetch(`/names/${listType}/${encodeURIComponent(r.name)}`, { method: 'DELETE' });
+                          notify('Removed');
+                          await load();
+                        },
+                      });
                     }}
                   >
                     Remove
@@ -435,39 +770,39 @@ function AuctionsTab({ notify }: { notify: (msg: string) => void }) {
                 <td>{new Date(r.startTime * 1000).toLocaleString()}</td><td>{new Date(r.endTime * 1000).toLocaleString()}</td>
                 <td className="space-x-1">
                   <button className="cy-chip" onClick={() => void openDetails(r.id)}>Details</button>
-                  <button
-                    className="cy-chip"
-                    onClick={async () => {
-                      if (!confirmDangerAction(`Extend auction ${r.name}?`, 'Adds one hour to end time.')) return;
-                      await adminFetch(`/auctions/${r.id}/extend`, { method: 'POST', body: JSON.stringify({ extendSeconds: 3600 }) });
-                      notify('Auction extended 1h');
-                      await load();
-                    }}
-                  >
-                    Extend
-                  </button>
-                  <button
-                    className="cy-chip"
-                    onClick={async () => {
-                      if (!confirmDangerAction(`Cancel auction ${r.name}?`, 'This marks the auction as failed.')) return;
-                      await adminFetch(`/auctions/${r.id}/cancel`, { method: 'POST' });
-                      notify('Auction cancelled');
-                      await load();
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="cy-chip"
-                    onClick={async () => {
-                      if (!confirmDangerAction(`Finalize auction ${r.name}?`, 'This attempts settlement with current winner and bids.')) return;
-                      await adminFetch(`/auctions/${r.id}/finalize`, { method: 'POST' });
-                      notify('Auction finalized');
-                      await load();
-                    }}
-                  >
-                    Finalize
-                  </button>
+                  <button className="cy-chip" onClick={async () => {
+                    await runConfirmedAction({
+                      title: `Extend auction ${r.name}?`,
+                      message: 'Adds one hour to end time.',
+                      onConfirm: async () => {
+                        await adminFetch(`/auctions/${r.id}/extend`, { method: 'POST', body: JSON.stringify({ extendSeconds: 3600 }) });
+                        notify('Auction extended 1h');
+                        await load();
+                      },
+                    });
+                  }}>Extend</button>
+                  <button className="cy-chip" onClick={async () => {
+                    await runConfirmedAction({
+                      title: `Cancel auction ${r.name}?`,
+                      message: 'This marks the auction as failed.',
+                      onConfirm: async () => {
+                        await adminFetch(`/auctions/${r.id}/cancel`, { method: 'POST' });
+                        notify('Auction cancelled');
+                        await load();
+                      },
+                    });
+                  }}>Cancel</button>
+                  <button className="cy-chip" onClick={async () => {
+                    await runConfirmedAction({
+                      title: `Finalize auction ${r.name}?`,
+                      message: 'This attempts settlement with current winner and bids.',
+                      onConfirm: async () => {
+                        await adminFetch(`/auctions/${r.id}/finalize`, { method: 'POST' });
+                        notify('Auction finalized');
+                        await load();
+                      },
+                    });
+                  }}>Finalize</button>
                 </td>
               </tr>
             ))}
@@ -502,7 +837,7 @@ function AuditTrailTab() {
       setLoading(true);
       setError(null);
       try {
-        const data = await adminFetch<{ logs: AuditLogRow[] }>('/audit?page=1&limit=25');
+        const data = await adminFetch<{ logs: AuditLogRow[] }>('/audit?page=1&limit=50');
         setRows(data.logs || []);
       } catch (err) {
         setError((err as Error).message || 'Failed to load audit trail');
@@ -517,23 +852,11 @@ function AuditTrailTab() {
   }
 
   if (error) {
-    return (
-      <div className="cy-card p-4 space-y-2">
-        <div className="font-semibold text-orange-100">Audit trail unavailable</div>
-        <p className="text-sm text-orange-200/75">{error}</p>
-        <p className="text-xs text-orange-200/65">If audit logging tables are not migrated yet, run migrations and verify `auditLog` records are being written by admin actions.</p>
-      </div>
-    );
+    return <div className="cy-card p-4">{error}</div>;
   }
 
   if (!rows.length) {
-    return (
-      <div className="cy-card p-4 space-y-2">
-        <div className="font-semibold text-orange-100">No audit entries yet</div>
-        <p className="text-sm text-orange-200/75">Once sensitive admin actions are performed, they will appear here in reverse chronological order.</p>
-        <p className="text-xs text-orange-200/65">Tip: trigger a safe config or name-list change to validate audit capture in this environment.</p>
-      </div>
-    );
+    return <div className="cy-card p-4">No audit entries yet.</div>;
   }
 
   return (

@@ -18,7 +18,7 @@ export const TwitterEmbed: React.FC<TwitterEmbedProps> = ({ url, metadata }) => 
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-400 hover:underline break-all"
+          className="text-orange-400 hover:underline break-all"
         >
           {url}
         </a>
@@ -50,7 +50,7 @@ export const TwitterEmbed: React.FC<TwitterEmbedProps> = ({ url, metadata }) => 
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-400 hover:underline text-sm flex items-center gap-2"
+            className="text-orange-400 hover:underline text-sm flex items-center gap-2"
           >
             <span>View on {metadata.siteName || 'X'}</span>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

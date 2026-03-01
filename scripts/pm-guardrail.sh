@@ -24,6 +24,8 @@ fi
   echo "- review latest dev-journal checkpoint + LATEST.md pointers"
   echo "- verify canonical links in reports/active/dev-journal/PATH-REGISTRY.md"
   echo "- confirm active sprint exit criteria"
+  echo "- enforce lane protocol: docs/planning/LANE-ORCHESTRATION-PROTOCOL.md"
+  echo "- enforce min active lanes (>=3) using docs/planning/LANE-QUEUE.md"
   echo "- run gate before ship: npm test -- --runInBand && npm run build && npm run build:frontend"
   echo "- append dev-journal commit-memory block after each ship"
   echo "- before replying status: verify against written docs, do not rely on memory"

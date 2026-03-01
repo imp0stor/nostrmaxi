@@ -40,7 +40,7 @@ export function TimeRangePicker({ value, onChange, customStart, customEnd }: Tim
               className={`px-3 py-1.5 rounded-full text-xs sm:text-sm border transition-all duration-200 ${
                 active
                   ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_16px_rgba(0,212,255,0.45)]'
-                  : 'border-cyan-800/70 text-blue-200 hover:text-cyan-200 hover:bg-cyan-500/10'
+                  : 'border-cyan-800/70 text-neutral-300 hover:text-cyan-200 hover:bg-cyan-500/10'
               }`}
             >
               {opt.label}
@@ -51,7 +51,7 @@ export function TimeRangePicker({ value, onChange, customStart, customEnd }: Tim
 
       {value === 'custom' && (
         <div className="grid sm:grid-cols-2 gap-3 pt-1">
-          <label className="text-xs text-blue-200 space-y-1">
+          <label className="text-xs text-neutral-300 space-y-1">
             <span>Start date</span>
             <input
               type="date"
@@ -63,7 +63,7 @@ export function TimeRangePicker({ value, onChange, customStart, customEnd }: Tim
               className="w-full rounded-md border border-cyan-800/70 bg-[#0a0f1a]/80 px-3 py-2 text-cyan-100 outline-none focus:border-cyan-400"
             />
           </label>
-          <label className="text-xs text-blue-200 space-y-1">
+          <label className="text-xs text-neutral-300 space-y-1">
             <span>End date</span>
             <input
               type="date"
