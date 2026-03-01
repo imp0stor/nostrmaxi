@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { ParsedZapReceipt } from '../lib/zaps';
 import { loadZapReceipts } from '../lib/zaps';
 import { truncateNpub, encodeNpub } from '../lib/nostr';
@@ -56,15 +57,23 @@ export function ZapBreakdownModal({ eventId, onClose }: ZapBreakdownModalProps) 
   const totalSats = zaps.reduce((sum, z) => sum + z.amountSat, 0);
   const uniqueZappers = new Set(zaps.map((z) => z.anonymous ? 'anon' : z.senderPubkey)).size;
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
-      <div className="bg-[#0a0f1e] border border-cyan-500/30 rounded-lg shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Zap contributor details" className="bg-[#0a0f1e] border border-orange-500/40 rounded-lg shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="border-b border-cyan-500/30 p-4 flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-cyan-100">⚡ Zap Breakdown</h2>
             <p className="text-sm text-cyan-300/70">
-              {totalSats.toLocaleString()} sats from {uniqueZappers} {uniqueZappers === 1 ? 'zapper' : 'zappers'}
+              {totalSats.toLocaleString()} sats · {zaps.length} {zaps.length === 1 ? 'zap' : 'zaps'} · {uniqueZappers} {uniqueZappers === 1 ? 'zapper' : 'zappers'}
             </p>
           </div>
           <button
@@ -120,15 +129,14 @@ export function ZapBreakdownModal({ eventId, onClose }: ZapBreakdownModalProps) 
               return (
                 <div
                   key={zap.id}
-                  className="bg-slate-950/50 border border-cyan-500/20 rounded-lg p-3 hover:border-cyan-300/40 transition-colors"
+                  className="bg-slate-950/50 border border-orange-500/20 rounded-lg p-3 hover:border-orange-300/40 transition-colors"
                 >
                   <div className="flex items-start gap-3">
-                    {!zap.anonymous && (
-                      <Avatar
-                        pubkey={zap.senderPubkey}
-                        size={40}
-                      />
-                    )}
+                    {!zap.anonymous ? (
+                      <Link to={`/profile/${zap.senderPubkey}`} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" aria-label={`Open zapper profile ${displayName}`}>
+                        <Avatar pubkey={zap.senderPubkey} size={40} />
+                      </Link>
+                    ) : null}
                     {zap.anonymous && (
                       <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-300 text-xl">
                         👤
@@ -138,7 +146,9 @@ export function ZapBreakdownModal({ eventId, onClose }: ZapBreakdownModalProps) 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-2">
                         <div>
-                          <p className="font-semibold text-cyan-100">{displayName}</p>
+                          {!zap.anonymous ? (
+                            <Link to={`/profile/${zap.senderPubkey}`} className="font-semibold text-orange-100 hover:text-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80 rounded-sm">{displayName}</Link>
+                          ) : <p className="font-semibold text-cyan-100">{displayName}</p>}
                           {!zap.anonymous && (
                             <p className="text-xs text-cyan-300/70">{truncateNpub(npub)}</p>
                           )}

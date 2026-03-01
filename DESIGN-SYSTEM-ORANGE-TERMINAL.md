@@ -55,6 +55,8 @@ Located in `frontend/src/assets/icons/`:
 ## Interaction & Accessibility Rules
 - Any hover state must map to real interaction target (button/link).
 - Non-interactive surfaces should not advertise hover affordance.
+- **Contributing Data Rule:** if an element displays contributor-backed data (zaps, reposts, reactions, relay/source indicators, participant avatars), it must be drillable.
+- Keep collapsed summaries compact; details live in drilldown modals/panels.
 - Use `:focus-visible` rings on all interactive controls.
 - Keep semantic elements correct: links for navigation, buttons for actions.
 - Provide aria-labels for icon+pill actions and media/relay drilldowns.
@@ -65,6 +67,15 @@ Located in `frontend/src/assets/icons/`:
 - Mute/content/relay open modal workflows (hierarchy preserved, visual upgraded).
 - Composer media previews are drillable (open in new tab) and removable with explicit action.
 - Relay status chips are drillable and open relay management context.
+- Contributor summaries should use "feature-rich, intuitively simple" pattern:
+  - collapsed = tiny avatars + concise counts
+  - expanded = full drilldown (profiles, events, linked entities)
+  - no dead-end summary stats.
+- Zap module pattern (mandatory on feed cards):
+  - collapsed card row shows top zapper avatars (3-6 max) + aggregate zap indicator.
+  - entire zap row is one drill target (click/Enter/Space) opening zap details.
+  - drilldown includes total sats, total zaps, recent zappers list, and profile links for each zapper.
+  - keep module visually lightweight so content body remains dominant.
 
 ## Safety & Markdown
 - Markdown rendering continues via `react-markdown + remark-gfm + rehype-sanitize`.
