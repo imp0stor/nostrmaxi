@@ -1,7 +1,7 @@
 # NostrMaxi TODO List
 
 ## Status: Active Development
-**Last Updated:** 2026-03-01 11:30 EST
+**Last Updated:** 2026-03-01 12:35 EST
 
 ---
 
@@ -74,41 +74,53 @@
 
 ---
 
-## 🟣 NIP-05 Marketplace - FOUNDATION COMPLETE (2026-03-01)
+## 🟣 NIP-05 Marketplace - FULLY IMPLEMENTED (2026-03-01)
 
-### Payment & Registration
-- [x] Reserved names restricted (availability API checks)
-- [x] Premium pricing tiers (name-pricing.ts)
-- [ ] Verify payment flow works end-to-end
+### Admin Panel - COMPLETE
+- [x] Admin route: /admin/marketplace
+- [x] Name management: CRUD for reserved/premium/blocked
+- [x] Bulk import (paste CSV/newline)
+- [x] Auction management: create, view, cancel, settle
+- [x] Listing management: CRUD
+- [x] Transfer history view
 
-### Auction System - BACKEND COMPLETE
-- [x] Database schema: `Nip05Auction`, `Nip05Bid`, `Nip05Transfer` models
+### Lightning Split Payments - COMPLETE
+- [x] Buyer pays single invoice (full price)
+- [x] Platform keeps 5% fee automatically
+- [x] 95% auto-sent to seller's Lightning address
+- [x] Registration transfers immediately on payment
+- [x] MarketplaceTransaction model for audit
+- [x] Webhook integration for payment confirmation
+- [x] Seller endpoint to set Lightning address
+- [x] Admin retry-payout endpoint
+
+### Auction System - COMPLETE
+- [x] Database schema: `Nip05Auction`, `Nip05Bid`, `Nip05Transfer`, `MarketplaceTransaction`
 - [x] API endpoints: `/api/v1/nip05/marketplace/auctions/*`
+- [x] Admin endpoints: `/api/v1/admin/marketplace/auctions/*`
 - [x] Bidding with min increment enforcement
-- [x] Auction finalization endpoint
+- [x] Auction finalization with split payment
 - [x] Frontend: Auction cards, bid history, time remaining
 - [ ] Outbid notifications (push)
-- [ ] Scheduled auction end job
+- [ ] Scheduled auction end job (cron)
 
-### Flat Price Marketplace - BACKEND COMPLETE
+### Flat Price Marketplace - COMPLETE
 - [x] API: `/api/v1/nip05/marketplace/listings`
 - [x] Browse/filter premium names (MarketplacePage tabs)
-- [x] Direct purchase flow endpoint
-- [ ] Actual payment integration
+- [x] Direct purchase with split payment
+- [x] Payment integration via split-payment.service.ts
 
-### User Resale Marketplace - BACKEND COMPLETE  
+### User Resale Marketplace - COMPLETE  
 - [x] Listing creation for owned NIP-05s
+- [x] Seller Lightning address requirement
 - [x] Lease remainder vs lifetime sale mode
-- [x] Transfer initiation with escrow records
-- [x] 5% platform fee calculation
-- [ ] Actual escrow funds handling
+- [x] Immediate transfer on payment (no escrow)
+- [x] 5% platform fee automatic deduction
 
-### Database Schema
-- [ ] Auctions table
-- [ ] Listings table  
-- [ ] Bids table
-- [ ] Transfers table
-- [ ] Reserved names table
+### Database Schema - COMPLETE
+- [x] User.lightningAddress
+- [x] MarketplaceTransaction model
+- [x] All marketplace tables synced to production
 
 ---
 
