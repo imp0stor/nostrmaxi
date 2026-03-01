@@ -14,11 +14,42 @@ import {
   getSignerRuntimeDebugMarker,
   type NostrProviderId,
 } from '../lib/nostr';
-import type { User } from '../types';
+import type { User, SubscriptionTier } from '../types';
 import { requestIdentityRefresh } from '../lib/identityRefresh';
 import type { NostrEvent } from '../types';
 
 const LAST_SIGNER_STORAGE_KEY = 'nostrmaxi_last_signer';
+const PAID_TIERS: SubscriptionTier[] = ['PRO', 'BUSINESS', 'LIFETIME'];
+
+function normalizeTier(value: unknown): SubscriptionTier {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  if (normalized === 'PRO' || normalized === 'BUSINESS' || normalized === 'LIFETIME') {
+    return normalized;
+  }
+  return 'FREE';
+}
+
+function normalizeUser(rawUser: User): User {
+  const resolvedTier = normalizeTier(rawUser?.tier ?? rawUser?.subscription?.tier);
+  const subscriptionTier = rawUser?.subscription?.tier
+    ? normalizeTier(rawUser.subscription.tier)
+    : resolvedTier;
+
+  return {
+    ...rawUser,
+    tier: resolvedTier,
+    subscription: rawUser?.subscription
+      ? {
+          ...rawUser.subscription,
+          tier: subscriptionTier,
+        }
+      : {
+          tier: resolvedTier,
+          expiresAt: null,
+          isActive: PAID_TIERS.includes(resolvedTier),
+        },
+  };
+}
 
 interface AuthState {
   user: User | null;
@@ -57,7 +88,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
 
     try {
-      const user = await api.getMe();
+      const user = normalizeUser(await api.getMe());
       set({ user, isAuthenticated: true, isLoading: false });
       requestIdentityRefresh(user.pubkey);
     } catch (error) {
@@ -117,14 +148,15 @@ export const useAuth = create<AuthState>((set, get) => ({
 
       // Verify with backend
       const { token, user } = await api.verifyChallenge(signedEvent);
+      const normalizedUser = normalizeUser(user);
       api.setToken(token);
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('nostrmaxi_nsec_hex');
         localStorage.setItem(LAST_SIGNER_STORAGE_KEY, provider);
       }
 
-      set({ user, isAuthenticated: true, isLoading: false, signerDebugMarker: getSignerRuntimeDebugMarker() });
-      requestIdentityRefresh(user.pubkey);
+      set({ user: normalizedUser, isAuthenticated: true, isLoading: false, signerDebugMarker: getSignerRuntimeDebugMarker() });
+      requestIdentityRefresh(normalizedUser.pubkey);
       return true;
     } catch (error) {
       const message = mapNip07Error(error);
@@ -163,13 +195,14 @@ export const useAuth = create<AuthState>((set, get) => ({
       const signedEvent = signEventWithPrivateKey(unsignedEvent, privateKey);
 
       const { token, user } = await api.verifyChallenge(signedEvent);
+      const normalizedUser = normalizeUser(user);
       api.setToken(token);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('nostrmaxi_nsec_hex', privateKey);
       }
 
-      set({ user, isAuthenticated: true, isLoading: false });
-      requestIdentityRefresh(user.pubkey);
+      set({ user: normalizedUser, isAuthenticated: true, isLoading: false });
+      requestIdentityRefresh(normalizedUser.pubkey);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'nsec login failed';
@@ -197,9 +230,10 @@ export const useAuth = create<AuthState>((set, get) => ({
       const result = await api.pollLnurlAuth(k1);
       
       if (result.status === 'verified' && result.token && result.user) {
+        const normalizedUser = normalizeUser(result.user);
         api.setToken(result.token);
-        set({ user: result.user, isAuthenticated: true });
-        requestIdentityRefresh(result.user.pubkey);
+        set({ user: normalizedUser, isAuthenticated: true });
+        requestIdentityRefresh(normalizedUser.pubkey);
         return true;
       }
       
@@ -234,14 +268,15 @@ export const useAuth = create<AuthState>((set, get) => ({
       const signedEvent = await signAuthEvent(unsignedEvent);
 
       const { token, user } = await api.verifyChallenge(signedEvent);
+      const normalizedUser = normalizeUser(user);
       api.setToken(token);
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('nostrmaxi_nsec_hex');
         localStorage.setItem(LAST_SIGNER_STORAGE_KEY, 'window_nostr');
       }
 
-      set({ user, isAuthenticated: true, isLoading: false });
-      requestIdentityRefresh(user.pubkey);
+      set({ user: normalizedUser, isAuthenticated: true, isLoading: false });
+      requestIdentityRefresh(normalizedUser.pubkey);
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Nostr Connect login failed';
@@ -267,7 +302,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (!get().isAuthenticated) return;
 
     try {
-      const user = await api.getMe();
+      const user = normalizeUser(await api.getMe());
       set({ user });
       requestIdentityRefresh(user.pubkey);
     } catch {

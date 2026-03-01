@@ -19,6 +19,7 @@ import { useMuteActions } from '../hooks/useMuteActions';
 import { api } from '../lib/api';
 import { MetricChip } from '../components/primitives/MetricChip';
 import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
+import { mapPrimitiveWotToFeedMetric, type FeedWotMetric } from '../lib/wotScore';
 
 type PanelMode = 'followers' | 'following' | null;
 type PanelSort = 'name' | 'followers' | 'following';
@@ -66,6 +67,8 @@ export function ProfilePage() {
   const [zapBreakdownEventId, setZapBreakdownEventId] = useState<string | null>(null);
   const [profileHints, setProfileHints] = useState<any>(null);
   const [kbArticles, setKbArticles] = useState<any[]>([]);
+  const [primitiveWot, setPrimitiveWot] = useState<FeedWotMetric | null>(null);
+  const [engagement, setEngagement] = useState<any>(null);
 
   const targetPubkey = useMemo(() => {
     if (!npub || npub === 'me') return user?.pubkey || '';
@@ -114,23 +117,29 @@ export function ProfilePage() {
     let cancelled = false;
     const loadPrimitivePanels = async () => {
       try {
-        const [hints, kb] = await Promise.all([
+        const [hints, kb, wotScore, engagementSummary] = await Promise.all([
           api.getProfileValidationHints(targetPubkey),
           api.listKb(6),
+          user?.pubkey ? api.getPrimitiveWotScore(targetPubkey, user.pubkey) : api.getPrimitiveWotScore(targetPubkey),
+          api.getProfileEngagement(targetPubkey, 80),
         ]);
         if (cancelled) return;
         setProfileHints(hints);
         setKbArticles(kb.items || []);
+        setPrimitiveWot(mapPrimitiveWotToFeedMetric(wotScore));
+        setEngagement(engagementSummary);
       } catch {
         if (!cancelled) {
           setProfileHints(null);
           setKbArticles([]);
+          setPrimitiveWot(null);
+          setEngagement(null);
         }
       }
     };
     void loadPrimitivePanels();
     return () => { cancelled = true; };
-  }, [targetPubkey]);
+  }, [targetPubkey, user?.pubkey]);
 
   useEffect(() => {
     const loadQuotes = async () => {
@@ -321,6 +330,8 @@ export function ProfilePage() {
         {profile?.about ? <p className="text-gray-300 mt-3">{profile.about}</p> : null}
         <div className="mt-4 flex items-center gap-2 flex-wrap">
           <MetricChip label="Profile zaps" value={formatZapIndicator(profileZapTotal)} ariaLabel={`Profile zap total ${formatZapIndicator(profileZapTotal)}`} />
+          {profileHints ? <MetricChip label="Verification" value={profileHints.validNip05 ? 'verified' : 'unverified'} /> : null}
+          {primitiveWot ? <MetricChip label="WoT distance" value={primitiveWot.distanceLabel} ariaLabel={primitiveWot.ariaLabel} /> : null}
           <button type="button" className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={onZapProfile} disabled={targetPubkey === user.pubkey || zapBusy}>{targetPubkey === user.pubkey ? '⚡ Zap profile' : buildZapButtonLabel(zapBusy)}</button>
           {targetPubkey !== user.pubkey ? (
             <button
@@ -358,6 +369,9 @@ export function ProfilePage() {
         <MetricChip label="Following" value={following.length} onClick={() => togglePanel('following')} active={panelMode === 'following'} />
         <MetricChip label="Posts" value={activity.length} />
         <MetricChip label="⚡ Zaps" value={profileZapTotal?.totalSat?.toLocaleString() || 0} />
+        {engagement ? <MetricChip label="Reactions" value={engagement?.totals?.reactions || 0} /> : null}
+        {engagement ? <MetricChip label="Reposts" value={engagement?.totals?.reposts || 0} /> : null}
+        {primitiveWot ? <MetricChip label="WoT score" value={primitiveWot.scoreLabel} ariaLabel={primitiveWot.ariaLabel} /> : null}
       </div>
 
       <ExternalIdentityPanel

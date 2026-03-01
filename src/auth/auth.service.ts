@@ -177,7 +177,7 @@ export class AuthService {
           expiresAt: user.subscription.expiresAt,
           isActive: user.subscription.expiresAt
             ? user.subscription.expiresAt > new Date()
-            : user.subscription.tier === 'FREE',
+            : user.subscription.tier !== 'FREE',
         } : null,
       },
       expiresAt: Math.floor(expiresAt.getTime() / 1000),
@@ -563,7 +563,7 @@ export class AuthService {
             expiresAt: user.subscription.expiresAt,
             isActive: user.subscription.expiresAt
               ? user.subscription.expiresAt > new Date()
-              : user.subscription.tier === 'FREE',
+              : user.subscription.tier !== 'FREE',
           } : null,
         },
         expiresAt: Math.floor(expiresAt.getTime() / 1000),

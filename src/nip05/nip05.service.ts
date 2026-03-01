@@ -134,8 +134,9 @@ export class Nip05Service {
     
     // Reserved/marketplace name policy check
     const registrationPolicy = canDirectlyRegisterName(normalizedLocal);
-    if (!registrationPolicy.allowed) {
-      throw new BadRequestException(registrationPolicy.message);
+    const dbReserved = await (this.prisma as any).reservedName?.findUnique?.({ where: { name: normalizedLocal } });
+    if (!registrationPolicy.allowed || dbReserved) {
+      throw new BadRequestException(registrationPolicy.message || `"${normalizedLocal}" is reserved and unavailable`);
     }
 
     // Check if already taken

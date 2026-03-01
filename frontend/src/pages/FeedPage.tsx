@@ -172,6 +172,7 @@ export function FeedPage() {
   const [showMuteModal, setShowMuteModal] = useState(false);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [showRelayModal, setShowRelayModal] = useState(false);
+  const [trustFilterEnabled, setTrustFilterEnabled] = useState(false);
   const [connectedRelays, setConnectedRelays] = useState<string[]>([]);
   const [relaySuggestions, setRelaySuggestions] = useState<string[]>([]);
   const [relayInput, setRelayInput] = useState('');
@@ -289,9 +290,14 @@ export function FeedPage() {
       if (feedFilters.reposts && !isRepost) return false;
       if (feedFilters.withLinks && !hasLinks) return false;
 
+      if (trustFilterEnabled && item.pubkey !== user?.pubkey) {
+        const score = wotByPubkey.get(item.pubkey);
+        if (!score || score.scoreState === 'unknown' || (score.trustScore ?? 0) < 35) return false;
+      }
+
       return true;
     });
-  }, [feed, feedFilters, mutedByEventId]);
+  }, [feed, feedFilters, mutedByEventId, trustFilterEnabled, wotByPubkey, user?.pubkey]);
 
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
@@ -1126,6 +1132,9 @@ export function FeedPage() {
           <button type="button" className="nm-pill" onClick={() => setShowRelayModal(true)} aria-label="Open relay status">
             <img src={relayIcon} alt="" aria-hidden className="nm-icon" />
             Relay Status
+          </button>
+          <button type="button" className={`nm-pill ${trustFilterEnabled ? 'nm-pill-primary' : ''}`} onClick={() => setTrustFilterEnabled((v) => !v)} aria-label="Toggle trust based filtering">
+            {trustFilterEnabled ? 'WoT filter: on' : 'WoT filter: off'}
           </button>
         </div>
         <button type="button" className="nm-pill" onClick={() => setShowFiltersModal(true)} aria-label="Open filters and hidden posts">{hiddenCount} posts hidden</button>

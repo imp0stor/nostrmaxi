@@ -299,6 +299,18 @@ class ApiClient {
   async searchKb(query: string, limit = 20): Promise<{ total: number; items: any[] }> {
     return this.request(`/primitives/kb/search?q=${encodeURIComponent(query)}&limit=${limit}`);
   }
+
+  async getProfileEngagement(pubkey: string, limit = 80): Promise<any> {
+    return this.request(`/primitives/engagement/profile/${encodeURIComponent(pubkey)}?limit=${limit}`);
+  }
+
+  async getRelaySyncStatus(): Promise<any> {
+    return this.request('/relay-sync/status');
+  }
+
+  async getRelaySyncDebug(): Promise<any> {
+    return this.request('/relay-sync/debug');
+  }
 }
 
 export const api = new ApiClient();

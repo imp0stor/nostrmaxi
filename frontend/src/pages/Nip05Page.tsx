@@ -27,6 +27,7 @@ export function Nip05Page() {
   // Create form state
   const [newLocalPart, setNewLocalPart] = useState('');
   const [selectedDomain, setSelectedDomain] = useState('nostrmaxi.com');
+  const [availability, setAvailability] = useState<{ available: boolean; reason: string | null } | null>(null);
 
   // BYOD state
   const [customDomain, setCustomDomain] = useState('');
@@ -67,6 +68,28 @@ export function Nip05Page() {
   };
 
   const domainRegex = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+  useEffect(() => {
+    const local = newLocalPart.trim().toLowerCase();
+    if (!local) {
+      setAvailability(null);
+      return;
+    }
+
+    const chosenDomain = useCustomDomain ? customDomain.trim().toLowerCase() : selectedDomain;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/v1/nip05/marketplace/availability/${encodeURIComponent(local)}?domain=${encodeURIComponent(chosenDomain)}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setAvailability({ available: !!data.available, reason: data.reason || null });
+      } catch {
+        // ignore silent availability failures
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [newLocalPart, selectedDomain, useCustomDomain, customDomain]);
 
   const handleVerifyDomain = async () => {
     const trimmed = customDomain.trim().toLowerCase();
@@ -131,6 +154,10 @@ export function Nip05Page() {
 
     const chosenDomain = useCustomDomain ? customDomain.trim().toLowerCase() : selectedDomain;
     if (useCustomDomain && customDomainStatus !== 'verified') {
+      return;
+    }
+
+    if (availability && !availability.available) {
       return;
     }
 
@@ -388,12 +415,17 @@ export function Nip05Page() {
               <p className="text-nostr-purple text-lg font-medium">
                 {newLocalPart}@{previewDomain}
               </p>
+              {availability ? (
+                <p className={`text-xs mt-2 ${availability.available ? 'text-green-400' : 'text-red-400'}`}>
+                  {availability.available ? 'Name is available for direct registration.' : (availability.reason || 'Name is unavailable.')}
+                </p>
+              ) : null}
             </div>
           )}
 
           <button
             type="submit"
-            disabled={!isPaidTier || !newLocalPart || isCreating || isAtSingleUserLimit || (useCustomDomain && customDomainStatus !== 'verified')}
+            disabled={!isPaidTier || !newLocalPart || isCreating || isAtSingleUserLimit || (useCustomDomain && customDomainStatus !== 'verified') || (availability ? !availability.available : false)}
             className="w-full sm:w-auto px-6 py-3 bg-nostr-purple hover:bg-nostr-purple/80 text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {!isPaidTier ? 'Upgrade to claim NIP-05' : isAtSingleUserLimit ? 'Identity already active' : isCreating ? 'Creating...' : 'Claim Identity'}

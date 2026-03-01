@@ -3,6 +3,7 @@ import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { PrimitiveWotService } from './wot.service';
 import { PrimitiveKbService } from './kb.service';
 import { PrimitiveProfileService } from './profile.service';
+import { PrimitiveEngagementService } from './engagement.service';
 
 @ApiTags('primitives')
 @Controller('api/v1/primitives')
@@ -11,6 +12,7 @@ export class PrimitivesController {
     private readonly wotService: PrimitiveWotService,
     private readonly kbService: PrimitiveKbService,
     private readonly profileService: PrimitiveProfileService,
+    private readonly engagementService: PrimitiveEngagementService,
   ) {}
 
   @Get('wot/score/:pubkey')
@@ -41,5 +43,13 @@ export class PrimitivesController {
   @ApiParam({ name: 'pubkey', description: 'Hex pubkey or npub' })
   async profileHints(@Param('pubkey') pubkey: string) {
     return this.profileService.getValidationHints(pubkey);
+  }
+
+  @Get('engagement/profile/:pubkey')
+  @ApiOperation({ summary: 'Engagement analytics for a profile (zaps + reactions + reposts)' })
+  @ApiParam({ name: 'pubkey', description: 'Hex pubkey or npub' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Number of recent notes to analyze (max 200)' })
+  async getProfileEngagement(@Param('pubkey') pubkey: string, @Query('limit') limit?: string) {
+    return this.engagementService.getProfileAnalytics(pubkey, limit ? Number(limit) : 80);
   }
 }

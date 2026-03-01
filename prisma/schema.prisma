@@ -261,6 +261,85 @@ model PremiumName {
   createdAt    DateTime @default(now())
 }
 
+model Nip05Auction {
+  id                String    @id @default(uuid())
+  name              String
+  domain            String    @default("nostrmaxi.com")
+  ownerPubkey       String?
+  startsAt          DateTime
+  endsAt            DateTime
+  startingBidSats   Int
+  reservePriceSats  Int?
+  minIncrementSats  Int       @default(1000)
+  currentBidSats    Int?
+  currentBidderPubkey String?
+  winnerPubkey      String?
+  winningBidSats    Int?
+  bidCount          Int       @default(0)
+  status            String    @default("scheduled") // scheduled, live, ended, settlement_pending, settled, cancelled
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  bids Nip05Bid[]
+
+  @@index([name, status])
+  @@index([endsAt])
+}
+
+model Nip05Bid {
+  id          String    @id @default(uuid())
+  auctionId   String
+  bidderPubkey String
+  amountSats  Int
+  status      String    @default("valid") // valid, refunded, rejected
+  createdAt   DateTime  @default(now())
+
+  auction Nip05Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+
+  @@index([auctionId, amountSats(sort: Desc)])
+  @@index([bidderPubkey])
+}
+
+model Nip05Listing {
+  id            String    @id @default(uuid())
+  name          String
+  domain        String    @default("nostrmaxi.com")
+  listingType   String    // flat, resale
+  sellerPubkey  String
+  fixedPriceSats Int?
+  saleMode      String    @default("lifetime") // lifetime, lease_remainder
+  leaseEndsAt   DateTime?
+  status        String    @default("active") // active, pending_sale, sold, cancelled, expired
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([listingType, status])
+  @@index([name])
+  @@index([sellerPubkey])
+}
+
+model Nip05Transfer {
+  id              String    @id @default(uuid())
+  sourceType      String    // auction, listing
+  sourceId        String
+  buyerPubkey     String
+  sellerPubkey    String?
+  amountSats      Int
+  platformFeeSats Int
+  sellerPayoutSats Int
+  escrowStatus    String    @default("awaiting_payment") // awaiting_payment, funded, released, refunded
+  transferStatus  String    @default("initiated") // initiated, payment_confirmed, ownership_transferred, completed, failed
+  note            String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  completedAt     DateTime?
+
+  @@index([buyerPubkey])
+  @@index([sellerPubkey])
+  @@index([sourceType, sourceId])
+  @@index([escrowStatus, transferStatus])
+}
+
 model BlockedName {
   id        String   @id @default(uuid())
   name      String   @unique

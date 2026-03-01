@@ -31,6 +31,7 @@ import { RelayAggregatorModule } from './relay-aggregator/relay-aggregator.modul
 import { RelayDiscoveryModule } from './relay-discovery/relay-discovery.module';
 import { AppConfigModule } from './config/config.module';
 import { PrimitivesModule } from './primitives/primitives.module';
+import { Nip05MarketplaceModule } from './nip05-marketplace/nip05-marketplace.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { PrimitivesModule } from './primitives/primitives.module';
     AnalyticsModule,
     NotificationsModule,
     PrimitivesModule,
+    Nip05MarketplaceModule,
   ],
 })
 export class AppModule implements NestModule {

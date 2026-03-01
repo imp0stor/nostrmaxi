@@ -8,16 +8,40 @@ import { ContentFiltersManager } from '../components/settings/ContentFiltersMana
 import { NotificationSettings } from '../components/settings/NotificationSettings';
 import { SubscriptionSettings } from '../components/settings/SubscriptionSettings';
 import { addBlossomServer, getBlossomConfig, removeBlossomServer, setBlossomConfig, type BlossomServer } from '../lib/blossom';
+import { api } from '../lib/api';
+import { planRelaySelection, scoreRelayHealth } from '../lib/relay-tooling';
 
 export function SettingsPage() {
   const { user } = useAuth();
   const { settings: muteSettings, setSettings: setMuteSettings, syncNow, syncState } = useMuteSettings(user?.pubkey);
-  const [tab, setTab] = useState<'muted-words' | 'blossom'>('muted-words');
+  const [tab, setTab] = useState<'muted-words' | 'blossom' | 'relays'>('muted-words');
   const [blossom, setBlossom] = useState(getBlossomConfig());
   const [newServer, setNewServer] = useState<BlossomServer>({ url: '', name: '', priority: 99, requiresAuth: false });
+  const [relaySyncStatus, setRelaySyncStatus] = useState<any>(null);
+  const [relayDebug, setRelayDebug] = useState<any>(null);
 
   useEffect(() => {
     setBlossom(getBlossomConfig());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRelayTelemetry = async () => {
+      try {
+        const [status, debug] = await Promise.all([api.getRelaySyncStatus(), api.getRelaySyncDebug()]);
+        if (cancelled) return;
+        setRelaySyncStatus(status);
+        setRelayDebug(debug);
+      } catch {
+        if (!cancelled) {
+          setRelaySyncStatus(null);
+          setRelayDebug(null);
+        }
+      }
+    };
+
+    void loadRelayTelemetry();
+    return () => { cancelled = true; };
   }, []);
 
   const runSync = async () => {
@@ -47,6 +71,12 @@ export function SettingsPage() {
             onClick={() => setTab('blossom')}
           >
             Blossom media
+          </button>
+          <button
+            className={`cy-chip text-sm ${tab === 'relays' ? 'border-cyan-300 text-cyan-100' : ''}`}
+            onClick={() => setTab('relays')}
+          >
+            Relay health
           </button>
         </div>
       </header>
@@ -178,6 +208,47 @@ export function SettingsPage() {
           </div>
 
           <p className="text-xs text-emerald-300">Preferred server: {blossom.preferredServer || 'none'}</p>
+        </section>
+      ) : null}
+
+      {tab === 'relays' ? (
+        <section className="cy-card p-5 space-y-4">
+          <div>
+            <p className="cy-kicker">RELAY TOOLING</p>
+            <h2 className="text-lg text-cyan-100 font-semibold">Health + Sync Status</h2>
+            <p className="text-sm text-slate-300 mt-1">Primitive-powered view of relay quality and sync progress.</p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-sm">
+            <span className="cy-chip">Sync: {relaySyncStatus?.running ? 'running' : 'idle'}</span>
+            <span className="cy-chip">Queue: {relaySyncStatus?.queueSize ?? 'n/a'}</span>
+            <span className="cy-chip">Processed: {relaySyncStatus?.processedCount ?? 'n/a'}</span>
+            <span className="cy-chip">Errors: {relaySyncStatus?.errorCount ?? 'n/a'}</span>
+          </div>
+          {Array.isArray(relayDebug?.relays) && relayDebug.relays.length > 0 ? (
+            <div className="space-y-2">
+              {relayDebug.relays.slice(0, 8).map((row: any) => {
+                const health = scoreRelayHealth({
+                  successCount: Math.max(0, (row.state?.requests?.length || 0) - (row.state?.consecutive429 || 0)),
+                  failureCount: row.state?.consecutive429 || 0,
+                  avgLatencyMs: row.state?.targetRpm ? Math.max(120, Math.round(60000 / row.state.targetRpm)) : 600,
+                  lastSuccessAt: Date.now() - 60_000,
+                  lastFailureAt: row.state?.backoffUntil || 0,
+                });
+                return (
+                  <div key={row.relay} className="rounded border border-slate-700 p-3 text-sm">
+                    <p className="text-cyan-100 break-all">{row.relay}</p>
+                    <p className="text-slate-300 mt-1">Connection quality: {(health.score * 100).toFixed(1)}%</p>
+                    <p className="text-slate-400 text-xs">Backoff until: {row.state?.backoffUntil ? new Date(row.state.backoffUntil).toLocaleTimeString() : 'ready'}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p className="text-sm text-slate-400">No relay debug rows available.</p>}
+          {Array.isArray(relayDebug?.relays) && relayDebug.relays.length > 0 ? (
+            <p className="text-xs text-emerald-300">
+              Suggested active set: {planRelaySelection(relayDebug.relays.map((r: any) => ({ url: r.relay, source: 'discovered' as const })), { fanout: 5 }).selected.join(', ')}
+            </p>
+          ) : null}
         </section>
       ) : null}
     </div>

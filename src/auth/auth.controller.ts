@@ -95,7 +95,7 @@ export class AuthController {
         expiresAt: user.subscription.expiresAt,
         isActive: user.subscription.expiresAt 
           ? user.subscription.expiresAt > new Date() 
-          : user.subscription.tier === 'FREE',
+          : user.subscription.tier !== 'FREE',
       } : null,
     };
   }
@@ -166,7 +166,7 @@ export class AuthController {
         expiresAt: user.subscription.expiresAt,
         isActive: user.subscription.expiresAt
           ? user.subscription.expiresAt > new Date()
-          : user.subscription.tier === 'FREE',
+          : user.subscription.tier !== 'FREE',
       } : null,
     };
   }

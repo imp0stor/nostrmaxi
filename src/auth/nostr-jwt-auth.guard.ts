@@ -1,6 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { nip19 } from 'nostr-tools';
+import * as jwt from 'jsonwebtoken';
 
 // Proven middleware integration from shared package adapter
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -14,11 +15,29 @@ export class NostrJwtAuthGuard implements CanActivate {
 
     return new Promise<boolean>((resolve, reject) => {
       nostrAuthMiddleware(req as any, res as any, (err?: unknown) => {
-        if (err) {
+        // If middleware returned an error but still populated req.user, allow normalized flow.
+        if (err && !req.user) {
           return reject(err);
         }
 
-        // Check if we have user data from middleware
+        // Recover user from JWT if middleware failed to populate req.user.
+        if (!req.user) {
+          const authHeader = (req.headers as any)?.authorization as string | undefined;
+          const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+          if (token) {
+            try {
+              const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-jwt-secret') as any;
+              const recoveredPubkey = payload?.sub || payload?.pubkey;
+              if (typeof recoveredPubkey === 'string' && recoveredPubkey.length > 10) {
+                req.user = { pubkey: recoveredPubkey, npub: nip19.npubEncode(recoveredPubkey) };
+              }
+            } catch {
+              // no-op: handled below
+            }
+          }
+        }
+
+        // Check if we have user data from middleware / recovery
         if (!req.user) {
           console.error('[GUARD] No req.user set by middleware');
           return reject(new UnauthorizedException('Authentication required'));

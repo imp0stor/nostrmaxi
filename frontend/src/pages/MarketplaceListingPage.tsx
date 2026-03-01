@@ -1,66 +1,51 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { formatMarketplacePrice, getMarketplaceListingByKey, loadMarketplaceListings, type MarketplaceListing } from '../lib/marketplace';
-
-function formatPrice(listing: MarketplaceListing): string {
-  return formatMarketplacePrice(listing.price, listing.currency || 'USD');
-}
+import { formatSats, loadMarketplaceListings, timeRemaining } from '../lib/marketplace';
 
 export function MarketplaceListingPage() {
   const { listingId } = useParams();
-  const listingLookup = decodeURIComponent(listingId || '');
   const [loading, setLoading] = useState(true);
-  const [listings, setListings] = useState<MarketplaceListing[]>([]);
+  const [items, setItems] = useState<any[]>([]);
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
-      setLoading(true);
-      const items = await loadMarketplaceListings();
-      if (mounted) {
-        setListings(items);
-        setLoading(false);
-      }
+      const data = await loadMarketplaceListings(undefined, 'all');
+      if (!mounted) return;
+      setItems([...data.auctions, ...data.flatListings, ...data.resaleListings]);
+      setLoading(false);
     };
     void load();
     return () => { mounted = false; };
   }, []);
 
-  const listing = useMemo(() => getMarketplaceListingByKey(listings, listingLookup), [listings, listingLookup]);
+  const listing = useMemo(() => items.find((item) => item.id === listingId), [items, listingId]);
 
   if (loading) return <div className="max-w-4xl mx-auto px-4 py-8"><div className="cy-card p-6">Loading listing…</div></div>;
   if (!listing) return <div className="max-w-4xl mx-auto px-4 py-8"><div className="cy-card p-6">Listing not found. <Link className="text-cyan-300" to="/marketplace">Back to marketplace</Link></div></div>;
+
+  const isAuction = !!listing.startingBidSats;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
       <Link to="/marketplace" className="cy-chip inline-flex">← Back to marketplace</Link>
       <article className="cy-card p-5 space-y-4">
-        <div className="grid md:grid-cols-2 gap-4">
-          <div>
-            {listing.image ? <img src={listing.image} alt={listing.title} className="w-full h-72 object-cover rounded-lg border border-slate-700" /> : <div className="w-full h-72 rounded-lg border border-slate-700 bg-slate-900 flex items-center justify-center text-sm text-slate-400">No media</div>}
-            {listing.images.length > 1 ? (
-              <div className="mt-2 grid grid-cols-4 gap-2">
-                {listing.images.slice(1, 5).map((img, idx) => <img key={`${listing.id}-${idx}`} src={img} alt={`${listing.title} ${idx + 2}`} className="h-16 w-full rounded border border-slate-700 object-cover" />)}
-              </div>
-            ) : null}
-          </div>
-          <div>
-            <p className="cy-kicker">NOSTR LISTING</p>
-            <h1 className="cy-title">{listing.title}</h1>
-            <p className="text-fuchsia-200 text-xl font-semibold mt-2">{formatPrice(listing)}</p>
-            <p className="text-sm text-cyan-300 mt-3">Seller: {listing.sellerIdentity}</p>
-            <p className="cy-mono text-xs text-slate-400 mt-1 break-all">{listing.sellerNpub}</p>
-            <p className="text-sm text-slate-300 mt-3 whitespace-pre-wrap">{listing.description || listing.summary}</p>
-            {listing.location ? <p className="text-sm text-slate-400 mt-3">Ships from: {listing.location}</p> : null}
-            {listing.quantity != null ? <p className="text-sm text-slate-400 mt-1">Quantity available: {listing.quantity}</p> : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {listing.tags.map((tagValue) => <span key={`${listing.id}-tag-${tagValue}`} className="text-[11px] px-2 py-0.5 rounded-full border border-cyan-500/30 text-cyan-200">#{tagValue}</span>)}
-            </div>
-            <div className="mt-5 rounded-lg border border-fuchsia-400/30 bg-fuchsia-500/10 p-3 text-sm text-fuchsia-100">
-              Checkout/payments are next sprint. This MVP ships browse + listing detail + identity context.
-            </div>
-          </div>
-        </div>
+        <p className="cy-kicker">{isAuction ? 'AUCTION' : 'LISTING'}</p>
+        <h1 className="cy-title">{listing.name}@{listing.domain}</h1>
+        {isAuction ? (
+          <>
+            <p className="text-fuchsia-200 text-xl font-semibold">Current bid: {formatSats(listing.currentBidSats ?? listing.startingBidSats)}</p>
+            <p className="text-sm text-slate-300">Time remaining: {timeRemaining(listing.endsAt)}</p>
+            <p className="text-sm text-slate-300">Minimum increment: {formatSats(listing.minIncrementSats)}</p>
+            <p className="text-sm text-slate-300">Bid count: {listing.bidCount}</p>
+          </>
+        ) : (
+          <>
+            <p className="text-fuchsia-200 text-xl font-semibold">Price: {formatSats(listing.fixedPriceSats)}</p>
+            <p className="text-sm text-slate-300">Sale mode: {listing.saleMode}</p>
+            <p className="text-sm text-slate-300">Escrow transfer with 5% platform fee.</p>
+          </>
+        )}
       </article>
     </div>
   );

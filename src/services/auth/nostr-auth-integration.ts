@@ -126,7 +126,56 @@ const ownerNpubs = parseNpubs(process.env.NOSTRMAXI_OWNER_NPUBS || process.env.A
 const adminNpubs = parseNpubs(process.env.NOSTRMAXI_ADMIN_NPUBS || process.env.ADMIN_PUBKEYS);
 const jwtSecret = process.env.JWT_SECRET || 'change-me-in-production';
 
-const nostrAuthMiddleware = verifyNostrAuth(jwtSecret);
+const baseNostrAuthMiddleware = verifyNostrAuth(jwtSecret);
+
+const recoverUserFromAuthorization = (authorization: unknown) => {
+  if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authorization.slice(7);
+
+  try {
+    const decoded = jwt.verify(token, jwtSecret) as { sub?: string; npub?: string; pubkey?: string; role?: string };
+    const { pubkey, npub } = deriveAuthIdentity(decoded);
+    if (pubkey) {
+      return { pubkey, npub, role: decoded.role || 'user' };
+    }
+  } catch {
+    if (isNpub(token)) {
+      try {
+        const dec = nip19.decode(token);
+        const pubkey = typeof dec.data === 'string' ? dec.data : '';
+        if (pubkey) {
+          return { pubkey, npub: token, role: 'user' };
+        }
+      } catch {
+        // invalid direct npub token
+      }
+    }
+  }
+
+  return null;
+};
+
+const nostrAuthMiddleware = (req: any, res: any, next: (err?: unknown) => void) => {
+  baseNostrAuthMiddleware(req, res, (err?: unknown) => {
+    // Some upstream middleware versions reject JWTs whose `sub` claim is hex pubkey
+    // instead of npub. Recover from header to keep auth compatible with issued tokens.
+    if (!req.user) {
+      const recovered = recoverUserFromAuthorization(req?.headers?.authorization);
+      if (recovered) {
+        req.user = recovered;
+      }
+    }
+
+    if (err && !req.user) {
+      return next(err);
+    }
+
+    return next();
+  });
+};
 
 export {
   ownerNpubs,

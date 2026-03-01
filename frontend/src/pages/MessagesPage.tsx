@@ -178,6 +178,7 @@ export function MessagesPage() {
               const profile = profiles.get(conversation.counterpartyPubkey);
               const title = profileDisplayName(conversation.counterpartyPubkey, profile);
               const active = conversation.counterpartyPubkey === selectedPubkey;
+              const lastMessage = conversation.messages[conversation.messages.length - 1];
               return (
                 <button
                   key={conversation.counterpartyPubkey}
@@ -188,6 +189,7 @@ export function MessagesPage() {
                   <p className="text-sm font-medium text-cyan-100">{title}</p>
                   <p className="text-xs text-cyan-400">{truncateNpub(conversation.counterpartyPubkey)}</p>
                   <p className="text-xs text-cyan-300/80 mt-1">{conversation.lastMessagePreview || 'Encrypted message'}</p>
+                  {lastMessage ? <p className="text-[11px] text-cyan-300/90 mt-1">{encryptionBadge(lastMessage.encryption)}</p> : null}
                 </button>
               );
             })}
