@@ -134,9 +134,10 @@ const recoverUserFromAuthorization = (authorization: unknown) => {
   }
 
   const token = authorization.slice(7);
+  const activeJwtSecret = process.env.JWT_SECRET || jwtSecret;
 
   try {
-    const decoded = jwt.verify(token, jwtSecret) as { sub?: string; npub?: string; pubkey?: string; role?: string };
+    const decoded = jwt.verify(token, activeJwtSecret) as { sub?: string; npub?: string; pubkey?: string; role?: string };
     const { pubkey, npub } = deriveAuthIdentity(decoded);
     if (pubkey) {
       return { pubkey, npub, role: decoded.role || 'user' };

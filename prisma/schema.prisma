@@ -22,9 +22,14 @@ model User {
   subscription Subscription?
   sessions     Session[]
   apiKeys      ApiKey[]
-  lnurlSessions LnurlSession[]
+  lnurlSessions     LnurlSession[]
+  marketplaceSales  MarketplaceTransaction[] @relation("MarketplaceSeller")
+  marketplaceBuys   MarketplaceTransaction[] @relation("MarketplaceBuyer")
+
+  lightningAddress String?
 
   @@index([pubkey])
+  @@index([lightningAddress])
 }
 
 // User sessions (JWT-based)
@@ -319,25 +324,59 @@ model Nip05Listing {
 }
 
 model Nip05Transfer {
-  id              String    @id @default(uuid())
-  sourceType      String    // auction, listing
-  sourceId        String
-  buyerPubkey     String
-  sellerPubkey    String?
-  amountSats      Int
-  platformFeeSats Int
+  id               String    @id @default(uuid())
+  sourceType       String    // auction, listing
+  sourceId         String
+  buyerPubkey      String
+  sellerPubkey     String?
+  amountSats       Int
+  platformFeeSats  Int
   sellerPayoutSats Int
-  escrowStatus    String    @default("awaiting_payment") // awaiting_payment, funded, released, refunded
-  transferStatus  String    @default("initiated") // initiated, payment_confirmed, ownership_transferred, completed, failed
-  note            String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  completedAt     DateTime?
+  escrowStatus     String    @default("awaiting_payment") // awaiting_payment, funded, released, refunded
+  transferStatus   String    @default("initiated") // initiated, payment_confirmed, ownership_transferred, completed, failed
+  note             String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  completedAt      DateTime?
 
   @@index([buyerPubkey])
   @@index([sellerPubkey])
   @@index([sourceType, sourceId])
   @@index([escrowStatus, transferStatus])
+}
+
+model MarketplaceTransaction {
+  id                 String   @id @default(uuid())
+  sourceType         String   // listing, auction
+  sourceId           String
+  buyerPubkey        String
+  sellerPubkey       String
+  buyerId            String?
+  sellerId           String?
+  buyer              User?    @relation("MarketplaceBuyer", fields: [buyerId], references: [id], onDelete: SetNull)
+  seller             User?    @relation("MarketplaceSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  totalSats          Int
+  feeBps             Int      @default(500)
+  platformFeeSats    Int
+  sellerPayoutSats   Int
+  status             String   @default("pending") // pending, paid, failed, settled
+  sellerPayoutStatus String   @default("pending") // pending, sent, confirmed, failed
+  paymentProvider    String?
+  paymentId          String?  @unique
+  paymentHash        String?  @unique
+  providerInvoiceId  String?  @unique
+  sellerPayoutId     String?
+  transferId         String?
+  paidAt             DateTime?
+  settledAt          DateTime?
+  metadata           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([sourceType, sourceId])
+  @@index([buyerPubkey])
+  @@index([sellerPubkey])
+  @@index([status, sellerPayoutStatus])
 }
 
 model BlockedName {

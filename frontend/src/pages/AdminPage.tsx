@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
@@ -120,7 +121,10 @@ export function AdminPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-4" aria-label="Admin console">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold text-orange-100">Admin Console</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold text-orange-100">Admin Console</h1>
+          <Link to="/admin/marketplace" className="cy-chip">Open Marketplace Panel</Link>
+        </div>
         <p className="text-sm text-orange-200/80">Isolated operations surface for platform safety, reliability, and intervention.</p>
       </header>
 

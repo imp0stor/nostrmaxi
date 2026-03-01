@@ -25,6 +25,7 @@ import { BookmarksPage } from './pages/BookmarksPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { MessagesPage } from './pages/MessagesPage';
 import { AdminPage } from './pages/AdminPage';
+import { AdminMarketplacePage } from './pages/AdminMarketplacePage';
 import { truncateNpub } from './lib/nostr';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
 import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
@@ -204,6 +205,20 @@ export default function App() {
             <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
             <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
             <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
+            <Route
+              path="/admin/marketplace"
+              element={
+                !isAuthenticated ? (
+                  <Navigate to="/" replace />
+                ) : isAdminLoading ? (
+                  <div className="max-w-3xl mx-auto px-4 py-8"><div className="cy-card p-6">Checking admin access…</div></div>
+                ) : isAdmin ? (
+                  <AdminMarketplacePage />
+                ) : (
+                  <Navigate to="/feed" replace />
+                )
+              }
+            />
             <Route
               path="/admin/*"
               element={

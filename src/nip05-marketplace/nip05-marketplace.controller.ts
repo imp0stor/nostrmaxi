@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
 import { NostrAdminGuard } from '../auth/nostr-role.guard';
@@ -60,5 +60,26 @@ export class Nip05MarketplaceController {
   @ApiBearerAuth()
   buyListing(@Param('listingId') listingId: string, @Req() req: any) {
     return this.service.buyListing({ listingId, buyerPubkey: req.pubkey });
+  }
+
+  @Patch('seller/lightning-address')
+  @UseGuards(NostrJwtAuthGuard)
+  @ApiBearerAuth()
+  setLightningAddress(@Req() req: any, @Body() body: { lightningAddress: string }) {
+    return this.service.setSellerLightningAddress(req.pubkey, body.lightningAddress);
+  }
+
+  @Post('admin/transactions/:transactionId/retry-payout')
+  @UseGuards(NostrJwtAuthGuard, NostrAdminGuard)
+  @ApiBearerAuth()
+  retryPayout(@Param('transactionId') transactionId: string) {
+    return this.service.adminRetryPayout(transactionId);
+  }
+
+  @Get('admin/transactions')
+  @UseGuards(NostrJwtAuthGuard, NostrAdminGuard)
+  @ApiBearerAuth()
+  listTransactions(@Query('limit') limit?: string) {
+    return this.service.getMarketplaceTransactionHistory(limit ? parseInt(limit, 10) : 100);
   }
 }

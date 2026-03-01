@@ -8,11 +8,13 @@ import { WotModule } from '../wot/wot.module';
 import { RelayDiscoveryModule } from '../relay-discovery/relay-discovery.module';
 import { EcosystemCatalogModule } from '../ecosystem-catalog/ecosystem-catalog.module';
 import { AuctionModule } from '../auctions/auction.module';
+import { AdminMarketplaceController } from './admin-marketplace.controller';
+import { AdminMarketplaceService } from './admin-marketplace.service';
 
 @Module({
   imports: [AuthModule, WotModule, RelayDiscoveryModule, EcosystemCatalogModule, AuctionModule],
-  controllers: [AdminController, AdminCheckController],
-  providers: [AdminService, AdminGuard],
+  controllers: [AdminController, AdminCheckController, AdminMarketplaceController],
+  providers: [AdminService, AdminGuard, AdminMarketplaceService],
   exports: [AdminService],
 })
 export class AdminModule {}

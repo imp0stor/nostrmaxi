@@ -13,6 +13,7 @@ import { generateTestKeypair, createNip98AuthHeader, mockLnbitsInvoice } from '.
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WebhooksService } from '../webhooks/webhooks.service';
 import { WotService } from '../wot/wot.service';
+import { SplitPaymentService } from '../payments/split-payment.service';
 import { nip19 } from 'nostr-tools';
 import * as crypto from 'crypto';
 
@@ -77,6 +78,12 @@ describe('Payment Webhook Handling', () => {
         {
           provide: WotService,
           useValue: wotService,
+        },
+        {
+          provide: SplitPaymentService,
+          useValue: {
+            handleMarketplaceWebhook: jest.fn().mockResolvedValue({ handled: false }),
+          },
         },
       ],
     }).compile();

@@ -20,8 +20,9 @@ export class NostrJwtAuthGuard implements CanActivate {
           return reject(err);
         }
 
-        // Recover user from JWT if middleware failed to populate req.user.
-        if (!req.user) {
+        // Recover user from JWT if middleware failed to populate req.user
+        // or produced an incomplete user object.
+        if (!req.user || (!req.user.pubkey && !req.user.npub)) {
           const authHeader = (req.headers as any)?.authorization as string | undefined;
           const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
           if (token) {

@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { canDirectlyRegisterName, quoteNamePrice } from '../config/name-pricing';
-
-const PLATFORM_FEE_BPS = 500;
+import { SplitPaymentService } from '../payments/split-payment.service';
 
 @Injectable()
 export class Nip05MarketplaceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly splitPaymentService: SplitPaymentService,
+  ) {}
 
   async checkAvailability(localPart: string, domain: string) {
     const normalized = localPart.trim().toLowerCase();
@@ -138,7 +140,10 @@ export class Nip05MarketplaceService {
   }
 
   async finalizeAuction(auctionId: string) {
-    const auction = await (this.prisma as any).nip05Auction.findUnique({ where: { id: auctionId }, include: { bids: { orderBy: { amountSats: 'desc' }, take: 1 } } });
+    const auction = await (this.prisma as any).nip05Auction.findUnique({
+      where: { id: auctionId },
+      include: { bids: { orderBy: { amountSats: 'desc' }, take: 1 } },
+    });
     if (!auction) throw new NotFoundException('Auction not found');
 
     const winningBid = auction.bids[0];
@@ -152,30 +157,16 @@ export class Nip05MarketplaceService {
       return { settled: false, reason: 'Reserve not met' };
     }
 
-    const platformFeeSats = Math.floor((winningBid.amountSats * PLATFORM_FEE_BPS) / 10_000);
-    const sellerPayoutSats = winningBid.amountSats - platformFeeSats;
-
-    const transfer = await (this.prisma as any).nip05Transfer.create({
-      data: {
-        sourceType: 'auction',
-        sourceId: auctionId,
-        buyerPubkey: winningBid.bidderPubkey,
-        sellerPubkey: auction.ownerPubkey || null,
-        amountSats: winningBid.amountSats,
-        platformFeeSats,
-        sellerPayoutSats,
-        escrowStatus: 'awaiting_payment',
-        transferStatus: 'initiated',
-      },
-    });
-
-    await (this.prisma as any).nip05Auction.update({ where: { id: auctionId }, data: { status: 'settlement_pending', winnerPubkey: winningBid.bidderPubkey, winningBidSats: winningBid.amountSats } });
-
-    return { settled: true, transfer, winnerPubkey: winningBid.bidderPubkey, amountSats: winningBid.amountSats };
+    return this.splitPaymentService.createAuctionSettlementInvoice(auctionId, winningBid.bidderPubkey);
   }
 
   async createListing(input: any) {
     const listingType = input.listingType || 'resale';
+    const seller = await this.prisma.user.findUnique({ where: { pubkey: input.sellerPubkey } });
+    if (!seller?.lightningAddress) {
+      throw new BadRequestException('Seller must set lightningAddress before creating listings');
+    }
+
     return (this.prisma as any).nip05Listing.create({
       data: {
         name: input.name.toLowerCase(),
@@ -191,30 +182,19 @@ export class Nip05MarketplaceService {
   }
 
   async buyListing(input: { listingId: string; buyerPubkey: string }) {
-    const listing = await (this.prisma as any).nip05Listing.findUnique({ where: { id: input.listingId } });
-    if (!listing || listing.status !== 'active') throw new NotFoundException('Listing not available');
-    if (!listing.fixedPriceSats) throw new BadRequestException('Listing has no fixed price');
+    return this.splitPaymentService.createMarketplaceInvoice(input.listingId, input.buyerPubkey);
+  }
 
-    const platformFeeSats = Math.floor((listing.fixedPriceSats * PLATFORM_FEE_BPS) / 10_000);
-    const sellerPayoutSats = listing.fixedPriceSats - platformFeeSats;
+  async setSellerLightningAddress(pubkey: string, lightningAddress: string) {
+    return this.splitPaymentService.setSellerLightningAddress(pubkey, lightningAddress);
+  }
 
-    const transfer = await (this.prisma as any).nip05Transfer.create({
-      data: {
-        sourceType: 'listing',
-        sourceId: listing.id,
-        buyerPubkey: input.buyerPubkey,
-        sellerPubkey: listing.sellerPubkey,
-        amountSats: listing.fixedPriceSats,
-        platformFeeSats,
-        sellerPayoutSats,
-        escrowStatus: 'awaiting_payment',
-        transferStatus: 'initiated',
-      },
-    });
+  async adminRetryPayout(transactionId: string) {
+    return this.splitPaymentService.adminRetryPayout(transactionId);
+  }
 
-    await (this.prisma as any).nip05Listing.update({ where: { id: listing.id }, data: { status: 'pending_sale' } });
-
-    return { transfer, paymentIntegration: { action: 'create_lightning_invoice', amountSats: listing.fixedPriceSats, metadata: { transferId: transfer.id } } };
+  async getMarketplaceTransactionHistory(limit = 100) {
+    return this.splitPaymentService.getMarketplaceTransactionHistory(limit);
   }
 
   async listReservedNames() {

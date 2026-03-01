@@ -10,6 +10,7 @@ import {
 import { BtcpayProvider } from './providers/btcpay.provider';
 import { LnbitsProvider } from './providers/lnbits.provider';
 import { WotService } from '../wot/wot.service';
+import { SplitPaymentService } from './split-payment.service';
 
 export type SubscriptionTier = 'FREE' | 'PRO' | 'BUSINESS' | 'LIFETIME';
 export type BillingCycle = 'monthly' | 'annual' | 'lifetime';
@@ -116,6 +117,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private config: ConfigService,
     private wotService: WotService,
+    private splitPaymentService: SplitPaymentService,
   ) {
     const lnbitsUrl = this.config.get('LNBITS_URL') || 'https://legend.lnbits.com';
     const lnbitsApiKey = this.config.get('LNBITS_API_KEY') || '';
@@ -419,6 +421,15 @@ export class PaymentsService {
     });
 
     if (!payment) {
+      const marketplace = await this.splitPaymentService.handleMarketplaceWebhook(
+        payload,
+        signature,
+        provider.type,
+      );
+      if (marketplace.handled) {
+        return { success: true };
+      }
+
       this.logger.warn(`No pending payment found for provider invoice: ${event.providerInvoiceId}`);
       return { success: false };
     }
