@@ -16,6 +16,7 @@ const navItems: SidebarItem[] = [
   { type: 'link', icon: '🏠', label: 'Home', path: '/' },
   { type: 'link', icon: '📰', label: 'Feed', path: '/feed', requiresAuth: true },
   { type: 'link', icon: '🔍', label: 'Discover', path: '/discover', requiresAuth: true },
+  { type: 'link', icon: '🧭', label: 'Connections', path: '/connections', requiresAuth: true },
   { type: 'link', icon: '🎬', label: 'Media', path: '/media-discovery', requiresAuth: true },
   { type: 'link', icon: '📋', label: 'Lists', path: '/lists', requiresAuth: true },
   { type: 'link', icon: '🔔', label: 'Notifications', path: '/notifications', requiresAuth: true },

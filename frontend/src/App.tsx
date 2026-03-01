@@ -10,6 +10,7 @@ import { ReceiptPage } from './pages/ReceiptPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { FeedPage } from './pages/FeedPage';
 import { DiscoverPage } from './pages/DiscoverPage';
+import { ConnectionsPage } from './pages/ConnectionsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { MarketplacePage } from './pages/MarketplacePage';
 import { MarketplaceListingPage } from './pages/MarketplaceListingPage';
@@ -133,6 +134,7 @@ export default function App() {
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" replace />} />
             <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
+            <Route path="/connections" element={isAuthenticated ? <ConnectionsPage /> : <Navigate to="/" replace />} />
             <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
             <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
             <Route path="/bookmarks" element={isAuthenticated ? <BookmarksPage /> : <Navigate to="/" replace />} />
