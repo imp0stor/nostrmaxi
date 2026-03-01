@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
+import { RelaySyncDebugPanel } from '../components/admin/RelaySyncDebugPanel';
 
-type TabKey = 'identities' | 'names' | 'auctions' | 'sales';
+type TabKey = 'identities' | 'names' | 'auctions' | 'sales' | 'relaySync';
 
 type Identity = {
   id: string;
@@ -16,7 +17,7 @@ type Identity = {
   status: 'active' | 'suspended';
 };
 
-const tabs: TabKey[] = ['identities', 'names', 'auctions', 'sales'];
+const tabs: TabKey[] = ['identities', 'names', 'auctions', 'sales', 'relaySync'];
 
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = api.getToken();
@@ -51,17 +52,21 @@ export function AdminPage() {
       <h1 className="text-2xl font-semibold">Admin Dashboard</h1>
       {toast ? <div className="cy-card p-2 text-cyan-200">{toast}</div> : null}
       <div className="flex gap-2 flex-wrap">
-        {tabs.map((t) => (
-          <button key={t} className={`cy-chip ${tab === t ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
-          </button>
-        ))}
+        {tabs.map((t) => {
+          const label = t === 'relaySync' ? 'Relay Sync Debug' : t[0].toUpperCase() + t.slice(1);
+          return (
+            <button key={t} className={`cy-chip ${tab === t ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setTab(t)}>
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {tab === 'identities' ? <IdentitiesTab notify={notify} /> : null}
       {tab === 'names' ? <NamesTab notify={notify} /> : null}
       {tab === 'auctions' ? <AuctionsTab notify={notify} /> : null}
       {tab === 'sales' ? <SalesTab /> : null}
+      {tab === 'relaySync' ? <RelaySyncDebugPanel /> : null}
     </div>
   );
 }
