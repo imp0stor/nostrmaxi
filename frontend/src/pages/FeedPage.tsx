@@ -25,6 +25,11 @@ import { PostActionMenu } from '../components/PostActionMenu';
 import { useMuteActions } from '../hooks/useMuteActions';
 import { MediaUploader } from '../components/MediaUploader';
 import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
+import composeIcon from '../assets/icons/compose-custom.svg';
+import muteConfigIcon from '../assets/icons/mute-config-custom.svg';
+import filtersIcon from '../assets/icons/filters-custom.svg';
+import relayIcon from '../assets/icons/relay-custom.svg';
+import refreshIcon from '../assets/icons/refresh-base.svg';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -847,7 +852,7 @@ export function FeedPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-      <section className="cy-card p-5">
+      <section className="cy-card nm-surface p-6">
         <p className="cy-kicker mb-2">COMPOSER / KIND-1</p>
         <label htmlFor="feed-composer" className="sr-only">Compose event</label>
         <textarea
@@ -872,46 +877,58 @@ export function FeedPage() {
               <p className="text-xs text-cyan-200">Attached media previews</p>
               <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
                 {composerMedia.map((media, idx) => (
-                  <div key={`${media.url}-${idx}`} className="rounded border border-cyan-700/50 bg-slate-950/60 p-2">
-                    {media.type === 'image' ? <img src={media.url} alt="Composer attachment" className="h-28 w-full rounded object-cover" /> : null}
-                    {media.type === 'video' ? <video src={media.url} controls className="h-28 w-full rounded object-cover" /> : null}
-                    {media.type === 'audio' ? <audio src={media.url} controls className="w-full" /> : null}
-                    {media.type === 'other' ? <a href={media.url} className="text-xs text-cyan-300 break-all" target="_blank" rel="noreferrer">{media.url}</a> : null}
-                    <button type="button" className="mt-2 cy-btn-secondary text-xs" onClick={() => setComposerMedia((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
-                  </div>
+                  <article key={`${media.url}-${idx}`} className="nm-media-card">
+                    <a href={media.url} target="_blank" rel="noreferrer" className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70 rounded" aria-label={`Open attached ${media.type} in new tab`}>
+                      {media.type === 'image' ? <img src={media.url} alt="Composer attachment" className="h-28 w-full rounded object-cover" /> : null}
+                      {media.type === 'video' ? <video src={media.url} controls className="h-28 w-full rounded object-cover" /> : null}
+                      {media.type === 'audio' ? <audio src={media.url} controls className="w-full" /> : null}
+                      {media.type === 'other' ? <span className="text-xs text-orange-300 break-all">{media.url}</span> : null}
+                    </a>
+                    <button type="button" className="mt-2 nm-pill text-xs" onClick={() => setComposerMedia((prev) => prev.filter((_, i) => i !== idx))} aria-label="Remove attachment">Remove</button>
+                  </article>
                 ))}
               </div>
             </div>
           ) : null}
           <p className="mt-2 text-xs text-slate-400">Uploads are added to the post payload automatically — we keep raw URLs out of the composer.</p>
         </div>
-        <div className="mt-3 flex justify-end">
-          <button className="cy-btn" onClick={onPublish} disabled={!canPost || busyId === 'composer'}>
+        <div className="mt-4 flex justify-end">
+          <button className="nm-pill nm-pill-primary" onClick={onPublish} disabled={!canPost || busyId === 'composer'} aria-label="Publish post">
+            <img src={composeIcon} alt="" aria-hidden className="nm-icon" />
             {busyId === 'composer' ? 'Publishing…' : 'Post Event'}
           </button>
         </div>
       </section>
 
-      <div className="cy-card p-3 flex flex-wrap items-center gap-2 justify-between">
+      <div className="cy-card nm-toolbar p-3.5 flex flex-wrap items-center gap-2 justify-between">
         <div className="flex flex-wrap gap-2">
-          <button type="button" className="cy-chip" onClick={() => setShowMuteModal(true)}>🔧 Mute</button>
-          <button type="button" className="cy-chip" onClick={() => setShowFiltersModal(true)}>🧰 Content Filters</button>
-          <button type="button" className="cy-chip" onClick={() => setShowRelayModal(true)}>📡 Relay Status</button>
+          <button type="button" className="nm-pill" onClick={() => setShowMuteModal(true)} aria-label="Open mute settings">
+            <img src={muteConfigIcon} alt="" aria-hidden className="nm-icon" />
+            Mute
+          </button>
+          <button type="button" className="nm-pill" onClick={() => setShowFiltersModal(true)} aria-label="Open content filters">
+            <img src={filtersIcon} alt="" aria-hidden className="nm-icon" />
+            Content Filters
+          </button>
+          <button type="button" className="nm-pill" onClick={() => setShowRelayModal(true)} aria-label="Open relay status">
+            <img src={relayIcon} alt="" aria-hidden className="nm-icon" />
+            Relay Status
+          </button>
         </div>
-        <p className="text-xs text-cyan-200">{hiddenCount} posts hidden</p>
+        <button type="button" className="nm-pill" onClick={() => setShowFiltersModal(true)} aria-label="Open filters and hidden posts">{hiddenCount} posts hidden</button>
       </div>
 
       <header className="cy-card p-5">
         <div className="flex items-center justify-between gap-4 mb-3">
           <p className="cy-kicker">SOCIAL FEED</p>
-          <button className="cy-btn-secondary" onClick={refresh}>Refresh</button>
+          <button className="nm-pill" onClick={refresh} aria-label="Refresh feed"><img src={refreshIcon} alt="" aria-hidden className="nm-icon" />Refresh</button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           {(Object.keys(FEED_MODE_LABELS) as FeedMode[]).map((mode) => (
             <button
               key={mode}
-              className={`cy-chip text-sm ${feedMode === mode && !activeCustomFeedId ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+              className={`cy-chip text-sm ${feedMode === mode && !activeCustomFeedId ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.28)]' : ''}`}
               onClick={() => {
                 setActiveCustomFeedId(null);
                 setFeedMode(mode);
@@ -924,7 +941,7 @@ export function FeedPage() {
           <span className="text-gray-600 mx-1">|</span>
 
           <button
-            className={`cy-chip text-sm ${activeCustomFeedId === 'bookmarks' ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+            className={`cy-chip text-sm ${activeCustomFeedId === 'bookmarks' ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.28)]' : ''}`}
             onClick={() => {
               setFeedMode('following');
               setActiveCustomFeedId('bookmarks');
@@ -934,7 +951,7 @@ export function FeedPage() {
           </button>
 
           <button
-            className="cy-chip text-sm border-dashed border-gray-600 text-gray-400 hover:border-cyan-500 hover:text-cyan-400"
+            className="cy-chip text-sm border-dashed border-gray-600 text-gray-400 hover:border-orange-500 hover:text-orange-300"
             onClick={() => setShowFeedModal(true)}
           >
             + Feeds
@@ -946,7 +963,7 @@ export function FeedPage() {
             {userCustomFeeds.map((feedDef) => (
               <button
                 key={feedDef.id}
-                className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+                className={`cy-chip text-sm ${activeCustomFeedId === feedDef.id ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.28)]' : ''}`}
                 onClick={() => {
                   setFeedMode('following');
                   setActiveCustomFeedId(feedDef.id);
@@ -989,9 +1006,9 @@ export function FeedPage() {
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {diagnostics.relayStatuses.map((relay) => (
-                <span key={relay.relay} className={`cy-chip ${relay.ok ? '' : 'border-red-500/60 text-red-300'}`}>
+                <button key={relay.relay} type="button" className={`cy-chip ${relay.ok ? '' : 'border-red-500/60 text-red-300'}`} onClick={() => { setRelayInput(relay.relay); setShowRelayModal(true); }} aria-label={`Open relay details for ${relay.relay}`}>
                   {relay.ok ? '●' : '○'} {relay.relay.replace('wss://', '')}
-                </span>
+                </button>
               ))}
             </div>
           </div>
@@ -1015,7 +1032,7 @@ export function FeedPage() {
           const hasNip05 = Boolean(item.profile?.nip05);
           const shortNpub = truncateNpub(item.pubkey, 10);
           return (
-            <article key={item.id} className={`cy-card p-5 ${notifyByEventId.has(item.id) ? 'border border-emerald-400/50 shadow-[0_0_20px_rgba(16,185,129,0.22)]' : ''}`}>
+            <article key={item.id} className={`cy-card p-5 ${notifyByEventId.has(item.id) ? 'border border-orange-400/50 shadow-[0_0_16px_rgba(249,115,22,0.2)]' : ''}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Avatar pubkey={item.pubkey} size={44} />
@@ -1034,7 +1051,7 @@ export function FeedPage() {
               </div>
               {notifyByEventId.has(item.id) ? (
                 <div className="mt-2">
-                  <span className="text-[11px] rounded-full border border-emerald-400/50 px-2 py-0.5 text-emerald-200 bg-emerald-500/10">
+                  <span className="text-[11px] rounded-full border border-orange-400/50 px-2 py-0.5 text-orange-200 bg-orange-500/10">
                     🔔 Matched {notifyByEventId.get(item.id)?.type}: {notifyByEventId.get(item.id)?.match}
                   </span>
                 </div>
@@ -1057,8 +1074,9 @@ export function FeedPage() {
                     <button
                       key={`${item.id}-tag-${tag}`}
                       type="button"
-                      className={`text-[11px] rounded-full border px-2 py-0.5 ${muted ? 'border-red-400/50 text-red-200 bg-red-500/10' : 'border-cyan-500/40 text-cyan-300 bg-cyan-500/5 hover:bg-cyan-500/15'}`}
+                      className={`text-[11px] rounded-full border px-2 py-0.5 ${muted ? 'border-red-400/50 text-red-200 bg-red-500/10' : 'border-orange-500/40 text-orange-300 bg-orange-500/5 hover:bg-orange-500/15'}`}
                       title={muted ? 'Muted hashtag' : 'Right-click to mute hashtag'}
+                      aria-label={muted ? `Muted hashtag ${tag}` : `Hashtag ${tag}. Right click to mute`}
                       onContextMenu={(event) => {
                         event.preventDefault();
                         if (!muted) {
@@ -1098,7 +1116,7 @@ export function FeedPage() {
       {showMuteModal ? (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setShowMuteModal(false)}>
           <div className="cy-card w-full max-w-lg p-4 space-y-4" onClick={(event) => event.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-cyan-100">Mute settings</h3>
+            <h3 className="text-lg font-semibold text-orange-100">Mute settings</h3>
             <p className="text-sm text-cyan-200">Manage muted words and profiles in Settings.</p>
             <div className="flex justify-between items-center gap-3">
               <Link to="/settings" className="cy-btn">Open Settings</Link>
@@ -1112,7 +1130,7 @@ export function FeedPage() {
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setShowFiltersModal(false)}>
           <div className="cy-card w-full max-w-2xl p-4 space-y-4 max-h-[85vh] overflow-auto" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-cyan-100">Content filters</h3>
+              <h3 className="text-lg font-semibold text-orange-100">Content filters</h3>
               <button type="button" className="cy-chip" onClick={clearFilters}>Reset all</button>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1121,7 +1139,7 @@ export function FeedPage() {
                 return (
                   <button
                     key={filter}
-                    className={`cy-chip text-sm ${active ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+                    className={`cy-chip text-sm ${active ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.28)]' : ''}`}
                     onClick={() => toggleFilter(filter)}
                   >
                     {FEED_FILTER_LABELS[filter]}
@@ -1138,7 +1156,7 @@ export function FeedPage() {
                     <button
                       key={tag}
                       type="button"
-                      className={`cy-chip text-xs ${active ? 'border-cyan-300 text-cyan-100' : ''}`}
+                      className={`cy-chip text-xs ${active ? 'border-cyan-300 text-orange-100' : ''}`}
                       onClick={() => setSelectedTags(active ? selectedTags.filter((t) => t !== tag) : [...selectedTags, tag])}
                     >
                       #{tag}
@@ -1148,8 +1166,8 @@ export function FeedPage() {
               </div>
               <div className="flex gap-2 items-center">
                 <span className="text-xs text-slate-400">Match logic</span>
-                <button type="button" className={`cy-chip text-xs ${logic === 'or' ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setLogic('or')}>Any</button>
-                <button type="button" className={`cy-chip text-xs ${logic === 'and' ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setLogic('and')}>All</button>
+                <button type="button" className={`cy-chip text-xs ${logic === 'or' ? 'border-cyan-300 text-orange-100' : ''}`} onClick={() => setLogic('or')}>Any</button>
+                <button type="button" className={`cy-chip text-xs ${logic === 'and' ? 'border-cyan-300 text-orange-100' : ''}`} onClick={() => setLogic('and')}>All</button>
               </div>
             </div>
             <div className="flex justify-end"><button type="button" className="cy-btn" onClick={() => setShowFiltersModal(false)}>Done</button></div>
@@ -1160,7 +1178,7 @@ export function FeedPage() {
       {showRelayModal ? (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setShowRelayModal(false)}>
           <div className="cy-card w-full max-w-2xl p-4 space-y-4 max-h-[85vh] overflow-auto" onClick={(event) => event.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-cyan-100">Relay management</h3>
+            <h3 className="text-lg font-semibold text-orange-100">Relay management</h3>
             <p className="text-xs text-slate-400">Connected relays are stored locally and published as kind:10002 when signing is available.</p>
             <div className="flex flex-wrap gap-2">
               {connectedRelays.map((relay) => (
@@ -1180,7 +1198,7 @@ export function FeedPage() {
                 {relaySuggestions.map((relay) => {
                   const selected = connectedRelays.includes(relay);
                   return (
-                    <button key={relay} type="button" className={`cy-chip text-xs ${selected ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => void onAddRelay(relay)} disabled={selected}>
+                    <button key={relay} type="button" className={`cy-chip text-xs ${selected ? 'border-cyan-300 text-orange-100' : ''}`} onClick={() => void onAddRelay(relay)} disabled={selected}>
                       {selected ? '✓ ' : '+ '}{relay.replace('wss://', '')}
                     </button>
                   );
@@ -1196,7 +1214,7 @@ export function FeedPage() {
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setZapComposeItem(null)}>
           <div className="cy-card w-full max-w-lg p-4 space-y-3" onClick={(event) => event.stopPropagation()}>
             <div>
-              <h3 className="text-lg font-semibold text-cyan-100">⚡ Zap this post</h3>
+              <h3 className="text-lg font-semibold text-orange-100">⚡ Zap this post</h3>
               <p className="text-xs text-cyan-300/80">Sending sats to {shortPubkey(zapComposeItem.pubkey)} ({zapComposeItem.profile?.lud16 || 'no lud16'})</p>
             </div>
             <label className="text-sm text-cyan-200">Amount (sats)</label>
