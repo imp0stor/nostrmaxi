@@ -517,7 +517,7 @@ export function AnalyticsPage() {
 
   useEffect(() => {
     if (!metrics?.topZappers.length) return;
-    const pubkeys = metrics.topZappers.slice(0, 10).map((z) => z.pubkey);
+    const pubkeys = metrics.topZappers.map((z) => z.pubkey);
     const loadProfiles = async () => {
       setZappersLoading(true);
       try {
@@ -640,8 +640,8 @@ export function AnalyticsPage() {
         </div>
         <div>
           <p className="text-sm text-gray-300 mb-2">Relay distribution</p>
-          <div className="space-y-2">
-            {safeMetrics.relayDistribution.slice(0, 8).map((relay) => (
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {safeMetrics.relayDistribution.map((relay) => (
               <div key={relay.relay} className="flex items-center gap-3 text-sm">
                 <span className="w-48 max-w-[55%] truncate text-gray-400">{relay.relay.replace('wss://', '')}</span>
                 <div className="flex-1 h-2 rounded bg-gray-800 overflow-hidden"><div className="h-2 bg-orange-400/80" style={{ width: `${Math.max(4, (relay.posts / Math.max(1, safeMetrics.relayDistribution[0]?.posts || 1)) * 100)}%` }} /></div>
@@ -690,8 +690,8 @@ export function AnalyticsPage() {
         {safeMetrics.topZappers.length === 0 ? (
           <p className="text-gray-400">⚡ No zaps yet.</p>
         ) : (
-          <div className="grid sm:grid-cols-2 gap-3">
-            {safeMetrics.topZappers.slice(0, 10).map((z) => {
+          <div className="grid sm:grid-cols-2 gap-3 max-h-[32rem] overflow-y-auto pr-1">
+            {safeMetrics.topZappers.map((z) => {
               const profile = zapperProfiles.get(z.pubkey);
               return (
                 <button
@@ -733,8 +733,8 @@ export function AnalyticsPage() {
         {recentPostsDetailed.length === 0 ? (
           <p className="text-gray-400">📭 No recent posts found.</p>
         ) : (
-          <div className="space-y-3">
-            {recentPostsDetailed.slice(0, 8).map((post) => (
+          <div className="space-y-3 max-h-[36rem] overflow-y-auto pr-1">
+            {recentPostsDetailed.map((post) => (
               <article key={post.id} className="p-3 rounded border border-gray-700/60 bg-gray-800/50 shadow-sm">
                 {post.event ? <InlineContent tokens={parseMediaFromFeedItem(post.event).tokens} quotedEvents={new Map()} quotedProfiles={new Map()} /> : <p className="text-gray-200">{post.content}</p>}
                 <div className="mt-2 flex items-center justify-between gap-2">

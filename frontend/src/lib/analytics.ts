@@ -52,9 +52,23 @@ export interface AnalyticsDashboardData {
   engagementPerDay: TimePoint[];
   recentPosts: PostSummary[];
   topPosts: TopPost[];
+  engagementTotals: {
+    reactions: number;
+    replies: number;
+    reposts: number;
+    zaps: number;
+    score: number;
+  };
+  growth: {
+    postsDeltaPct: number;
+    engagementDeltaPct: number;
+  };
+  relayDistribution: { relay: string; posts: number }[];
   zapStats: {
     totalSats: number;
     totalZaps: number;
+    totalSatsSent: number;
+    totalZapsSent: number;
     averageZapAmount: number;
     topZappers: TopZapper[];
   };
@@ -227,6 +241,9 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
 
     const postMetrics = new Map<string, TopPost>();
     const hashtagUsage = new Map<string, { posts: number; engagement: number }>();
+    let totalReactions = 0;
+    let totalReplies = 0;
+    let totalReposts = 0;
 
     sortedPosts.forEach((post) => {
       postMetrics.set(post.id, {
@@ -256,7 +273,10 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       extractEventIds(evt).forEach((id) => {
         if (!postIdSet.has(id)) return;
         const metric = postMetrics.get(id);
-        if (metric) metric.reactions += 1;
+        if (metric) {
+          metric.reactions += 1;
+          totalReactions += 1;
+        }
       });
     });
 
@@ -265,7 +285,10 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       extractEventIds(evt).forEach((id) => {
         if (!postIdSet.has(id)) return;
         const metric = postMetrics.get(id);
-        if (metric) metric.replies += 1;
+        if (metric) {
+          metric.replies += 1;
+          totalReplies += 1;
+        }
       });
     });
 
@@ -273,7 +296,10 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       extractEventIds(evt).forEach((id) => {
         if (!postIdSet.has(id)) return;
         const metric = postMetrics.get(id);
-        if (metric) metric.reposts += 1;
+        if (metric) {
+          metric.reposts += 1;
+          totalReposts += 1;
+        }
       });
     });
 
@@ -350,8 +376,20 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
         zapCount: stat.count,
         averageSats: Math.round(stat.sats / stat.count),
       }))
-      .sort((a, b) => b.totalSats - a.totalSats)
-      .slice(0, 10);
+      .sort((a, b) => b.totalSats - a.totalSats);
+
+    const sentZaps = await queryEvents(pool, { kinds: [9735], authors: [pubkey], since: startTs, until: endTs, limit: 3000 });
+    let totalSatsSent = 0;
+    for (const evt of sentZaps) {
+      totalSatsSent += parseZapAmountSat(evt);
+    }
+
+    const relayDistribution = await Promise.all(
+      FALLBACK_RELAYS.map(async (relay) => {
+        const relayPosts = await pool.querySync([relay], { kinds: [1], authors: [pubkey], since: startTs, until: endTs, limit: 2000 });
+        return { relay, posts: (relayPosts as NostrEvent[]).length };
+      }),
+    );
 
     const postsPerDay = Array.from(postsPerDayMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -366,10 +404,9 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       .map(([label, value]) => ({ label, value }));
 
     const topPosts = Array.from(postMetrics.values())
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 10);
+      .sort((a, b) => b.score - a.score);
 
-    const recentPosts = sortedPosts.slice(0, 10).map((post) => ({
+    const recentPosts = sortedPosts.map((post) => ({
       id: post.id,
       createdAt: post.created_at,
       preview: postPreview(post.content, post.id),
@@ -377,8 +414,27 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
 
     const hashtagPerformance = Array.from(hashtagUsage.entries())
       .map(([hashtag, stats]) => ({ hashtag, posts: stats.posts, engagement: stats.engagement }))
-      .sort((a, b) => b.engagement - a.engagement)
-      .slice(0, 20);
+      .sort((a, b) => b.engagement - a.engagement);
+
+    const sortedRanged = [...rangedPosts].sort((a, b) => a.created_at - b.created_at);
+    const midpoint = Math.floor(sortedRanged.length / 2);
+    const firstHalf = sortedRanged.slice(0, midpoint);
+    const secondHalf = sortedRanged.slice(midpoint);
+    const firstHalfEngagement = firstHalf.reduce((sum, post) => {
+      const metric = postMetrics.get(post.id);
+      return sum + (metric ? (metric.reactions + metric.replies + metric.reposts + metric.zaps) : 0);
+    }, 0);
+    const secondHalfEngagement = secondHalf.reduce((sum, post) => {
+      const metric = postMetrics.get(post.id);
+      return sum + (metric ? (metric.reactions + metric.replies + metric.reposts + metric.zaps) : 0);
+    }, 0);
+
+    const postsDeltaPct = firstHalf.length > 0 ? Number((((secondHalf.length - firstHalf.length) / firstHalf.length) * 100).toFixed(1)) : 0;
+    const engagementDeltaPct = firstHalfEngagement > 0 ? Number((((secondHalfEngagement - firstHalfEngagement) / firstHalfEngagement) * 100).toFixed(1)) : 0;
+
+    const relayDistributionSorted = relayDistribution
+      .sort((a, b) => b.posts - a.posts)
+      .map((entry) => ({ relay: entry.relay, posts: entry.posts }));
 
     return {
       generatedAt: new Date().toISOString(),
@@ -391,9 +447,23 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       engagementPerDay,
       recentPosts,
       topPosts,
+      engagementTotals: {
+        reactions: totalReactions,
+        replies: totalReplies,
+        reposts: totalReposts,
+        zaps: totalZaps,
+        score: totalReactions + totalReplies + totalReposts + totalZaps,
+      },
+      growth: {
+        postsDeltaPct,
+        engagementDeltaPct,
+      },
+      relayDistribution: relayDistributionSorted,
       zapStats: {
         totalSats,
         totalZaps,
+        totalSatsSent,
+        totalZapsSent: sentZaps.length,
         averageZapAmount: totalZaps > 0 ? Math.round(totalSats / totalZaps) : 0,
         topZappers,
       },
