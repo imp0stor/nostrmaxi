@@ -394,6 +394,97 @@ Based on [product-vision.md](./product-vision.md)
 
 ---
 
+## Epic 10: NIP-05 Marketplace (Phase 1.5) ✅ COMPLETE
+
+**Goal:** Secondary market for NIP-05 identities with Lightning payments
+
+**Status:** SHIPPED (2026-03-01)
+
+**User Stories:**
+1. ✅ As an admin, I want to manage reserved/premium/blocked name lists
+2. ✅ As an admin, I want to create auctions for premium names
+3. ✅ As a user, I want to bid on auctioned names
+4. ✅ As a user, I want to buy flat-price premium names
+5. ✅ As a user, I want to resell my NIP-05 identity
+6. ✅ As a seller, I want to receive 95% of sale price automatically
+
+**Technical Implementation:**
+- ✅ Admin panel: /admin/marketplace (names, auctions, listings, transfers)
+- ✅ Split payments: 5% platform fee, 95% to seller via Lightning
+- ✅ Immediate transfer on payment (no escrow complexity)
+- ✅ MarketplaceTransaction audit trail
+- ✅ Seller Lightning address management
+
+**Acceptance Criteria:**
+- ✅ Admin can CRUD reserved/premium/blocked names
+- ✅ Admin can create/manage auctions
+- ✅ Users can bid with min increment enforcement
+- ✅ Users can buy flat-price listings
+- ✅ Split payment executes on purchase
+- ✅ NIP-05 transfers immediately
+
+**Dependencies:** Lightning infrastructure, NIP-05 Epic
+
+---
+
+## Epic 11: Messaging & DMs (Phase 1.5) ✅ COMPLETE
+
+**Goal:** Nostr-native encrypted messaging
+
+**Status:** SHIPPED (2026-03-01)
+
+**User Stories:**
+1. ✅ As a user, I want to read DMs (NIP-04, NIP-44, gift-wrap)
+2. ✅ As a user, I want to compose DMs with encryption selection
+3. ✅ As a user, I want to see encryption badges on messages
+
+**Technical Implementation:**
+- ✅ NIP-04 (kind:4) legacy encrypted
+- ✅ NIP-44 (kind:14 wrapped in kind:1059) modern encrypted
+- ✅ Gift-wrap unwrapping
+- ✅ Encryption badges (🔒 NIP-44 | 🔐 NIP-04 | ⚠️ Unencrypted)
+
+---
+
+## Epic 12: Admin Infrastructure (Phase 1.5) ✅ COMPLETE
+
+**Goal:** Backend admin tools for platform management
+
+**Status:** SHIPPED (2026-03-01)
+
+**User Stories:**
+1. ✅ As an admin, I want database-driven role management
+2. ✅ As an admin, I want to manage user tiers at runtime
+3. ✅ As an admin, I want marketplace management tools
+4. ✅ As an admin, I want to view/retry payment transactions
+
+**Technical Implementation:**
+- ✅ Admin guards on protected routes
+- ✅ User management API
+- ✅ Marketplace admin panel
+- ✅ Transaction history + retry-payout
+
+---
+
+## Epic 13: Nostr Primitives Integration (Phase 1.5) ✅ COMPLETE
+
+**Goal:** Leverage @strangesignal primitives for enhanced features
+
+**Status:** SHIPPED (2026-03-01)
+
+**User Stories:**
+1. ✅ As a user, I want to see engagement metrics on profiles
+2. ✅ As a user, I want WoT trust filtering on feeds
+3. ✅ As a user, I want relay health visibility in settings
+
+**Technical Implementation:**
+- ✅ nostr-engagement: profile engagement API
+- ✅ nostr-wot-voting: trust score display, feed filter
+- ✅ nostr-relay-tooling: relay health tab
+- ✅ nostr-profile: verification chips
+
+---
+
 ## Epic 9: Bug Bounties (Phase 3)
 
 **Goal:** Incentivize bug reports + fixes

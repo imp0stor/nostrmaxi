@@ -22,9 +22,12 @@
 
 **Core offering:**
 1. **NIP-05 Identity Registration** - Sell `name@nostrmaxi.com`, `name@strangesignal.ai`, custom domains
-2. **Creator Tools** - Feed generation, profile management, domain/site hosting
-3. **Content Primitives** - Book authorship, gift cards, e-commerce (NIP-15)
-4. **Community Features** - Q&A, bounties, reviews (WoT-filtered)
+2. **NIP-05 Marketplace** - Auctions, flat-price sales, resale with Lightning split payments ✅ SHIPPED
+3. **Creator Tools** - Feed generation, profile management, domain/site hosting
+4. **Encrypted Messaging** - NIP-04/NIP-44 DMs with encryption badges ✅ SHIPPED
+5. **Content Primitives** - Book authorship, gift cards, e-commerce (NIP-15)
+6. **Community Features** - Q&A, bounties, reviews (WoT-filtered)
+7. **Admin Infrastructure** - Runtime management, marketplace admin, transaction tracking ✅ SHIPPED
 
 **How it solves the problem:**
 - One-stop shop for Nostr superpowers
