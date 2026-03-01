@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar } from '../Avatar';
 import { truncateNpub } from '../../lib/nostr';
+import { api } from '../../lib/api';
 
 interface TopBarProps {
   isLoading: boolean;
@@ -31,6 +32,30 @@ export function TopBar({
   onCloseIdentityMenu,
 }: TopBarProps) {
   const [copied, setCopied] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const loadUnread = async () => {
+      try {
+        const result = await api.getUnreadNotificationsCount();
+        setUnreadCount(result.unread || 0);
+      } catch {
+        // no-op
+      }
+    };
+
+    void loadUnread();
+    const timer = setInterval(() => {
+      void loadUnread();
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [isAuthenticated]);
 
   const handleCopyNpub = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -79,6 +104,12 @@ export function TopBar({
 
         <div className="flex items-center gap-2">
           {isLoading ? <span className="text-swordfish-muted cy-loading px-2">…</span> : null}
+          {!isLoading && isAuthenticated ? (
+            <Link to="/notifications" className="cy-chip inline-flex items-center gap-1" aria-label="Notifications">
+              <span>🔔</span>
+              <span className="text-xs">{unreadCount}</span>
+            </Link>
+          ) : null}
           {!isLoading && isAuthenticated && user ? (
             <div className="relative">
               <button

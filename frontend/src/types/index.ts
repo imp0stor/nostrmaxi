@@ -188,6 +188,18 @@ export interface AuthResponse {
   expiresAt: number;
 }
 
+export type NotificationType = 'system' | 'mention' | 'reply' | 'zap' | 'follow';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  createdAt: string;
+  readAt?: string | null;
+  link?: string;
+}
+
 // Nostr profile (kind 0)
 export interface NostrProfile {
   name?: string;

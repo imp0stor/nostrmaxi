@@ -20,6 +20,8 @@ import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
 import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
 import { BookmarksPage } from './pages/BookmarksPage';
+import { NotificationsPage } from './pages/NotificationsPage';
+import { MessagesPage } from './pages/MessagesPage';
 import { AdminPage } from './pages/AdminPage';
 import { truncateNpub } from './lib/nostr';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
@@ -134,6 +136,8 @@ export default function App() {
             <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
             <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
             <Route path="/bookmarks" element={isAuthenticated ? <BookmarksPage /> : <Navigate to="/" replace />} />
+            <Route path="/notifications" element={isAuthenticated ? <NotificationsPage /> : <Navigate to="/" replace />} />
+            <Route path="/messages" element={isAuthenticated ? <MessagesPage /> : <Navigate to="/" replace />} />
             <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
             <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
             <Route path="/dashboard" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" replace />} />

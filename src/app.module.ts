@@ -24,6 +24,7 @@ import { AuctionModule } from './auctions/auction.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { MediaDiscoveryModule } from './discovery/media-discovery.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { SecurityMiddleware, RequestLoggingMiddleware } from './common/middleware/security.middleware';
 import { SyncModule } from './sync/sync.module';
 import { RelayAggregatorModule } from './relay-aggregator/relay-aggregator.module';
@@ -74,6 +75,7 @@ import { AppConfigModule } from './config/config.module';
     OnboardingModule,
     MediaDiscoveryModule,
     AnalyticsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule implements NestModule {

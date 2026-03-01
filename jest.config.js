@@ -42,6 +42,8 @@ module.exports = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^nostr-tools$': '<rootDir>/src/__tests__/mocks/nostr-tools.ts',
+    '^nostr-tools/pool$': '<rootDir>/src/__tests__/mocks/nostr-tools-pool.ts',
+    '^nostr-tools/nip04$': '<rootDir>/src/__tests__/mocks/nostr-tools-nip04.ts',
     '^@noble/curves/secp256k1$': '<rootDir>/src/__tests__/mocks/nostr-tools.ts',
   },
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],

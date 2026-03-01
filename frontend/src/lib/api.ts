@@ -12,6 +12,7 @@ import type {
   ApiKey,
   ApiKeyUsage,
   SubscriptionTier,
+  NotificationItem,
 } from '../types';
 
 // Use env var for API URL, fallback to same-origin relative path
@@ -240,6 +241,23 @@ class ApiClient {
 
   async revokeApiKey(keyId: string): Promise<void> {
     return this.request(`/api-keys/${keyId}`, { method: 'DELETE' });
+  }
+
+  // Notifications endpoints
+  async getNotifications(limit = 50): Promise<NotificationItem[]> {
+    return this.request(`/notifications?limit=${limit}`);
+  }
+
+  async getUnreadNotificationsCount(): Promise<{ unread: number }> {
+    return this.request('/notifications/unread-count');
+  }
+
+  async markNotificationRead(notificationId: string): Promise<NotificationItem> {
+    return this.request(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'POST' });
+  }
+
+  async markAllNotificationsRead(): Promise<{ marked: number }> {
+    return this.request('/notifications/read-all', { method: 'POST' });
   }
 }
 
