@@ -1,8 +1,16 @@
 import { Link, useLocation } from 'react-router-dom';
+import analyticsIcon from '../../assets/icons/analytics.png';
+import bookmarksIcon from '../../assets/icons/bookmarks.png';
+import composeIcon from '../../assets/icons/compose.png';
+import connectionsIcon from '../../assets/icons/connections.png';
+import messagesIcon from '../../assets/icons/messages.png';
+import notificationsIcon from '../../assets/icons/notifications.png';
+import profileIcon from '../../assets/icons/profile.png';
+import settingsIcon from '../../assets/icons/settings.png';
 
 type SidebarItem =
   | { type: 'divider' }
-  | { type: 'link'; icon: string; label: string; path: string; requiresAuth?: boolean; requiresPaid?: boolean };
+  | { type: 'link'; icon: string; iconSrc?: string; label: string; path: string; requiresAuth?: boolean; requiresPaid?: boolean };
 
 interface SidebarProps {
   collapsed: boolean;
@@ -16,23 +24,23 @@ interface SidebarProps {
 
 const navItems: SidebarItem[] = [
   { type: 'link', icon: '⌂', label: 'Home', path: '/' },
-  { type: 'link', icon: 'FD', label: 'Feed', path: '/feed', requiresAuth: true },
-  { type: 'link', icon: 'DS', label: 'Discover', path: '/discover', requiresAuth: true },
-  { type: 'link', icon: 'CN', label: 'Connections', path: '/connections', requiresAuth: true },
+  { type: 'link', icon: 'FD', iconSrc: profileIcon, label: 'Feed', path: '/feed', requiresAuth: true },
+  { type: 'link', icon: 'DS', iconSrc: composeIcon, label: 'Discover', path: '/discover', requiresAuth: true },
+  { type: 'link', icon: 'CN', iconSrc: connectionsIcon, label: 'Connections', path: '/connections', requiresAuth: true },
   { type: 'link', icon: 'MD', label: 'Media', path: '/media-discovery', requiresAuth: true },
   { type: 'link', icon: 'LS', label: 'Lists', path: '/lists', requiresAuth: true },
-  { type: 'link', icon: 'NT', label: 'Notifications', path: '/notifications', requiresAuth: true },
-  { type: 'link', icon: 'BM', label: 'Bookmarks', path: '/bookmarks', requiresAuth: true },
-  { type: 'link', icon: 'DM', label: 'Messages', path: '/messages', requiresAuth: true },
+  { type: 'link', icon: 'NT', iconSrc: notificationsIcon, label: 'Notifications', path: '/notifications', requiresAuth: true },
+  { type: 'link', icon: 'BM', iconSrc: bookmarksIcon, label: 'Bookmarks', path: '/bookmarks', requiresAuth: true },
+  { type: 'link', icon: 'DM', iconSrc: messagesIcon, label: 'Messages', path: '/messages', requiresAuth: true },
   { type: 'divider' },
   { type: 'link', icon: 'MP', label: 'Marketplace', path: '/marketplace', requiresAuth: true },
   { type: 'link', icon: 'MG', label: 'Manage', path: '/dashboard', requiresAuth: true },
-  { type: 'link', icon: 'AN', label: 'Analytics', path: '/analytics', requiresAuth: true, requiresPaid: true },
+  { type: 'link', icon: 'AN', iconSrc: analyticsIcon, label: 'Analytics', path: '/analytics', requiresAuth: true, requiresPaid: true },
   { type: 'link', icon: 'EC', label: 'Ecosystem', path: '/ecosystem', requiresAuth: true },
   { type: 'divider' },
-  { type: 'link', icon: 'PF', label: 'Profile', path: '/profile/me', requiresAuth: true },
-  { type: 'link', icon: 'ST', label: 'Settings', path: '/settings', requiresAuth: true },
-  { type: 'link', icon: 'AD', label: 'Admin Config', path: '/admin', requiresAuth: true },
+  { type: 'link', icon: 'PF', iconSrc: profileIcon, label: 'Profile', path: '/profile/me', requiresAuth: true },
+  { type: 'link', icon: 'ST', iconSrc: settingsIcon, label: 'Settings', path: '/settings', requiresAuth: true },
+  { type: 'link', icon: 'AD', iconSrc: settingsIcon, label: 'Admin Config', path: '/admin', requiresAuth: true },
   { type: 'link', icon: 'ID', label: 'Get Your NIP-05', path: '/pricing', requiresAuth: true },
 ];
 
@@ -96,7 +104,11 @@ export function Sidebar({
                 ].join(' ')}
                 title={collapsed ? item.label : undefined}
               >
-                <span className="cy-mono text-[11px] tracking-[0.08em] leading-none min-w-[24px] text-center opacity-90">{item.icon}</span>
+                {item.iconSrc ? (
+                  <img src={item.iconSrc} alt="" aria-hidden className="nm-icon" />
+                ) : (
+                  <span className="cy-mono text-[11px] tracking-[0.08em] leading-none min-w-[24px] text-center opacity-90">{item.icon}</span>
+                )}
                 <span
                   className={[
                     'whitespace-nowrap text-sm transition-all duration-200',

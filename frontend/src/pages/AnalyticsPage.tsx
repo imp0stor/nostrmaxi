@@ -17,6 +17,7 @@ import { BestHoursChart } from '../components/analytics/BestHoursChart';
 import { BestDaysChart } from '../components/analytics/BestDaysChart';
 import { HashtagTable } from '../components/analytics/HashtagTable';
 import { AnalyticsLoadingSkeleton } from '../components/analytics/AnalyticsLoadingSkeleton';
+import analyticsIcon from '../assets/icons/analytics.png';
 import { Avatar } from '../components/Avatar';
 import { PostModal } from '../components/PostModal';
 import { InlineContent } from '../components/InlineContent';
@@ -662,7 +663,7 @@ export function AnalyticsPage() {
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
       <header className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-white">Analytics</h1>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2"><img src={analyticsIcon} alt="" aria-hidden className="nm-icon" />Analytics</h1>
           <p className="text-gray-400">Real on-chain Nostr analytics (no synthetic metrics)</p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             <span className="px-2 py-1 rounded-full bg-orange-500/20 text-orange-200 border border-orange-400/40">

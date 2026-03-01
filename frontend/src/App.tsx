@@ -216,7 +216,7 @@ export default function App() {
         </main>
 
         <footer className="border-t border-swordfish-muted/30 py-6 text-center text-xs text-swordfish-muted tracking-[0.12em]">
-          NostrMaxi // cinematic social + identity
+          NostrMaxi // Nostrverse + identity
         </footer>
       </div>
 
