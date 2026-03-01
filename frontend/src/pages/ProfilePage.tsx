@@ -16,6 +16,8 @@ import { usePinnedPost } from '../hooks/usePinnedPost';
 import { usePublicLists } from '../hooks/usePublicLists';
 import { useContentFilters } from '../hooks/useContentFilters';
 import { useMuteActions } from '../hooks/useMuteActions';
+import { api } from '../lib/api';
+import { MetricChip } from '../components/primitives/MetricChip';
 
 type PanelMode = 'followers' | 'following' | null;
 type PanelSort = 'name' | 'followers' | 'following';
@@ -60,6 +62,8 @@ export function ProfilePage() {
   const [quotedProfiles, setQuotedProfiles] = useState<Map<string, any>>(new Map());
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [profileZapTotal, setProfileZapTotal] = useState<ZapAggregate | null>(null);
+  const [profileHints, setProfileHints] = useState<any>(null);
+  const [kbArticles, setKbArticles] = useState<any[]>([]);
 
   const targetPubkey = useMemo(() => {
     if (!npub || npub === 'me') return user?.pubkey || '';
@@ -102,6 +106,29 @@ export function ProfilePage() {
     };
     run();
   }, [targetPubkey, user?.pubkey, contentFilters]);
+
+  useEffect(() => {
+    if (!targetPubkey) return;
+    let cancelled = false;
+    const loadPrimitivePanels = async () => {
+      try {
+        const [hints, kb] = await Promise.all([
+          api.getProfileValidationHints(targetPubkey),
+          api.listKb(6),
+        ]);
+        if (cancelled) return;
+        setProfileHints(hints);
+        setKbArticles(kb.items || []);
+      } catch {
+        if (!cancelled) {
+          setProfileHints(null);
+          setKbArticles([]);
+        }
+      }
+    };
+    void loadPrimitivePanels();
+    return () => { cancelled = true; };
+  }, [targetPubkey]);
 
   useEffect(() => {
     const loadQuotes = async () => {
@@ -324,17 +351,11 @@ export function ProfilePage() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-4 gap-4">
-        <button type="button" onClick={() => togglePanel('followers')} className={`cy-panel p-4 text-left transition border ${panelMode === 'followers' ? 'border-cyan-300/70' : 'border-cyan-500/20'}`}>
-          <p className="cy-kicker">FOLLOWERS</p>
-          <p className="text-2xl text-green-300 font-bold">{followers.length}</p>
-        </button>
-        <button type="button" onClick={() => togglePanel('following')} className={`cy-panel p-4 text-left transition border ${panelMode === 'following' ? 'border-cyan-300/70' : 'border-cyan-500/20'}`}>
-          <p className="cy-kicker">FOLLOWING</p>
-          <p className="text-2xl text-cyan-300 font-bold">{following.length}</p>
-        </button>
-        <div className="cy-panel p-4"><p className="cy-kicker">POSTS</p><p className="text-2xl text-blue-300 font-bold">{activity.length}</p></div>
-        <div className="cy-panel p-4"><p className="cy-kicker">⚡ ZAPS</p><p className="text-2xl text-yellow-300 font-bold">{profileZapTotal?.totalSat?.toLocaleString() || 0}</p></div>
+      <div className="cy-card p-4 flex flex-wrap gap-2">
+        <MetricChip label="Followers" value={followers.length} onClick={() => togglePanel('followers')} active={panelMode === 'followers'} />
+        <MetricChip label="Following" value={following.length} onClick={() => togglePanel('following')} active={panelMode === 'following'} />
+        <MetricChip label="Posts" value={activity.length} />
+        <MetricChip label="⚡ Zaps" value={profileZapTotal?.totalSat?.toLocaleString() || 0} />
       </div>
 
       <ExternalIdentityPanel
@@ -345,6 +366,34 @@ export function ProfilePage() {
         onUpsert={upsertIdentity}
         proofGuidance={buildIdentityProofGuidance}
       />
+
+      {profileHints ? (
+        <section className="cy-card p-5 space-y-2">
+          <h2 className="text-cyan-100 font-semibold">Profile validation hints</h2>
+          <div className="flex flex-wrap gap-2">
+            <MetricChip label="NIP-05" value={profileHints.validNip05 ? 'valid' : 'missing/invalid'} />
+            <MetricChip label="Identity claims" value={profileHints.identityClaimCount || 0} />
+            <MetricChip label="Lightning" value={profileHints.hasLud16 ? 'configured' : 'missing'} />
+          </div>
+          <ul className="text-sm text-cyan-200 list-disc pl-5">
+            {(profileHints.hints || []).slice(0, 4).map((hint: string) => <li key={hint}>{hint}</li>)}
+          </ul>
+        </section>
+      ) : null}
+
+      {kbArticles.length > 0 ? (
+        <section className="cy-card p-5 space-y-2">
+          <h2 className="text-cyan-100 font-semibold">Knowledge Base (30023)</h2>
+          <ul className="space-y-2 text-sm">
+            {kbArticles.slice(0, 5).map((article) => (
+              <li key={article.id} className="rounded border border-cyan-500/30 p-2">
+                <p className="text-cyan-100 font-medium">{article.title}</p>
+                <p className="text-cyan-300/80">{article.summary}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {panelMode && (
         <section className="cy-card p-5" data-testid="profile-contact-panel">

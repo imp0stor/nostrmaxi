@@ -26,6 +26,9 @@ import { PostActionMenu } from '../components/PostActionMenu';
 import { useMuteActions } from '../hooks/useMuteActions';
 import { MediaUploader } from '../components/MediaUploader';
 import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
+import { api } from '../lib/api';
+import { MetricChip } from '../components/primitives/MetricChip';
+import { ContributorSheet } from '../components/primitives/ContributorSheet';
 import composeIcon from '../assets/icons/compose-custom.svg';
 import muteConfigIcon from '../assets/icons/mute-config-custom.svg';
 import filtersIcon from '../assets/icons/filters-custom.svg';
@@ -193,6 +196,7 @@ export function FeedPage() {
   const [interactionByEventId, setInteractionByEventId] = useState<Map<string, FeedInteractionSummary>>(new Map());
   const [interactionDetailEventId, setInteractionDetailEventId] = useState<string | null>(null);
   const [interactionProfiles, setInteractionProfiles] = useState<Map<string, any>>(new Map());
+  const [wotByPubkey, setWotByPubkey] = useState<Map<string, { trustScore: number; distanceLabel: string }>>(new Map());
   const { filters: contentFilters, syncNow: syncContentFilters } = useContentFilters(user?.pubkey);
   const { muteHashtag, isHashtagMuted } = useMuteActions(user?.pubkey);
   const { topicSubs, userSubs, notifPrefs } = useSubscriptions(user?.pubkey);
@@ -732,6 +736,38 @@ export function FeedPage() {
   }, [feed]);
 
   useEffect(() => {
+    if (!user?.pubkey || feed.length === 0) return;
+    const uniquePubkeys = [...new Set(feed.map((item) => item.pubkey))].slice(0, 25);
+    const missing = uniquePubkeys.filter((pubkey) => !wotByPubkey.has(pubkey));
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    const loadScores = async () => {
+      const entries = await Promise.all(missing.map(async (pubkey) => {
+        try {
+          const score = await api.getPrimitiveWotScore(pubkey, user.pubkey);
+          return [pubkey, { trustScore: score.trustScore || 0, distanceLabel: score.distanceLabel || 'unknown' }] as const;
+        } catch {
+          return null;
+        }
+      }));
+      if (cancelled) return;
+      setWotByPubkey((prev) => {
+        const next = new Map(prev);
+        entries.filter(Boolean).forEach((entry) => {
+          if (entry) next.set(entry[0], entry[1]);
+        });
+        return next;
+      });
+    };
+
+    void loadScores();
+    return () => {
+      cancelled = true;
+    };
+  }, [feed, user?.pubkey, wotByPubkey]);
+
+  useEffect(() => {
     if (typeof window === 'undefined' || feed.length === 0) return;
     let notified = new Set<string>();
     try {
@@ -1228,14 +1264,19 @@ export function FeedPage() {
                 </button>
 
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
+                  <MetricChip
+                    label="Contributors"
+                    value={`${interactionSummary?.reactions || 0}❤️ / ${interactionSummary?.reposts || 0}🔁`}
                     onClick={() => setInteractionDetailEventId(item.id)}
-                    aria-label={`Open reaction and repost contributors for post ${item.id}`}
-                  >
-                    ❤️ {interactionSummary?.reactions || 0} · 🔁 {interactionSummary?.reposts || 0}
-                  </button>
+                    ariaLabel={`Open reaction and repost contributors for post ${item.id}`}
+                  />
+                  {wotByPubkey.get(item.pubkey) ? (
+                    <MetricChip
+                      label="WoT"
+                      value={`${wotByPubkey.get(item.pubkey)?.trustScore}`}
+                      ariaLabel={`Web of trust score ${wotByPubkey.get(item.pubkey)?.trustScore}, ${wotByPubkey.get(item.pubkey)?.distanceLabel}`}
+                    />
+                  ) : null}
                   {interactionSummary?.relayHints?.slice(0, 2).map((relay) => (
                     <button
                       key={`${item.id}-${relay}`}
@@ -1364,46 +1405,29 @@ export function FeedPage() {
         </div>
       ) : null}
 
-      {interactionDetailEventId && interactionDetail ? (
-        <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setInteractionDetailEventId(null)}>
-          <div className="cy-card w-full max-w-xl p-4 space-y-4 max-h-[80vh] overflow-auto" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-orange-100">Contributor details</h3>
-              <button type="button" className="cy-chip" onClick={() => setInteractionDetailEventId(null)} aria-label="Close contributor details">Close</button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <button type="button" className="cy-chip justify-center" onClick={() => interactionDetailItem ? onAction('like', interactionDetailItem) : undefined} disabled={!interactionDetailItem}>
-                ❤️ Reactions: {interactionDetail.reactions}
-              </button>
-              <button type="button" className="cy-chip justify-center" onClick={() => interactionDetailItem ? onAction('repost', interactionDetailItem) : undefined} disabled={!interactionDetailItem}>
-                🔁 Reposts: {interactionDetail.reposts}
-              </button>
-            </div>
-            <div>
-              <p className="text-xs text-cyan-300 mb-2">Top reactors</p>
-              <div className="space-y-2">
-                {interactionDetail.topReactors.length === 0 ? <p className="text-xs text-slate-400">No reaction contributors yet.</p> : interactionDetail.topReactors.map((entry) => (
-                  <Link key={`react-${entry.pubkey}`} to={`/profile/${entry.pubkey}`} className="flex items-center justify-between rounded-md border border-cyan-500/30 px-2 py-1.5 hover:border-orange-300/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80">
-                    <span className="flex items-center gap-2"><Avatar pubkey={entry.pubkey} size={22} /><span>{interactionProfiles.get(entry.pubkey)?.display_name || interactionProfiles.get(entry.pubkey)?.name || shortPubkey(entry.pubkey)}</span></span>
-                    <span className="text-xs text-cyan-200">{entry.count}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs text-cyan-300 mb-2">Top reposters</p>
-              <div className="space-y-2">
-                {interactionDetail.topReposters.length === 0 ? <p className="text-xs text-slate-400">No repost contributors yet.</p> : interactionDetail.topReposters.map((entry) => (
-                  <Link key={`repost-${entry.pubkey}`} to={`/profile/${entry.pubkey}`} className="flex items-center justify-between rounded-md border border-cyan-500/30 px-2 py-1.5 hover:border-orange-300/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80">
-                    <span className="flex items-center gap-2"><Avatar pubkey={entry.pubkey} size={22} /><span>{interactionProfiles.get(entry.pubkey)?.display_name || interactionProfiles.get(entry.pubkey)?.name || shortPubkey(entry.pubkey)}</span></span>
-                    <span className="text-xs text-cyan-200">{entry.count}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ContributorSheet
+        open={Boolean(interactionDetailEventId && interactionDetail)}
+        title="Contributor details"
+        onClose={() => setInteractionDetailEventId(null)}
+        sections={interactionDetail ? [
+          {
+            label: `Top reactors · total ${interactionDetail.reactions}`,
+            items: interactionDetail.topReactors.map((entry) => ({
+              pubkey: entry.pubkey,
+              count: entry.count,
+              name: interactionProfiles.get(entry.pubkey)?.display_name || interactionProfiles.get(entry.pubkey)?.name || shortPubkey(entry.pubkey),
+            })),
+          },
+          {
+            label: `Top reposters · total ${interactionDetail.reposts}`,
+            items: interactionDetail.topReposters.map((entry) => ({
+              pubkey: entry.pubkey,
+              count: entry.count,
+              name: interactionProfiles.get(entry.pubkey)?.display_name || interactionProfiles.get(entry.pubkey)?.name || shortPubkey(entry.pubkey),
+            })),
+          },
+        ] : []}
+      />
 
       {zapComposeItem ? (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setZapComposeItem(null)}>

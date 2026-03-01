@@ -259,6 +259,24 @@ class ApiClient {
   async markAllNotificationsRead(): Promise<{ marked: number }> {
     return this.request('/notifications/read-all', { method: 'POST' });
   }
+
+  // Primitives endpoints
+  async getPrimitiveWotScore(pubkey: string, anchor?: string): Promise<any> {
+    const query = anchor ? `?anchor=${encodeURIComponent(anchor)}` : '';
+    return this.request(`/primitives/wot/score/${encodeURIComponent(pubkey)}${query}`);
+  }
+
+  async getProfileValidationHints(pubkey: string): Promise<any> {
+    return this.request(`/primitives/profile/${encodeURIComponent(pubkey)}/validation-hints`);
+  }
+
+  async listKb(limit = 20): Promise<{ total: number; items: any[] }> {
+    return this.request(`/primitives/kb?limit=${limit}`);
+  }
+
+  async searchKb(query: string, limit = 20): Promise<{ total: number; items: any[] }> {
+    return this.request(`/primitives/kb/search?q=${encodeURIComponent(query)}&limit=${limit}`);
+  }
 }
 
 export const api = new ApiClient();
