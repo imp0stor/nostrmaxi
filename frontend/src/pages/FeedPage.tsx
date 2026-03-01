@@ -1235,7 +1235,7 @@ export function FeedPage() {
               </div>
               {liveMeta ? <LiveStreamCard meta={liveMeta} /> : null}
               <div className="mt-4 space-y-2.5">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 [&_.cy-chip]:text-xs [&_.cy-chip]:min-h-[32px] [&_.cy-chip]:px-2.5 [&_.cy-chip]:py-1">
                   {hasZapData ? (
                     <button
                       type="button"
