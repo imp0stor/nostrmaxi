@@ -7,6 +7,7 @@ describe('RelaySyncController', () => {
     start: jest.fn().mockResolvedValue({ started: true }),
     pause: jest.fn().mockResolvedValue({ paused: true }),
     addPubkey: jest.fn().mockResolvedValue(undefined),
+    getRateLimiterDebug: jest.fn().mockReturnValue({ relays: [] }),
   };
 
   const controller = new RelaySyncController(service as any);
@@ -29,5 +30,9 @@ describe('RelaySyncController', () => {
     });
 
     expect(service.addPubkey).toHaveBeenCalledWith('abc');
+  });
+
+  test('returns adaptive limiter debug view', () => {
+    expect(controller.getDebug()).toEqual({ relays: [] });
   });
 });

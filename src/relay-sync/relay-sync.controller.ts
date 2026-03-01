@@ -15,6 +15,11 @@ export class RelaySyncController {
     return this.relaySyncService.getStats();
   }
 
+  @Get('debug')
+  getDebug() {
+    return this.relaySyncService.getRateLimiterDebug();
+  }
+
   @Post('start')
   @HttpCode(HttpStatus.ACCEPTED)
   async start() {

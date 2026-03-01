@@ -227,11 +227,20 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
       this.prisma.relaySyncState.findMany({ orderBy: { priority: 'desc' }, take: 10 }),
     ]);
 
+    const relayRateLimits = this.rateLimiter.getRelayDebugStates().slice(0, 25);
+
     return {
       running: this.running,
       paused: this.paused,
       queue: { pending, syncing, complete, error },
       topQueue: top,
+      relayRateLimits,
+    };
+  }
+
+  getRateLimiterDebug() {
+    return {
+      relays: this.rateLimiter.getRelayDebugStates(),
     };
   }
 
@@ -411,7 +420,7 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
         try {
           await this.rateLimiter.waitForSlot(relay);
           const fetched = (await this.pool.querySync([relay], filter as any)) as NostrEvent[];
-          this.rateLimiter.clearBackoff(relay);
+          this.rateLimiter.registerSuccess(relay);
           await this.updateRelayHealth(relay, true, Date.now() - started);
 
           for (const evt of fetched) {
@@ -425,6 +434,8 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
           const message = String((error as Error)?.message || error || '');
           if (message.includes('429') || message.toLowerCase().includes('rate')) {
             this.rateLimiter.register429(relay);
+          } else {
+            this.rateLimiter.registerFailure(relay);
           }
           await this.updateRelayHealth(relay, false, Date.now() - started);
         }
@@ -662,10 +673,10 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (result.length === 0) {
-      return SEED_RELAYS;
+      return this.rateLimiter.getOrderedRelays(SEED_RELAYS).slice(0, this.getRelayFanout());
     }
 
-    return result.slice(0, this.getRelayFanout());
+    return this.rateLimiter.getOrderedRelays(result).slice(0, this.getRelayFanout());
   }
 
   private userRelayCache = new Map<string, { urls: string[]; ts: number }>();
