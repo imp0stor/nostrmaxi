@@ -25,9 +25,14 @@ import { loadCustomFeedsList, saveCustomFeedsList } from '../lib/subscriptions';
 import { PostActionMenu } from '../components/PostActionMenu';
 import { useMuteActions } from '../hooks/useMuteActions';
 import { MediaUploader } from '../components/MediaUploader';
+import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
+}
+
+function shortPubkey(pubkey: string): string {
+  return `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`;
 }
 
 type FeedFilter = 'mediaOnly' | 'textOnly' | 'replies' | 'reposts' | 'withLinks';
@@ -141,6 +146,12 @@ export function FeedPage() {
   const [showFeedModal, setShowFeedModal] = useState(false);
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [pendingZaps, setPendingZaps] = useState<PendingZap[]>([]);
+  const [zapComposeItem, setZapComposeItem] = useState<FeedItem | null>(null);
+  const [zapAmountInput, setZapAmountInput] = useState('21');
+  const [zapMessageInput, setZapMessageInput] = useState('');
+  const [zapError, setZapError] = useState<string | null>(null);
+  const [zapStatusLabel, setZapStatusLabel] = useState<string | null>(null);
+  const [zapBreakdownEventId, setZapBreakdownEventId] = useState<string | null>(null);
   const { filters: contentFilters, syncNow: syncContentFilters } = useContentFilters(user?.pubkey);
   const { muteHashtag, isHashtagMuted } = useMuteActions(user?.pubkey);
   const { topicSubs, userSubs, notifPrefs } = useSubscriptions(user?.pubkey);
@@ -601,42 +612,66 @@ export function FeedPage() {
     }
   };
 
-  const onZap = async (item: FeedItem) => {
-    if (!user?.pubkey) return;
+  const onZap = (item: FeedItem) => {
     const options = getDefaultZapAmountOptions();
     const prefs = getZapPreferences();
-    const amountRaw = prompt(`Zap amount (sats) [${options.join(', ')}]:`, String(prefs.lastAmountSat || options[0]));
-    if (!amountRaw) return;
-    const amountSat = Number(amountRaw);
+    setZapComposeItem(item);
+    setZapAmountInput(String(prefs.lastAmountSat || options[0] || 21));
+    setZapMessageInput('');
+    setZapError(null);
+    setZapStatusLabel(null);
+  };
+
+  const submitZap = async () => {
+    if (!user?.pubkey || !zapComposeItem) return;
+    const amountSat = Number(zapAmountInput);
     if (!Number.isFinite(amountSat) || amountSat <= 0) {
-      alert('Enter a valid sats amount');
+      setZapError('Enter a valid sats amount.');
       return;
     }
 
-    if (!item.profile?.lud16) {
-      alert('Recipient has no lightning address (lud16).');
+    if (!zapComposeItem.profile?.lud16) {
+      setZapError('Recipient has no lightning address (lud16).');
       return;
     }
 
-    setBusyId(`zap-${item.id}`);
-    const pending = createPendingZap({ targetEventId: item.id, recipientPubkey: item.pubkey, amountSat });
+    setBusyId(`zap-${zapComposeItem.id}`);
+    setZapError(null);
+    const pending = createPendingZap({
+      targetEventId: zapComposeItem.id,
+      recipientPubkey: zapComposeItem.pubkey,
+      amountSat,
+      message: zapMessageInput.trim() || undefined,
+    });
     setPendingZaps((prev) => [pending, ...prev]);
 
     try {
+      const prefs = getZapPreferences();
       await sendZap({
         senderPubkey: user.pubkey,
-        recipientPubkey: item.pubkey,
-        recipientProfile: item.profile,
+        recipientPubkey: zapComposeItem.pubkey,
+        recipientProfile: zapComposeItem.profile,
         amountSat,
-        targetEventId: item.id,
+        targetEventId: zapComposeItem.id,
+        message: zapMessageInput.trim() || undefined,
         preferredWallet: prefs.lastWalletKind,
         signEventFn: signEvent,
+        onStatus: (status) => {
+          if (status === 'requesting_invoice') setZapStatusLabel('Requesting invoice…');
+          if (status === 'awaiting_wallet') setZapStatusLabel('Waiting for wallet confirmation…');
+          if (status === 'paid') setZapStatusLabel('Paid. Relay receipts may take a few seconds.');
+        },
       });
       setPendingZaps((prev) => prev.map((z) => z.id === pending.id ? { ...z, status: 'confirmed' } : z));
       await refresh();
+      setTimeout(() => {
+        setZapComposeItem(null);
+        setZapStatusLabel(null);
+      }, 900);
     } catch (error) {
-      setPendingZaps((prev) => prev.map((z) => z.id === pending.id ? { ...z, status: 'failed', error: error instanceof Error ? error.message : 'Failed to send zap' } : z));
-      alert(error instanceof Error ? error.message : 'Failed to send zap');
+      const message = error instanceof Error ? error.message : 'Failed to send zap';
+      setPendingZaps((prev) => prev.map((z) => z.id === pending.id ? { ...z, status: 'failed', error: message } : z));
+      setZapError(message);
     } finally {
       setBusyId(null);
       setTimeout(() => {
@@ -952,6 +987,7 @@ export function FeedPage() {
                   <button className="cy-chip" onClick={() => onAction('like', item)} disabled={busyId === `like-${item.id}`}>Like</button>
                   <button className="cy-chip" onClick={() => onAction('repost', item)} disabled={busyId === `repost-${item.id}`}>Repost</button>
                   <button className="cy-chip" onClick={() => onAction('reply', item)} disabled={busyId === `reply-${item.id}`}>Reply</button>
+                  <button className="cy-chip" onClick={() => setZapBreakdownEventId(item.id)}>View zaps</button>
                   <button className="cy-chip" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
                   {item.pubkey === user?.pubkey ? <button className="cy-chip" onClick={() => onPin(item)}>📌 Pin to Profile</button> : null}
                   <BookmarkButton eventId={item.id} pubkey={user?.pubkey} />
@@ -965,6 +1001,47 @@ export function FeedPage() {
         <div ref={observerRef} className="h-4" />
         {loadingMore ? <div className="cy-card p-4 text-sm">Loading more events…</div> : null}
       </section>
+
+      {zapComposeItem ? (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setZapComposeItem(null)}>
+          <div className="cy-card w-full max-w-lg p-4 space-y-3" onClick={(event) => event.stopPropagation()}>
+            <div>
+              <h3 className="text-lg font-semibold text-cyan-100">⚡ Zap this post</h3>
+              <p className="text-xs text-cyan-300/80">Sending sats to {shortPubkey(zapComposeItem.pubkey)} ({zapComposeItem.profile?.lud16 || 'no lud16'})</p>
+            </div>
+            <label className="text-sm text-cyan-200">Amount (sats)</label>
+            <input
+              type="number"
+              min={1}
+              value={zapAmountInput}
+              onChange={(event) => setZapAmountInput(event.target.value)}
+              className="w-full rounded-md bg-slate-950/80 border border-cyan-500/30 px-3 py-2"
+            />
+            <div className="flex flex-wrap gap-2">
+              {getDefaultZapAmountOptions().map((value) => (
+                <button key={`preset-${value}`} type="button" className="cy-chip" onClick={() => setZapAmountInput(String(value))}>{value} sats</button>
+              ))}
+            </div>
+            <label className="text-sm text-cyan-200">Message (optional)</label>
+            <textarea
+              value={zapMessageInput}
+              onChange={(event) => setZapMessageInput(event.target.value)}
+              className="w-full rounded-md bg-slate-950/80 border border-cyan-500/30 px-3 py-2 min-h-[72px]"
+              placeholder="Add an optional zap note"
+            />
+            {zapStatusLabel ? <p className="text-xs text-cyan-300">{zapStatusLabel}</p> : null}
+            {zapError ? <p className="text-xs text-red-300">{zapError}</p> : null}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="cy-chip" onClick={() => setZapComposeItem(null)}>Cancel</button>
+              <button type="button" className="cy-btn" onClick={() => void submitZap()} disabled={busyId === `zap-${zapComposeItem.id}`}>
+                {buildZapButtonLabel(busyId === `zap-${zapComposeItem.id}`)}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {zapBreakdownEventId ? <ZapBreakdownModal eventId={zapBreakdownEventId} onClose={() => setZapBreakdownEventId(null)} /> : null}
     </div>
   );
 }
