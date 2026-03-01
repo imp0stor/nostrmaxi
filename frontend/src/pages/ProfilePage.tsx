@@ -18,6 +18,7 @@ import { useContentFilters } from '../hooks/useContentFilters';
 import { useMuteActions } from '../hooks/useMuteActions';
 import { api } from '../lib/api';
 import { MetricChip } from '../components/primitives/MetricChip';
+import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
 
 type PanelMode = 'followers' | 'following' | null;
 type PanelSort = 'name' | 'followers' | 'following';
@@ -62,6 +63,7 @@ export function ProfilePage() {
   const [quotedProfiles, setQuotedProfiles] = useState<Map<string, any>>(new Map());
   const [zapByEventId, setZapByEventId] = useState<Map<string, ZapAggregate>>(new Map());
   const [profileZapTotal, setProfileZapTotal] = useState<ZapAggregate | null>(null);
+  const [zapBreakdownEventId, setZapBreakdownEventId] = useState<string | null>(null);
   const [profileHints, setProfileHints] = useState<any>(null);
   const [kbArticles, setKbArticles] = useState<any[]>([]);
 
@@ -318,8 +320,8 @@ export function ProfilePage() {
         </div>
         {profile?.about ? <p className="text-gray-300 mt-3">{profile.about}</p> : null}
         <div className="mt-4 flex items-center gap-2 flex-wrap">
-          <span className="cy-chip">{formatZapIndicator(profileZapTotal)}</span>
-          <button type="button" className="cy-chip" onClick={onZapProfile} disabled={targetPubkey === user.pubkey || zapBusy}>{targetPubkey === user.pubkey ? '⚡ Zap profile' : buildZapButtonLabel(zapBusy)}</button>
+          <MetricChip label="Profile zaps" value={formatZapIndicator(profileZapTotal)} ariaLabel={`Profile zap total ${formatZapIndicator(profileZapTotal)}`} />
+          <button type="button" className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={onZapProfile} disabled={targetPubkey === user.pubkey || zapBusy}>{targetPubkey === user.pubkey ? '⚡ Zap profile' : buildZapButtonLabel(zapBusy)}</button>
           {targetPubkey !== user.pubkey ? (
             <button
               type="button"
@@ -415,7 +417,7 @@ export function ProfilePage() {
               const isFollowingNow = viewerFollowing.includes(card.pubkey);
               return (
                 <article key={card.pubkey} className="rounded-xl border border-cyan-400/25 bg-slate-950/85 shadow-[0_0_18px_rgba(34,211,238,0.12)] p-4">
-                  <Link to={`/profile/${card.pubkey}`} className="block">
+                  <Link to={`/profile/${card.pubkey}`} className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80">
                     <div className="flex items-start gap-3">
                       <Avatar pubkey={card.pubkey} size={52} clickable={false} className="shrink-0" />
                       <div className="min-w-0">
@@ -464,8 +466,13 @@ export function ProfilePage() {
                 </div>
                 <InlineContent tokens={media.tokens} quotedEvents={quotedEvents} quotedProfiles={quotedProfiles} />
                 <div className="mt-3 flex items-center gap-2">
-                  <span className="cy-chip">{formatZapIndicator(zapByEventId.get(evt.id))}</span>
-                  <button type="button" className="cy-chip" onClick={onZapProfile} disabled={targetPubkey === user.pubkey || zapBusy}>{buildZapButtonLabel(zapBusy)}</button>
+                  <MetricChip
+                    label="Post zaps"
+                    value={formatZapIndicator(zapByEventId.get(evt.id))}
+                    onClick={() => setZapBreakdownEventId(evt.id)}
+                    ariaLabel={`Open zap breakdown for post ${evt.id}`}
+                  />
+                  <button type="button" className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={onZapProfile} disabled={targetPubkey === user.pubkey || zapBusy}>{buildZapButtonLabel(zapBusy)}</button>
                 </div>
               </article>
             );
@@ -477,6 +484,8 @@ export function ProfilePage() {
         <Link to="/dashboard" className="cy-btn-secondary inline-block">Manage identity</Link>
         <Link to="/pricing" className="cy-btn-secondary inline-block">Get NIP-05 + Lightning Address</Link>
       </div>
+
+      {zapBreakdownEventId ? <ZapBreakdownModal eventId={zapBreakdownEventId} onClose={() => setZapBreakdownEventId(null)} /> : null}
     </div>
   );
 }

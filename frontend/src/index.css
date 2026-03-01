@@ -169,6 +169,16 @@
     box-shadow: 0 0 14px rgba(249, 115, 22, 0.16);
   }
 
+  .cy-chip-static {
+    cursor: default;
+  }
+
+  .cy-chip-static:hover {
+    transform: none;
+    border-color: rgba(232, 196, 178, 0.25);
+    box-shadow: none;
+  }
+
   .nm-pill {
     display: inline-flex;
     align-items: center;

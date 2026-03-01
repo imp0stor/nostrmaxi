@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 interface ModalShellProps {
   title: string;
@@ -8,12 +8,21 @@ interface ModalShellProps {
 }
 
 export function ModalShell({ title, onClose, children, maxWidthClass = 'max-w-xl' }: ModalShellProps) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={onClose} role="presentation">
       <div className={`cy-card w-full ${maxWidthClass} p-4 space-y-4 max-h-[85vh] overflow-auto`} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-orange-100">{title}</h3>
-          <button type="button" className="cy-chip" onClick={onClose} aria-label={`Close ${title}`}>Close</button>
+          <button type="button" className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={onClose} aria-label={`Close ${title}`}>Close</button>
         </div>
         {children}
       </div>

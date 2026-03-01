@@ -1196,7 +1196,7 @@ export function FeedPage() {
                     </Link>
                     {!hasNip05 ? <p className="text-xs text-cyan-400/80">{displayName}</p> : null}
                     <details className="mt-1">
-                      <summary className="cursor-pointer text-xs text-cyan-500">Identity details</summary>
+                      <summary className="cursor-pointer text-xs text-cyan-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80 rounded-sm">Identity details</summary>
                       <p className="cy-mono text-xs text-cyan-500 mt-1">{shortNpub}</p>
                     </details>
                   </div>
@@ -1377,7 +1377,7 @@ export function FeedPage() {
             <p className="text-xs text-slate-400">Connected relays are stored locally and published as kind:10002 when signing is available.</p>
             <div className="flex flex-wrap gap-2">
               {connectedRelays.map((relay) => (
-                <span key={relay} className="cy-chip text-xs">
+                <span key={relay} className="cy-chip cy-chip-static text-xs">
                   {relay.replace('wss://', '')}
                   <button type="button" className="ml-2 text-red-300" onClick={() => void onRemoveRelay(relay)}>×</button>
                 </span>
