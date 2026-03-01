@@ -8,7 +8,7 @@ describe('DomainsService', () => {
   beforeEach(async () => {
     prisma = createMockPrismaService();
     await prisma.user.create({ data: { pubkey: 'a'.repeat(64), npub: 'npub-test', lightningAddress: 'alice@wallet.example.com' } });
-    service = new DomainsService(prisma, async () => []);
+    service = new DomainsService(prisma);
   });
 
   it('creates domain with verification token and instructions', async () => {

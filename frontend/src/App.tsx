@@ -24,11 +24,20 @@ import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
 import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
 import { BookmarksPage } from './pages/BookmarksPage';
+import { BooksPage } from './pages/BooksPage';
+import { NewBookPage } from './pages/NewBookPage';
+import { EditBookPage } from './pages/EditBookPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { MessagesPage } from './pages/MessagesPage';
 import { AdminPage } from './pages/AdminPage';
 import { AdminMarketplacePage } from './pages/AdminMarketplacePage';
 import { DomainsPage } from './pages/DomainsPage';
+import { QaListPage } from './pages/qa/QaListPage';
+import { QaAskPage } from './pages/qa/QaAskPage';
+import { QaQuestionDetailPage } from './pages/qa/QaQuestionDetailPage';
+import { QaTagsPage } from './pages/qa/QaTagsPage';
+import { GiftCardsPage } from './pages/GiftCardsPage';
+import { GiftCardsRedeemPage } from './pages/GiftCardsRedeemPage';
 import { truncateNpub } from './lib/nostr';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
 import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
@@ -193,6 +202,9 @@ export default function App() {
             <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
             <Route path="/lists" element={isAuthenticated ? <ListsPage /> : <Navigate to="/" replace />} />
             <Route path="/bookmarks" element={isAuthenticated ? <BookmarksPage /> : <Navigate to="/" replace />} />
+            <Route path="/books" element={isAuthenticated ? <BooksPage /> : <Navigate to="/" replace />} />
+            <Route path="/books/new" element={isAuthenticated ? <NewBookPage /> : <Navigate to="/" replace />} />
+            <Route path="/books/:id/edit" element={isAuthenticated ? <EditBookPage /> : <Navigate to="/" replace />} />
             <Route path="/notifications" element={isAuthenticated ? <NotificationsPage /> : <Navigate to="/" replace />} />
             <Route path="/messages" element={isAuthenticated ? <MessagesPage /> : <Navigate to="/" replace />} />
             <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
@@ -212,6 +224,12 @@ export default function App() {
             <Route path="/profile-nip05/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
             <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
             <Route path="/domains" element={isAuthenticated ? <DomainsPage /> : <Navigate to="/" replace />} />
+            <Route path="/qa" element={isAuthenticated ? <QaListPage /> : <Navigate to="/" replace />} />
+            <Route path="/qa/ask" element={isAuthenticated ? <QaAskPage /> : <Navigate to="/" replace />} />
+            <Route path="/qa/questions/:id" element={isAuthenticated ? <QaQuestionDetailPage /> : <Navigate to="/" replace />} />
+            <Route path="/qa/tags" element={isAuthenticated ? <QaTagsPage /> : <Navigate to="/" replace />} />
+            <Route path="/gift-cards" element={isAuthenticated ? <GiftCardsPage /> : <Navigate to="/" replace />} />
+            <Route path="/gift-cards/redeem" element={<GiftCardsRedeemPage />} />
             <Route
               path="/admin/marketplace"
               element={

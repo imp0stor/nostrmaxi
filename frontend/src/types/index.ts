@@ -193,7 +193,7 @@ export interface AuthResponse {
   expiresAt: number;
 }
 
-export type NotificationType = 'system' | 'mention' | 'reply' | 'zap' | 'follow';
+export type NotificationType = 'system' | 'mention' | 'reply' | 'zap' | 'follow' | 'outbid' | 'auction_ending' | 'auction_won' | 'auction_lost';
 
 export interface NotificationItem {
   id: string;
@@ -203,6 +203,32 @@ export interface NotificationItem {
   createdAt: string;
   readAt?: string | null;
   link?: string;
+}
+
+export interface BookChapter {
+  id: string;
+  bookId: string;
+  title: string;
+  content: string;
+  orderIndex: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Book {
+  id: string;
+  authorPubkey: string;
+  title: string;
+  description?: string | null;
+  coverUrl?: string | null;
+  status: 'draft' | 'published' | string;
+  publishedAt?: string | null;
+  nostrEventId?: string | null;
+  totalZaps?: number | string;
+  buyerCount?: number;
+  createdAt: string;
+  updatedAt: string;
+  chapters: BookChapter[];
 }
 
 // Nostr profile (kind 0)

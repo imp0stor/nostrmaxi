@@ -4,14 +4,20 @@ import { randomBytes } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-type TxtResolver = (hostname: string) => Promise<string[][]>;
-
 @Injectable()
 export class DomainsService {
+  private readonly txtResolver: (hostname: string) => Promise<string[][]>;
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly txtResolver: TxtResolver = dns.resolveTxt,
-  ) {}
+    txtResolver?: (hostname: string) => Promise<string[][]>,
+  ) {
+    this.txtResolver = txtResolver ?? dns.resolveTxt;
+  }
+
+  private async resolveTxt(hostname: string): Promise<string[][]> {
+    return this.txtResolver(hostname);
+  }
 
   private normalizeDomain(domain: string): string {
     return domain.trim().toLowerCase();
@@ -84,7 +90,7 @@ export class DomainsService {
       throw new BadRequestException('Domain verification token missing');
     }
 
-    const records = await this.txtResolver(domain.domain).catch(() => [] as string[][]);
+    const records = await this.resolveTxt(domain.domain).catch(() => [] as string[][]);
     const expectedValue = `nostrmaxi-verify=${domain.verifyToken}`;
     const match = records.some((chunks) => chunks.join('').trim() === expectedValue);
 

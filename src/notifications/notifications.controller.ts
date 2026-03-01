@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, ParseBoolPipe, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -17,10 +17,12 @@ export class NotificationsController {
   async list(
     @CurrentUser() pubkey: string,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('unreadOnly', new ParseBoolPipe({ optional: true })) unreadOnly?: boolean,
   ) {
-    return this.notificationsService.list(pubkey, limit ?? 50);
+    return this.notificationsService.list(pubkey, limit ?? 50, unreadOnly ?? false);
   }
 
+  @Get('count')
   @Get('unread-count')
   @ApiOperation({ summary: 'Get unread notification count' })
   @ApiResponse({ status: 200, description: 'Unread count returned' })

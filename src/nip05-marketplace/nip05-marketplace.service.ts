@@ -2,12 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { canDirectlyRegisterName, quoteNamePrice } from '../config/name-pricing';
 import { SplitPaymentService } from '../payments/split-payment.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class Nip05MarketplaceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly splitPaymentService: SplitPaymentService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async checkAvailability(localPart: string, domain: string) {
@@ -132,9 +134,26 @@ export class Nip05MarketplaceService {
       },
     });
 
+    const outbidPubkey = current && current.bidderPubkey !== input.bidderPubkey ? current.bidderPubkey : null;
+    if (outbidPubkey) {
+      await this.notificationsService.create({
+        userPubkey: outbidPubkey,
+        type: 'outbid',
+        title: `You were outbid on ${auction.name}@${auction.domain}`,
+        body: `New high bid is ${input.amountSats.toLocaleString()} sats. Bid again to stay in the lead.`,
+        link: `/marketplace?auctionId=${auction.id}`,
+      });
+
+      await this.notificationsService.maybeSendNostrDm(
+        outbidPubkey,
+        `Outbid: ${auction.name}@${auction.domain}`,
+        `New high bid is ${input.amountSats.toLocaleString()} sats`,
+      );
+    }
+
     return {
       bid,
-      outbidPubkey: current && current.bidderPubkey !== input.bidderPubkey ? current.bidderPubkey : null,
+      outbidPubkey,
       minNextBidSats: input.amountSats + auction.minIncrementSats,
     };
   }
@@ -148,12 +167,12 @@ export class Nip05MarketplaceService {
 
     const winningBid = auction.bids[0];
     if (!winningBid) {
-      await (this.prisma as any).nip05Auction.update({ where: { id: auctionId }, data: { status: 'ended' } });
+      await (this.prisma as any).nip05Auction.update({ where: { id: auctionId }, data: { status: 'no_sale' } });
       return { settled: false, reason: 'No bids' };
     }
 
     if (auction.reservePriceSats && winningBid.amountSats < auction.reservePriceSats) {
-      await (this.prisma as any).nip05Auction.update({ where: { id: auctionId }, data: { status: 'ended' } });
+      await (this.prisma as any).nip05Auction.update({ where: { id: auctionId }, data: { status: 'no_sale' } });
       return { settled: false, reason: 'Reserve not met' };
     }
 

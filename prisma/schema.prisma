@@ -329,7 +329,7 @@ model Nip05Auction {
   winnerPubkey      String?
   winningBidSats    Int?
   bidCount          Int       @default(0)
-  status            String    @default("scheduled") // scheduled, live, ended, settlement_pending, settled, cancelled
+  status            String    @default("scheduled") // scheduled, live, ended, no_sale, settlement_pending, settled, cancelled
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -351,6 +351,19 @@ model Nip05Bid {
 
   @@index([auctionId, amountSats(sort: Desc)])
   @@index([bidderPubkey])
+}
+
+model Notification {
+  id         String   @id @default(uuid())
+  userPubkey String
+  type       String
+  title      String
+  body       String
+  link       String?
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userPubkey, read])
 }
 
 model Nip05Listing {
@@ -535,6 +548,98 @@ model FeedSubscription {
 
   @@unique([userId, feedId])
   @@index([feedId])
+}
+
+model Question {
+  id               String   @id @default(uuid())
+  authorPubkey     String
+  title            String
+  body             String   @db.Text
+  tags             String[]
+  bountyMsats      Int      @default(0)
+  bountyPaid       Boolean  @default(false)
+  viewCount        Int      @default(0)
+  acceptedAnswerId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  answers Answer[]
+
+  @@index([authorPubkey])
+  @@index([createdAt])
+  @@index([bountyMsats])
+}
+
+model Answer {
+  id           String   @id @default(uuid())
+  questionId   String
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  authorPubkey String
+  body         String   @db.Text
+  upvotes      Int      @default(0)
+  downvotes    Int      @default(0)
+  isAccepted   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  votes Vote[]
+
+  @@index([questionId])
+  @@index([authorPubkey])
+}
+
+model Vote {
+  id          String   @id @default(uuid())
+  answerId    String
+  answer      Answer   @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  voterPubkey String
+  direction   String
+  createdAt   DateTime @default(now())
+
+  @@unique([answerId, voterPubkey])
+  @@index([voterPubkey])
+}
+
+model Reputation {
+  id        String   @id @default(uuid())
+  pubkey    String   @unique
+  score     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model QaBountyPayout {
+  id              String   @id @default(uuid())
+  questionId      String
+  answerId        String
+  recipientPubkey String
+  amountMsats     Int
+  feeMsats        Int
+  mode            String
+  createdAt       DateTime @default(now())
+
+  @@index([questionId])
+  @@index([recipientPubkey])
+}
+
+model GiftCard {
+  id             String   @id @default(uuid())
+  code           String   @unique
+  creatorPubkey  String
+  amountSats     Int
+  remainingSats  Int
+  designUrl      String?
+  designName     String   @default("bitcoin")
+  message        String?
+  status         String   @default("unfunded")
+  fundingInvoice String?
+  fundingPaid    Boolean  @default(false)
+  expiresAt      DateTime?
+  createdAt      DateTime @default(now())
+  redeemedAt     DateTime?
+  redeemedBy     String?
+
+  @@index([creatorPubkey])
+  @@index([status])
 }
 
 model Book {

@@ -11,6 +11,10 @@ const typeIcon: Record<string, string> = {
   reply: messagesIcon,
   zap: notificationsIcon,
   follow: connectionsIcon,
+  outbid: notificationsIcon,
+  auction_ending: notificationsIcon,
+  auction_won: notificationsIcon,
+  auction_lost: notificationsIcon,
 };
 
 export function NotificationsPage() {

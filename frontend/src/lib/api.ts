@@ -13,7 +13,10 @@ import type {
   ApiKeyUsage,
   SubscriptionTier,
   NotificationItem,
+  Book,
+  BookChapter,
 } from '../types';
+import type { QaQuestionDetail, QaQuestionSummary, QaTag } from '../types/qa';
 
 // Use env var for API URL, fallback to same-origin relative path
 // Always use relative path - Caddy proxies /api/* to backend
@@ -271,7 +274,7 @@ class ApiClient {
   }
 
   async getUnreadNotificationsCount(): Promise<{ unread: number }> {
-    return this.request('/notifications/unread-count');
+    return this.request('/notifications/count');
   }
 
   async markNotificationRead(notificationId: string): Promise<NotificationItem> {
@@ -365,6 +368,118 @@ class ApiClient {
 
   async unsubscribeFeed(feedId: string): Promise<void> {
     return this.request(`/feeds/${encodeURIComponent(feedId)}/subscribe`, { method: 'DELETE' });
+  }
+
+  // Books endpoints
+  async createBook(payload: { title: string; description?: string; coverUrl?: string }): Promise<Book> {
+    return this.request('/books', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async listBooks(): Promise<Book[]> {
+    return this.request('/books');
+  }
+
+  async getBook(bookId: string): Promise<Book> {
+    return this.request(`/books/${encodeURIComponent(bookId)}`);
+  }
+
+  async updateBook(bookId: string, payload: Partial<{ title: string; description: string; coverUrl: string }>): Promise<Book> {
+    return this.request(`/books/${encodeURIComponent(bookId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+
+  async deleteBook(bookId: string): Promise<void> {
+    return this.request(`/books/${encodeURIComponent(bookId)}`, { method: 'DELETE' });
+  }
+
+  async createChapter(bookId: string, payload: { title: string; content: string; orderIndex?: number }): Promise<BookChapter> {
+    return this.request(`/books/${encodeURIComponent(bookId)}/chapters`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async updateChapter(bookId: string, chapterId: string, payload: Partial<{ title: string; content: string; orderIndex: number }>): Promise<BookChapter> {
+    return this.request(`/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(chapterId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+
+  async deleteChapter(bookId: string, chapterId: string): Promise<void> {
+    return this.request(`/books/${encodeURIComponent(bookId)}/chapters/${encodeURIComponent(chapterId)}`, { method: 'DELETE' });
+  }
+
+  async publishBook(bookId: string): Promise<Book> {
+    return this.request(`/books/${encodeURIComponent(bookId)}/publish`, { method: 'POST' });
+  }
+
+  async exportBook(bookId: string, format: 'pdf' | 'epub'): Promise<{ format: 'pdf' | 'epub'; downloadUrl: string; sizeBytes: number }> {
+    return this.request(`/books/${encodeURIComponent(bookId)}/export?format=${format}`);
+  }
+
+  async getBookSales(bookId: string): Promise<{ bookId: string; totalEarningsSats: number; buyerCount: number; status: string; updatedAt: string }> {
+    return this.request(`/books/${encodeURIComponent(bookId)}/sales`);
+  }
+
+  // Gift cards endpoints
+  async getGiftCardDesigns(): Promise<Array<{ name: string; title: string; imageUrl: string; category: string; custom: boolean }>> {
+    return this.request('/gift-cards/designs');
+  }
+
+  async createGiftCard(payload: { amountSats: number; designName?: string; designUrl?: string; message?: string }): Promise<any> {
+    return this.request('/gift-cards', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async listMyGiftCards(): Promise<any[]> {
+    return this.request('/gift-cards/mine');
+  }
+
+  async getGiftCardBalance(code: string): Promise<any> {
+    return this.request(`/gift-cards/${encodeURIComponent(code)}/balance`);
+  }
+
+  async fundGiftCard(code: string, paymentRef: string): Promise<any> {
+    return this.request(`/gift-cards/${encodeURIComponent(code)}/fund`, {
+      method: 'POST',
+      body: JSON.stringify({ paymentRef }),
+    });
+  }
+
+  async redeemGiftCard(code: string, payload: { invoice?: string; lightningAddress?: string; amountSats?: number; redeemerPubkey?: string }): Promise<any> {
+    return this.request(`/gift-cards/${encodeURIComponent(code)}/redeem`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // QA endpoints
+  async createQuestion(payload: { title: string; body: string; tags: string[]; bountySats?: number }): Promise<QaQuestionDetail> {
+    return this.request('/qa/questions', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async listQuestions(tag?: string, sort: 'recent' | 'votes' | 'bounty' = 'recent'): Promise<QaQuestionSummary[]> {
+    const params = new URLSearchParams();
+    if (tag) params.set('tag', tag);
+    params.set('sort', sort);
+    return this.request(`/qa/questions?${params.toString()}`);
+  }
+
+  async getQuestion(id: string): Promise<QaQuestionDetail> {
+    return this.request(`/qa/questions/${encodeURIComponent(id)}`);
+  }
+
+  async createAnswer(questionId: string, payload: { body: string }) {
+    return this.request(`/qa/questions/${encodeURIComponent(questionId)}/answers`, { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async voteAnswer(answerId: string, direction: 'up' | 'down') {
+    return this.request(`/qa/answers/${encodeURIComponent(answerId)}/vote`, { method: 'POST', body: JSON.stringify({ direction }) });
+  }
+
+  async acceptAnswer(questionId: string, answerId: string) {
+    return this.request(`/qa/questions/${encodeURIComponent(questionId)}/accept/${encodeURIComponent(answerId)}`, { method: 'POST' });
+  }
+
+  async listQaTags(): Promise<QaTag[]> {
+    return this.request('/qa/tags');
+  }
+
+  async getReputation(pubkey: string): Promise<{ pubkey: string; score: number; canEditOthers: boolean }> {
+    return this.request(`/qa/reputation/${encodeURIComponent(pubkey)}`);
   }
 }
 

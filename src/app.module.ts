@@ -34,6 +34,9 @@ import { PrimitivesModule } from './primitives/primitives.module';
 import { Nip05MarketplaceModule } from './nip05-marketplace/nip05-marketplace.module';
 import { FeedsModule } from './feeds/feeds.module';
 import { DomainsModule } from './domains/domains.module';
+import { QaModule } from './qa/qa.module';
+import { BooksModule } from './books/books.module';
+import { GiftCardsModule } from './gift-cards/gift-cards.module';
 
 @Module({
   imports: [
@@ -84,6 +87,9 @@ import { DomainsModule } from './domains/domains.module';
     PrimitivesModule,
     FeedsModule,
     DomainsModule,
+    QaModule,
+    BooksModule,
+    GiftCardsModule,
   ],
 })
 export class AppModule implements NestModule {
