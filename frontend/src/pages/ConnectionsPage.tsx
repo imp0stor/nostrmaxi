@@ -8,6 +8,7 @@ import { fetchProfilesBatchCached } from '../lib/profileCache';
 import { getDefaultRelays, getRelaysForUser } from '../lib/relayConfig';
 import { loadFollowers, loadFollowing } from '../lib/social';
 import type { NostrProfile } from '../types';
+import connectionsIcon from '../assets/icons/connections.png';
 
 type ConnectionCard = {
   pubkey: string;

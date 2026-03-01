@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { fetchProfilesBatchCached, profileDisplayName } from '../lib/profileCache';
 import { signEvent, truncateNpub } from '../lib/nostr';
 import { deriveConversationList, loadDirectMessages, sendDirectMessage, type DMConversation } from '../lib/directMessages';
+import messagesIcon from '../assets/icons/messages.png';
 
 function parseNsecHex(): string | null {
   if (typeof window === 'undefined') return null;
@@ -129,7 +130,7 @@ export function MessagesPage() {
   return (
     <div className="nm-page max-w-6xl py-6">
       <section className="cy-card p-4">
-        <h1 className="text-2xl font-semibold text-cyan-100">💬 Direct Messages</h1>
+        <h1 className="text-2xl font-semibold text-cyan-100 flex items-center gap-2"><img src={messagesIcon} alt="" aria-hidden className="nm-icon" />Direct Messages</h1>
         <p className="cy-muted mt-1">NIP-04 private messaging shell with safe fallbacks.</p>
         {!canDecrypt ? <p className="text-xs text-amber-300 mt-2">Cannot decrypt existing messages: no nsec session key and signer NIP-04 decrypt is unavailable.</p> : null}
         {!canSend ? <p className="text-xs text-amber-300 mt-1">Cannot send: signer does not expose NIP-04 encrypt, and no nsec session key is present.</p> : null}
@@ -156,8 +157,8 @@ export function MessagesPage() {
           </div>
 
           <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-            {loading ? <p className="text-sm text-cyan-300">Loading conversations…</p> : null}
-            {!loading && conversations.length === 0 ? <p className="text-sm text-cyan-300/70">No DMs yet.</p> : null}
+            {loading ? <p className="text-sm text-orange-200 flex items-center gap-2"><img src={messagesIcon} alt="" aria-hidden className="nm-icon animate-pulse" />Loading conversations…</p> : null}
+            {!loading && conversations.length === 0 ? <div className="flex flex-col items-center justify-center py-10 text-center"><img src={messagesIcon} alt="" className="w-16 h-16 mb-3 opacity-80" /><p className="text-sm text-cyan-300/70">No DMs yet.</p></div> : null}
             {conversations.map((conversation) => {
               const profile = profiles.get(conversation.counterpartyPubkey);
               const title = profileDisplayName(conversation.counterpartyPubkey, profile);
@@ -191,7 +192,7 @@ export function MessagesPage() {
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {(selectedConversation?.messages || []).length === 0 ? (
-                  <div className="text-sm text-cyan-300/80">No messages in this thread yet.</div>
+                  <div className="flex flex-col items-center justify-center py-10 text-center"><img src={messagesIcon} alt="" className="w-16 h-16 mb-3 opacity-80" /><div className="text-sm text-cyan-300/80">No messages in this thread yet.</div></div>
                 ) : (
                   (selectedConversation?.messages || []).map((message) => (
                     <div

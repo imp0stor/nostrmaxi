@@ -3,16 +3,16 @@
 @tailwind utilities;
 
 :root {
-  --sf-bg: #09080a;
-  --sf-bg-secondary: #161116;
-  --sf-panel-soft: #1d1516;
+  --sf-bg: #000000;
+  --sf-bg-secondary: #0a0a0a;
+  --sf-panel-soft: #111111;
   --sf-accent: #f97316;
   --sf-accent-2: #fb923c;
   --sf-accent-strong: #ea580c;
   --sf-accent-soft: rgba(249, 115, 22, 0.22);
   --sf-accent-border: rgba(251, 146, 60, 0.5);
-  --sf-text: #f6f0ec;
-  --sf-muted: #b8a9a1;
+  --sf-text: #e5e5e5;
+  --sf-muted: #737373;
   --sf-success: #22c55e;
   --sf-error: #ef4444;
 }
@@ -33,10 +33,9 @@
     font-size: 15px;
     line-height: 1.55;
     background:
-      radial-gradient(1200px 760px at 8% -14%, rgba(249, 115, 22, 0.08), transparent 55%),
-      radial-gradient(1000px 620px at 90% -20%, rgba(251, 146, 60, 0.08), transparent 58%),
-      repeating-radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.01) 0, rgba(255, 255, 255, 0.01) 2px, transparent 2px, transparent 12px),
-      linear-gradient(180deg, #09080a 0%, #0d0b0f 45%, #09080a 100%) !important;
+      radial-gradient(1200px 760px at 8% -14%, rgba(249, 115, 22, 0.06), transparent 55%),
+      radial-gradient(1000px 620px at 90% -20%, rgba(251, 146, 60, 0.05), transparent 58%),
+      #000000 !important;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -88,12 +87,12 @@
   }
 
   .cy-card {
-    background: linear-gradient(165deg, rgba(24, 19, 22, 0.9), rgba(15, 12, 16, 0.9));
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    background: linear-gradient(165deg, rgba(15, 15, 15, 0.95), rgba(5, 5, 5, 0.95));
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
   .cy-panel {
-    background: linear-gradient(170deg, rgba(30, 22, 24, 0.7), rgba(16, 13, 16, 0.8));
+    background: linear-gradient(170deg, rgba(18, 18, 18, 0.85), rgba(8, 8, 8, 0.9));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
@@ -134,8 +133,8 @@
   .cy-input {
     width: 100%;
     min-height: 44px;
-    border: 1px solid rgba(232, 196, 178, 0.25);
-    background: rgba(16, 13, 16, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(10, 10, 10, 0.9);
     color: var(--sf-text);
     border-radius: 10px;
     padding: 0.68rem 0.78rem;
@@ -153,12 +152,12 @@
   .nm-pill {
     min-height: 40px;
     border-radius: 999px;
-    border: 1px solid rgba(232, 196, 178, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 0.42rem 0.82rem;
     font-weight: 600;
     letter-spacing: 0.01em;
-    background: linear-gradient(160deg, rgba(31, 23, 24, 0.95), rgba(20, 15, 19, 0.95));
-    color: #f8ede7;
+    background: linear-gradient(160deg, rgba(20, 20, 20, 0.95), rgba(10, 10, 10, 0.95));
+    color: #e5e5e5;
   }
 
   .cy-btn,
@@ -196,8 +195,8 @@
   }
 
   .nm-icon {
-    width: 0.94rem;
-    height: 0.94rem;
+    width: 20px;
+    height: 20px;
     opacity: 0.92;
   }
 
@@ -221,7 +220,7 @@
   .nm-media-card {
     border-radius: 12px;
     border: 1px solid rgba(251, 146, 60, 0.28);
-    background: linear-gradient(175deg, rgba(25, 18, 20, 0.96), rgba(16, 13, 16, 0.96));
+    background: linear-gradient(175deg, rgba(15, 15, 15, 0.96), rgba(5, 5, 5, 0.96));
     padding: 0.55rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   }
@@ -301,7 +300,7 @@
   }
 
   .nm-scroll {
-    scrollbar-color: rgba(249, 115, 22, 0.65) rgba(15, 12, 14, 0.8);
+    scrollbar-color: rgba(249, 115, 22, 0.65) rgba(0, 0, 0, 0.9);
   }
 }
 
@@ -321,7 +320,7 @@
 }
 
 *::-webkit-scrollbar-track {
-  background: rgba(15, 12, 14, 0.85);
+  background: rgba(0, 0, 0, 0.9);
 }
 
 *::-webkit-scrollbar-thumb {

@@ -30,11 +30,12 @@ import { api } from '../lib/api';
 import { mapPrimitiveWotToFeedMetric, type FeedWotMetric } from '../lib/wotScore';
 import { MetricChip } from '../components/primitives/MetricChip';
 import { ContributorSheet } from '../components/primitives/ContributorSheet';
-import composeIcon from '../assets/icons/compose-custom.svg';
-import muteConfigIcon from '../assets/icons/mute-config-custom.svg';
-import filtersIcon from '../assets/icons/filters-custom.svg';
-import relayIcon from '../assets/icons/relay-custom.svg';
-import refreshIcon from '../assets/icons/refresh-base.svg';
+import composeIcon from '../assets/icons/compose.png';
+import muteConfigIcon from '../assets/icons/settings.png';
+import filtersIcon from '../assets/icons/filters.png';
+import relayIcon from '../assets/icons/relay.png';
+import refreshIcon from '../assets/icons/refresh.png';
+import feedIcon from '../assets/icons/profile.png';
 
 function formatTime(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
@@ -193,6 +194,7 @@ export function FeedPage() {
   const [zapMessageInput, setZapMessageInput] = useState('');
   const [zapError, setZapError] = useState<string | null>(null);
   const [zapStatusLabel, setZapStatusLabel] = useState<string | null>(null);
+  const [successState, setSuccessState] = useState<'post' | 'zap' | null>(null);
   const [zapBreakdownEventId, setZapBreakdownEventId] = useState<string | null>(null);
   const [interactionByEventId, setInteractionByEventId] = useState<Map<string, FeedInteractionSummary>>(new Map());
   const [interactionDetailEventId, setInteractionDetailEventId] = useState<string | null>(null);
@@ -806,6 +808,8 @@ export function FeedPage() {
     if (ok) {
       setComposer('');
       setComposerMedia([]);
+      setSuccessState('post');
+      setTimeout(() => setSuccessState(null), 1800);
       await refresh();
     }
   };
@@ -886,6 +890,8 @@ export function FeedPage() {
         },
       });
       setPendingZaps((prev) => prev.map((z) => z.id === pending.id ? { ...z, status: 'confirmed' } : z));
+      setSuccessState('zap');
+      setTimeout(() => setSuccessState(null), 1800);
       await refresh();
       setTimeout(() => {
         setZapComposeItem(null);
@@ -1151,10 +1157,23 @@ export function FeedPage() {
         ) : null}
 
 
-        {loading ? <div className="cy-card p-6">Loading feed from relays…</div> : null}
+        {successState ? (
+          <div className="cy-card p-4 border border-orange-400/45 bg-orange-500/10 flex items-center gap-3">
+            <img src={composeIcon} alt="" aria-hidden className="nm-icon" />
+            <p className="text-sm text-orange-100">{successState === 'post' ? 'Post published successfully.' : 'Zap sent successfully.'}</p>
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div className="cy-card p-6 flex items-center justify-center gap-3 text-orange-200">
+            <img src={feedIcon} alt="" aria-hidden className="nm-icon animate-pulse" />
+            <span>Loading feed from relays…</span>
+          </div>
+        ) : null}
         {loadError ? <div className="cy-card p-6 text-red-300">Feed failed to load: {loadError}</div> : null}
         {!loading && !loadError && tagFilteredFeed.length === 0 ? (
-          <div className="cy-card p-6">
+          <div className="cy-card p-6 flex flex-col items-center justify-center py-16 text-center">
+            <img src={feedIcon} alt="" className="w-20 h-20 mb-4 opacity-80" />
             <p className="text-gray-100">No timeline events match current filters.</p>
             <p className="cy-muted mt-2">Try clearing filters, refreshing feed, or following more accounts from Discover.</p>
           </div>

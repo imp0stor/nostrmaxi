@@ -16,6 +16,7 @@ import { DiscoverSection } from '../components/discover/DiscoverSection';
 import { FilterBar } from '../components/filters/FilterBar';
 import { useTagFilter } from '../hooks/useTagFilter';
 import { useConfig } from '../hooks/useConfig';
+import connectionsIcon from '../assets/icons/connections.png';
 
 interface DiscoverCardData extends DiscoverUser, DiscoverCardDataLike {
   name: string;
@@ -91,6 +92,7 @@ export function DiscoverPage() {
   const [relayMetricsUniverse, setRelayMetricsUniverse] = useState<RelayMetricsSeed[]>([]);
   const [selectedRelay, setSelectedRelay] = useState<RankedRelayRecommendation | null>(null);
   const [postFilters, setPostFilters] = useState<Set<DiscoverPostFilter>>(new Set());
+  const [followSuccessPubkey, setFollowSuccessPubkey] = useState<string | null>(null);
   const { selectedTags, logic, setSelectedTags, setLogic } = useTagFilter({
     storageKey: 'nostrmaxi.discover.tag-filter',
     defaultLogic: 'or',
@@ -224,6 +226,8 @@ export function DiscoverPage() {
 
     invalidateDiscoverCache(user.pubkey);
     requestIdentityRefresh(user.pubkey);
+    setFollowSuccessPubkey(pubkey);
+    setTimeout(() => setFollowSuccessPubkey(null), 1800);
     void refresh({ background: true });
   };
 
@@ -416,9 +420,16 @@ export function DiscoverPage() {
     <div className="nm-page max-w-6xl">
       <header className="cy-card p-5">
         <p className="cy-kicker">DISCOVER</p>
-        <h1 className="cy-title">Curated Nostr Accounts</h1>
+        <h1 className="cy-title flex items-center gap-2"><img src={connectionsIcon} alt="" aria-hidden className="nm-icon" />Curated Nostr Accounts</h1>
         <p className="nm-subtitle mt-2">Suggested creators and operators based on reputation, activity, and graph overlap.</p>
       </header>
+
+      {followSuccessPubkey ? (
+        <div className="cy-card p-4 border border-orange-400/45 bg-orange-500/10 flex items-center gap-3">
+          <img src={connectionsIcon} alt="" aria-hidden className="nm-icon" />
+          <p className="text-sm text-orange-100">Follow saved for {truncateNpub(followSuccessPubkey, 10)}.</p>
+        </div>
+      ) : null}
 
       <ConfigAccordion
         id="discover-filters-modes"
@@ -530,7 +541,10 @@ export function DiscoverPage() {
                     subtitle="Beacon-powered profile search rendered in the same curated card layout."
                   >
                     {visibleSearchCards.length === 0 ? (
-                      <div className="py-10 text-center text-cyan-200">No search results yet.</div>
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <img src={connectionsIcon} alt="" className="w-20 h-20 mb-4 opacity-80" />
+                        <p className="text-cyan-200">No search results yet.</p>
+                      </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         {visibleSearchCards.map((card) => (

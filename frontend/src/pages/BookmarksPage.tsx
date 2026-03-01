@@ -10,6 +10,7 @@ import { CreatePublicList } from '../components/bookmarks/CreatePublicList';
 import { usePinnedPost } from '../hooks/usePinnedPost';
 import { usePublicLists } from '../hooks/usePublicLists';
 import type { Bookmark } from '../lib/bookmarkEncryption';
+import bookmarksIcon from '../assets/icons/bookmarks.png';
 
 type BookmarkTab = 'private' | 'pinned' | 'public-lists';
 
@@ -47,7 +48,7 @@ export function BookmarksPage() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <p className="cy-kicker">BOOKMARKS</p>
-            <h1 className="text-2xl font-semibold text-cyan-100">🔖 My Bookmarks</h1>
+            <h1 className="text-2xl font-semibold text-cyan-100 flex items-center gap-2"><img src={bookmarksIcon} alt="" aria-hidden className="nm-icon" />My Bookmarks</h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <button className={`cy-chip ${activeTab === 'private' ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setActiveTab('private')}>🔒 Private</button>
@@ -119,8 +120,8 @@ export function BookmarksPage() {
 
       {activeTab === 'private' ? (
         <section className="space-y-3">
-          {isLoading ? <div className="cy-card p-4">Loading bookmarks…</div> : null}
-          {!isLoading && filtered.length === 0 ? <div className="cy-card p-4 text-cyan-300/80">No bookmarks yet.</div> : null}
+          {isLoading ? <div className="cy-card p-4 flex items-center justify-center gap-3 text-orange-200"><img src={bookmarksIcon} alt="" aria-hidden className="nm-icon animate-pulse" />Loading bookmarks…</div> : null}
+          {!isLoading && filtered.length === 0 ? <div className="cy-card p-4 flex flex-col items-center justify-center py-16 text-center"><img src={bookmarksIcon} alt="" className="w-20 h-20 mb-4 opacity-80" /><p className="text-cyan-300/80">No bookmarks yet.</p></div> : null}
 
           {filtered.map((bookmark) => (
             <BookmarkCard
