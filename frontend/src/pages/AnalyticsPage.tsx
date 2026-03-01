@@ -8,7 +8,7 @@ import { FALLBACK_RELAYS } from '../lib/relayConfig';
 import { parseZapReceipt } from '../lib/zaps';
 import { fetchProfilesBatchCached, profileDisplayName } from '../lib/profileCache';
 import { encodeNpub, truncateNpub } from '../lib/nostr';
-import { getDefaultAnalyticsTarget, resolveAnalyticsTargetIdentifier, type AnalyticsTargetResolution } from '../lib/analyticsTarget';
+import { findAnalyticsTargetCandidates, getDefaultAnalyticsTarget, resolveAnalyticsTargetIdentifier, type AnalyticsTargetCandidate, type AnalyticsTargetResolution } from '../lib/analyticsTarget';
 import { TimeRangePicker, type TimeRangeValue } from '../components/analytics/TimeRangePicker';
 import { MetricCard } from '../components/analytics/MetricCard';
 import { EngagementChart } from '../components/analytics/EngagementChart';
@@ -479,6 +479,9 @@ export function AnalyticsPage() {
   const [targetInput, setTargetInput] = useState('');
   const [targetResolution, setTargetResolution] = useState<AnalyticsTargetResolution | null>(null);
   const [targetResolveError, setTargetResolveError] = useState<string | null>(null);
+  const [targetCandidates, setTargetCandidates] = useState<AnalyticsTargetCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidateFocusIndex, setCandidateFocusIndex] = useState(0);
   const [visibleTopPosts, setVisibleTopPosts] = useState(100);
   const [visibleRecentPosts, setVisibleRecentPosts] = useState(100);
 
@@ -493,6 +496,8 @@ export function AnalyticsPage() {
         setTargetInput('');
         setTargetResolution(defaultTarget);
         setTargetResolveError(null);
+        setTargetCandidates([]);
+        setCandidateFocusIndex(0);
         return;
       }
 
@@ -501,11 +506,21 @@ export function AnalyticsPage() {
       if (!resolved.resolution) {
         setTargetResolution(defaultTarget);
         setTargetResolveError(resolved.error || 'Could not resolve target.');
+        setCandidatesLoading(true);
+        try {
+          const candidates = await findAnalyticsTargetCandidates(targetFromQuery);
+          setTargetCandidates(candidates);
+          setCandidateFocusIndex(0);
+        } finally {
+          setCandidatesLoading(false);
+        }
         return;
       }
 
       setTargetResolution(resolved.resolution);
       setTargetResolveError(null);
+      setTargetCandidates([]);
+      setCandidateFocusIndex(0);
     };
 
     void resolveTarget();
@@ -621,6 +636,16 @@ export function AnalyticsPage() {
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }, [safeMetrics, postEventById]);
 
+  const applyCandidate = (candidate: AnalyticsTargetCandidate) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('target', candidate.npub);
+    setSearchParams(params, { replace: false });
+    setTargetInput(candidate.npub);
+    setTargetCandidates([]);
+    setCandidateFocusIndex(0);
+    setTargetResolveError(null);
+  };
+
   if (!user) return null;
   if (loading || !safeMetrics || !activeTargetPubkey) {
     return (
@@ -680,7 +705,22 @@ export function AnalyticsPage() {
           <input
             value={targetInput}
             onChange={(e) => setTargetInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (!targetCandidates.length) return;
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setCandidateFocusIndex((idx) => (idx + 1) % targetCandidates.length);
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setCandidateFocusIndex((idx) => (idx - 1 + targetCandidates.length) % targetCandidates.length);
+              } else if (e.key === 'Enter' && targetCandidates[candidateFocusIndex]) {
+                e.preventDefault();
+                applyCandidate(targetCandidates[candidateFocusIndex]);
+              }
+            }}
             placeholder="Enter npub, hex pubkey, or nip05 (e.g. jack@domain.com)"
+            aria-describedby="analytics-target-help"
+            aria-controls="analytics-target-candidates"
             className="flex-1 px-3 py-2 rounded-md bg-gray-900 border border-gray-700 text-gray-100 placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
           />
           <button type="submit" className="px-3 py-2 rounded-md bg-cyan-700 hover:bg-cyan-600 text-white text-sm">Apply target</button>
@@ -697,8 +737,38 @@ export function AnalyticsPage() {
             Reset to me
           </button>
         </form>
-        <p className="text-xs text-gray-400">Try npub / hex / nip05 like jack@domain.com. Public analytics are viewable for any resolved pubkey.</p>
-        {targetResolveError ? <p className="text-sm text-amber-300">{targetResolveError} Showing your analytics as fallback.</p> : null}
+        <p id="analytics-target-help" className="text-xs text-gray-400">Try npub / hex / nip05 like jack@domain.com. Public analytics are viewable for any resolved pubkey.</p>
+        {targetResolveError ? (
+          <div className="space-y-2">
+            <p className="text-sm text-amber-300">
+              Could not resolve <span className="font-semibold">{targetInput.trim()}</span>. Select a profile candidate below, or edit your target. Showing your analytics as fallback.
+            </p>
+            {candidatesLoading ? <p className="text-xs text-cyan-300">Searching profiles…</p> : null}
+            {targetCandidates.length > 0 ? (
+              <ul id="analytics-target-candidates" role="listbox" aria-label="Profile candidates" className="max-h-72 overflow-y-auto space-y-2">
+                {targetCandidates.map((candidate, index) => (
+                  <li key={candidate.targetPubkey} role="option" aria-selected={index === candidateFocusIndex}>
+                    <button
+                      type="button"
+                      className={`w-full text-left rounded-md border px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+                        index === candidateFocusIndex
+                          ? 'border-cyan-400/80 bg-cyan-900/20'
+                          : 'border-gray-700 bg-gray-900/60 hover:bg-gray-800/70'
+                      }`}
+                      onMouseEnter={() => setCandidateFocusIndex(index)}
+                      onFocus={() => setCandidateFocusIndex(index)}
+                      onClick={() => applyCandidate(candidate)}
+                    >
+                      <p className="text-sm text-white font-medium">{candidate.displayName || candidate.name || 'Unnamed profile'}</p>
+                      <p className="text-xs text-gray-300">{candidate.nip05 || candidate.name || 'No NIP-05'}</p>
+                      <p className="text-xs text-gray-400">{truncateNpub(candidate.npub, 10)}</p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : !candidatesLoading ? <p className="text-xs text-gray-400">No candidate profiles found yet. Try a different search string.</p> : null}
+          </div>
+        ) : null}
       </section>
 
       {error && (

@@ -1,4 +1,6 @@
-import { decodeNpub } from './nostr';
+import { decodeNpub, encodeNpub } from './nostr';
+import { searchProfiles } from './beaconSearch';
+import { fetchProfilesBatchCached } from './profileCache';
 
 const HEX_PUBKEY_RE = /^[a-f0-9]{64}$/i;
 
@@ -14,6 +16,15 @@ export interface AnalyticsTargetResolution {
 export interface ResolveAnalyticsTargetResult {
   resolution: AnalyticsTargetResolution | null;
   error: string | null;
+}
+
+export interface AnalyticsTargetCandidate {
+  targetPubkey: string;
+  npub: string;
+  displayName?: string;
+  name?: string;
+  nip05?: string;
+  source: 'search' | 'profile';
 }
 
 export function classifyTargetInput(input: string): TargetInputType {
@@ -93,6 +104,68 @@ export async function resolveAnalyticsTargetIdentifier(input: string): Promise<R
     },
     error: null,
   };
+}
+
+function toCandidate(pubkey: string, data: Partial<AnalyticsTargetCandidate>, source: 'search' | 'profile'): AnalyticsTargetCandidate {
+  const normalizedPubkey = normalizeHex(pubkey);
+  return {
+    targetPubkey: normalizedPubkey,
+    npub: encodeNpub(normalizedPubkey),
+    displayName: data.displayName,
+    name: data.name,
+    nip05: data.nip05,
+    source,
+  };
+}
+
+export async function findAnalyticsTargetCandidates(input: string): Promise<AnalyticsTargetCandidate[]> {
+  const query = input.trim();
+  if (!query) return [];
+
+  const candidates = new Map<string, AnalyticsTargetCandidate>();
+
+  try {
+    const search = await searchProfiles({ query, limit: 20, offset: 0 });
+    for (const result of search.results) {
+      if (!HEX_PUBKEY_RE.test(result.pubkey)) continue;
+      const candidate = toCandidate(result.pubkey, {
+        displayName: result.profile?.display_name,
+        name: result.name ?? result.profile?.name,
+        nip05: result.nip05 ?? result.profile?.nip05,
+      }, 'search');
+      candidates.set(candidate.targetPubkey, candidate);
+    }
+  } catch {
+    // Best-effort fallback only.
+  }
+
+  const type = classifyTargetInput(query);
+  const lookupPubkeys: string[] = [];
+  if (type === 'hex') {
+    lookupPubkeys.push(normalizeHex(query));
+  } else if (type === 'npub') {
+    const decoded = decodeNpub(query);
+    if (decoded && HEX_PUBKEY_RE.test(decoded)) lookupPubkeys.push(normalizeHex(decoded));
+  }
+
+  if (lookupPubkeys.length > 0) {
+    try {
+      const profiles = await fetchProfilesBatchCached(lookupPubkeys);
+      for (const pubkey of lookupPubkeys) {
+        if (candidates.has(pubkey)) continue;
+        const profile = profiles.get(pubkey);
+        candidates.set(pubkey, toCandidate(pubkey, {
+          displayName: profile?.display_name,
+          name: profile?.name,
+          nip05: profile?.nip05,
+        }, 'profile'));
+      }
+    } catch {
+      // Ignore candidate profile lookup errors.
+    }
+  }
+
+  return Array.from(candidates.values());
 }
 
 export function getDefaultAnalyticsTarget(pubkey: string | undefined | null): AnalyticsTargetResolution | null {
