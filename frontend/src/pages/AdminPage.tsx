@@ -124,7 +124,7 @@ export function AdminPage() {
         <p className="text-sm text-orange-200/80">Isolated operations surface for platform safety, reliability, and intervention.</p>
       </header>
 
-      {toast ? <div className="cy-card p-2 text-cyan-200" role="status" aria-live="polite">{toast}</div> : null}
+      {toast ? <div className="cy-card p-2 text-orange-200" role="status" aria-live="polite">{toast}</div> : null}
 
       <section className="cy-card p-3 space-y-2" aria-labelledby="admin-sections-label">
         <div id="admin-sections-label" className="text-xs uppercase tracking-wide text-orange-200/70">Admin IA</div>
@@ -135,7 +135,7 @@ export function AdminPage() {
               role="tab"
               aria-selected={section === item.key}
               aria-controls={`section-panel-${item.key}`}
-              className={`cy-chip ${section === item.key ? 'border-cyan-300 text-cyan-100' : ''}`}
+              className={`cy-chip ${section === item.key ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.22)]' : ''}`}
               onClick={() => setSection(item.key)}
             >
               {item.label}
@@ -554,7 +554,7 @@ function SystemHealthTab() {
   if (!serviceHealth) return <div className="cy-card p-4">Loading system health…</div>;
 
   const healthState = String(serviceHealth.status || '').toLowerCase();
-  const accent = healthState === 'healthy' ? 'text-cyan-200' : 'text-orange-200';
+  const accent = healthState === 'healthy' ? 'text-orange-200' : 'text-orange-300';
 
   return (
     <div className="space-y-3">
@@ -566,12 +566,12 @@ function SystemHealthTab() {
         </div>
         <div className="cy-card p-3">
           <div className="text-xs uppercase text-orange-200/65">Database</div>
-          <div className="text-lg font-semibold text-cyan-200">{serviceHealth.services?.database || 'unknown'}</div>
+          <div className="text-lg font-semibold text-orange-200">{serviceHealth.services?.database || 'unknown'}</div>
           <div className="text-xs text-orange-200/70">version {serviceHealth.version || 'n/a'}</div>
         </div>
         <div className="cy-card p-3">
           <div className="text-xs uppercase text-orange-200/65">Relay sync</div>
-          <div className="text-lg font-semibold text-cyan-200">{relayStatus?.running ? 'running' : 'idle'}</div>
+          <div className="text-lg font-semibold text-orange-200">{relayStatus?.running ? 'running' : 'idle'}</div>
           <div className="text-xs text-orange-200/70">queue {relayStatus?.queueSize ?? 'n/a'} / processed {relayStatus?.processedCount ?? 'n/a'}</div>
         </div>
       </div>
@@ -606,7 +606,7 @@ function NamesTab({ notify }: { notify: (msg: string) => void }) {
     <div className="space-y-3">
       <div className="flex gap-2" role="tablist" aria-label="Name list types">
         {(['reserved', 'premium', 'blocked'] as const).map((t) => (
-          <button key={t} className={`cy-chip ${listType === t ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setListType(t)} role="tab" aria-selected={listType === t}>
+          <button key={t} className={`cy-chip ${listType === t ? 'border-orange-300/80 text-orange-100 shadow-[0_0_16px_rgba(249,115,22,0.22)]' : ''}`} onClick={() => setListType(t)} role="tab" aria-selected={listType === t}>
             {t}
           </button>
         ))}
@@ -922,13 +922,13 @@ function SalesTab() {
         <div className="cy-card p-3 h-72">
           <div className="mb-2">Revenue over time</div>
           <ResponsiveContainer width="100%" height="90%">
-            <LineChart data={revenueSeries}><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="revenue" stroke="#06b6d4" strokeWidth={2} /></LineChart>
+            <LineChart data={revenueSeries}><XAxis dataKey="date" /><YAxis /><Tooltip /><Line type="monotone" dataKey="revenue" stroke="#f97316" strokeWidth={2} /></LineChart>
           </ResponsiveContainer>
         </div>
         <div className="cy-card p-3 h-72">
           <div className="mb-2">Tier distribution</div>
           <ResponsiveContainer width="100%" height="90%">
-            <PieChart><Tooltip /><Pie data={tierData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} fill="#22d3ee" label /></PieChart>
+            <PieChart><Tooltip /><Pie data={tierData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} fill="#ea580c" label /></PieChart>
           </ResponsiveContainer>
         </div>
       </div>
