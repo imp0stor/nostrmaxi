@@ -1,4 +1,11 @@
-import { applyCatalogFilters, groupByCategory, type CatalogFilterableEntry } from '../src/pages/ecosystemCatalogFilters';
+import {
+  applyCatalogFilters,
+  getActiveCatalogFilterCount,
+  getCatalogFilterSummary,
+  groupByCategory,
+  nextCatalogEntryIdForKey,
+  type CatalogFilterableEntry,
+} from '../src/pages/ecosystemCatalogFilters';
 
 const entries: CatalogFilterableEntry[] = [
   {
@@ -66,5 +73,33 @@ describe('EcosystemCatalogPage filter helpers', () => {
 
     expect(result.map((group) => group.category)).toEqual(['clients-apps', 'infrastructure']);
     expect(result.find((group) => group.category === 'infrastructure')?.entries.map((entry) => entry.id)).toEqual(['a', 'c']);
+  });
+
+  it('reports active filters and summary labels for discoverability defaults', () => {
+    const filters = {
+      search: 'relay',
+      category: '',
+      pricing: 'free',
+      tag: '',
+      minTrust: 60,
+    };
+
+    expect(getActiveCatalogFilterCount(filters)).toBe(3);
+    expect(getCatalogFilterSummary(filters)).toEqual([
+      'Search: "relay"',
+      'Category: all',
+      'Pricing: free',
+      'Tag: any',
+      'Min trust: 60+',
+    ]);
+  });
+
+  it('supports keyboard next/prev/page navigation for drilldown flow', () => {
+    expect(nextCatalogEntryIdForKey(entries, 'a', 'ArrowDown')).toBe('b');
+    expect(nextCatalogEntryIdForKey(entries, 'b', 'ArrowUp')).toBe('a');
+    expect(nextCatalogEntryIdForKey(entries, 'a', 'End')).toBe('c');
+    expect(nextCatalogEntryIdForKey(entries, 'c', 'Home')).toBe('a');
+    expect(nextCatalogEntryIdForKey(entries, 'a', 'PageDown')).toBe('b');
+    expect(nextCatalogEntryIdForKey(entries, 'c', 'PageUp')).toBe('b');
   });
 });
