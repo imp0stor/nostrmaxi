@@ -250,6 +250,76 @@ export class SubscriptionService {
     return result;
   }
 
+  async getEntitlement(pubkey: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { pubkey },
+      include: { subscription: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const tier = (user.subscription?.tier || 'FREE') as SubscriptionTier;
+    return {
+      pubkey,
+      tier,
+      isPaid: tier !== 'FREE',
+      expiresAt: user.subscription?.expiresAt || null,
+      cancelledAt: user.subscription?.cancelledAt || null,
+    };
+  }
+
+  async setEntitlement(pubkey: string, tier: SubscriptionTier, actorPubkey: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { pubkey },
+      include: { subscription: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const updated = user.subscription
+      ? await this.prisma.subscription.update({
+          where: { id: user.subscription.id },
+          data: {
+            tier,
+            startsAt: new Date(),
+            expiresAt: tier === 'FREE' ? null : user.subscription.expiresAt,
+            cancelledAt: null,
+          },
+        })
+      : await this.prisma.subscription.create({
+          data: {
+            userId: user.id,
+            tier,
+            startsAt: new Date(),
+            expiresAt: tier === 'FREE' ? null : null,
+          },
+        });
+
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'subscription.entitlement_set',
+        entity: 'Subscription',
+        entityId: updated.id,
+        actorPubkey,
+        details: {
+          targetPubkey: pubkey,
+          tier,
+        },
+      },
+    });
+
+    return {
+      pubkey,
+      tier: updated.tier,
+      isPaid: updated.tier !== 'FREE',
+      expiresAt: updated.expiresAt,
+    };
+  }
+
   /**
    * Process expired subscriptions (cron job)
    */

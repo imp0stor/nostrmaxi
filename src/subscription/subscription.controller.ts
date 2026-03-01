@@ -4,6 +4,7 @@ import { SubscriptionService } from './subscription.service';
 import { SubscriptionTier } from '../payments/payments.service';
 import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { NostrAdminGuard } from '../auth/nostr-role.guard';
 import { nip19 } from 'nostr-tools';
 
 @ApiTags('subscriptions')
@@ -33,6 +34,28 @@ export class SubscriptionController {
   async getForNpub(@Param('npub') npub: string) {
     const pubkey = npub.startsWith('npub1') ? (nip19.decode(npub).data as string) : npub;
     return this.subscriptionService.getCurrentSubscription(pubkey);
+  }
+
+  @Get('entitlement/:npub')
+  @UseGuards(NostrJwtAuthGuard, NostrAdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin: read user entitlement by npub/pubkey' })
+  async getEntitlement(@Param('npub') npub: string) {
+    const pubkey = npub.startsWith('npub1') ? (nip19.decode(npub).data as string) : npub;
+    return this.subscriptionService.getEntitlement(pubkey);
+  }
+
+  @Post('entitlement/:npub')
+  @UseGuards(NostrJwtAuthGuard, NostrAdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin: set user entitlement tier' })
+  async setEntitlement(
+    @Param('npub') npub: string,
+    @CurrentUser() actorPubkey: string,
+    @Body() body: { tier: SubscriptionTier },
+  ) {
+    const pubkey = npub.startsWith('npub1') ? (nip19.decode(npub).data as string) : npub;
+    return this.subscriptionService.setEntitlement(pubkey, body.tier, actorPubkey);
   }
 
   @Post('upgrade')

@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { OnboardingService } from './onboarding.service';
 
 @ApiTags('onboarding')
@@ -26,6 +28,15 @@ export class OnboardingController {
   @ApiResponse({ status: 200, description: 'Curated feed list and sample posts' })
   getFeeds() {
     return this.onboardingService.getFeeds();
+  }
+
+  @Post('register')
+  @UseGuards(NostrJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Register/authenticated user bootstrap for onboarding' })
+  @ApiResponse({ status: 201, description: 'Registration bootstrap state persisted' })
+  register(@CurrentUser() pubkey: string, @Body() payload: any) {
+    return this.onboardingService.register(pubkey, payload);
   }
 
   @Post('complete')

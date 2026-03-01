@@ -1,7 +1,17 @@
 import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
 import { CURATED_FEEDS } from '../config/curated-feeds';
 import { ONBOARDING_FOLLOW_CATEGORIES } from '../config/onboarding-categories';
 import { RELAY_SUGGESTIONS } from '../config/relay-suggestions';
+
+interface RegistrationPayload {
+  authMethod: 'nip07' | 'nsec' | 'lnurl' | 'nostr_connect';
+  profile?: {
+    displayName?: string;
+    username?: string;
+    picture?: string;
+  };
+}
 
 interface CompleteOnboardingPayload {
   identity: {
@@ -39,6 +49,8 @@ interface CompleteOnboardingPayload {
 
 @Injectable()
 export class OnboardingService {
+  constructor(private readonly prisma: PrismaService) {}
+
   getRelaySuggestions() {
     return {
       suggestions: RELAY_SUGGESTIONS,
@@ -58,7 +70,41 @@ export class OnboardingService {
     };
   }
 
-  complete(payload: CompleteOnboardingPayload) {
+  async register(pubkey: string, payload: RegistrationPayload) {
+    const user = await this.prisma.user.findUnique({ where: { pubkey } });
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        action: 'onboarding.registered',
+        entity: 'User',
+        entityId: user.id,
+        actorPubkey: pubkey,
+        details: {
+          authMethod: payload.authMethod,
+          profile: payload.profile || {},
+          registeredAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    return {
+      success: true,
+      user: {
+        pubkey: user.pubkey,
+        npub: user.npub,
+      },
+      bootstrapState: {
+        registered: true,
+        authMethod: payload.authMethod,
+      },
+    };
+  }
+
+  async complete(payload: CompleteOnboardingPayload) {
     const selectedFeeds = CURATED_FEEDS.filter((feed) => payload.feeds.selected.includes(feed.id));
 
     const externalIdentityTags = (payload.profile?.externalIdentities || []).map((item) => [
@@ -114,7 +160,7 @@ export class OnboardingService {
       content: '',
     };
 
-    return {
+    const completionPayload = {
       success: true,
       message: 'Onboarding complete. Profile, follows, relays, and feed subscriptions prepared.',
       summary: {
@@ -144,5 +190,20 @@ export class OnboardingService {
         aiBio: 'Use linked accounts + interests + selected categories in prompt context',
       },
     };
+
+    const user = await this.prisma.user.findUnique({ where: { pubkey: payload.identity.pubkey } });
+    if (user) {
+      await this.prisma.auditLog.create({
+        data: {
+          action: 'onboarding.completed',
+          entity: 'User',
+          entityId: user.id,
+          actorPubkey: payload.identity.pubkey,
+          details: completionPayload.summary as any,
+        },
+      });
+    }
+
+    return completionPayload;
   }
 }

@@ -1,7 +1,7 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { BadRequestException, Controller, Get, Inject, Param, Query, UseGuards } from '@nestjs/common';
 import type { Cache } from 'cache-manager';
-import { PremiumGuard } from '../auth/guards/premium.guard';
+import { EntitlementGuard } from '../auth/guards/entitlement.guard';
 import {
   Interval,
   NetworkAnalytics,
@@ -25,6 +25,7 @@ import { AnalyticsDataService } from './analytics-data.service';
 const TRENDING_CACHE_MS = 5 * 60 * 1000;
 
 @Controller('api/analytics')
+@UseGuards(EntitlementGuard)
 export class AnalyticsController {
   constructor(
     private readonly userAnalytics: UserAnalyticsService,
@@ -37,7 +38,6 @@ export class AnalyticsController {
   ) {}
 
   @Get('user')
-  @UseGuards(PremiumGuard)
   async getUserAnalytics(
     @Query('pubkey') pubkey: string,
     @Query('interval') interval?: string,
@@ -105,7 +105,6 @@ export class AnalyticsController {
   }
 
   @Get('wot')
-  @UseGuards(PremiumGuard)
   async getWotAnalytics(@Query('pubkey') pubkey: string, @Query('interval') interval?: string): Promise<WotAnalytics> {
     this.ensurePubkey(pubkey);
     return this.wotAnalytics.getWotAnalytics(pubkey, this.resolveTimeRange(this.normalizeInterval(interval)));

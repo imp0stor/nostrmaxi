@@ -227,6 +227,24 @@ class ApiClient {
     return this.request('/subscription/reactivate', { method: 'POST' });
   }
 
+  async getEntitlement(npubOrPubkey: string): Promise<{ pubkey: string; tier: SubscriptionTier; isPaid: boolean; expiresAt: string | null }> {
+    return this.request(`/subscription/entitlement/${encodeURIComponent(npubOrPubkey)}`);
+  }
+
+  async setEntitlement(npubOrPubkey: string, tier: SubscriptionTier): Promise<{ pubkey: string; tier: SubscriptionTier; isPaid: boolean; expiresAt: string | null }> {
+    return this.request(`/subscription/entitlement/${encodeURIComponent(npubOrPubkey)}`, {
+      method: 'POST',
+      body: JSON.stringify({ tier }),
+    });
+  }
+
+  async registerOnboardingBootstrap(payload: { authMethod: 'nip07' | 'nsec' | 'lnurl' | 'nostr_connect'; profile?: { displayName?: string; username?: string; picture?: string } }): Promise<any> {
+    return this.request('/onboarding/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   // API Keys endpoints
   async createApiKey(name: string, permissions?: string[]): Promise<ApiKey> {
     return this.request('/api-keys', {

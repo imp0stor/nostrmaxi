@@ -2,13 +2,14 @@ import { Link, useLocation } from 'react-router-dom';
 
 type SidebarItem =
   | { type: 'divider' }
-  | { type: 'link'; icon: string; label: string; path: string; requiresAuth?: boolean };
+  | { type: 'link'; icon: string; label: string; path: string; requiresAuth?: boolean; requiresPaid?: boolean };
 
 interface SidebarProps {
   collapsed: boolean;
   mobileOpen: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  hasPaidEntitlement: boolean;
   onToggleCollapsed: () => void;
   onCloseMobile: () => void;
 }
@@ -26,7 +27,7 @@ const navItems: SidebarItem[] = [
   { type: 'divider' },
   { type: 'link', icon: 'MP', label: 'Marketplace', path: '/marketplace', requiresAuth: true },
   { type: 'link', icon: 'MG', label: 'Manage', path: '/dashboard', requiresAuth: true },
-  { type: 'link', icon: 'AN', label: 'Analytics', path: '/analytics', requiresAuth: true },
+  { type: 'link', icon: 'AN', label: 'Analytics', path: '/analytics', requiresAuth: true, requiresPaid: true },
   { type: 'link', icon: 'EC', label: 'Ecosystem', path: '/ecosystem', requiresAuth: true },
   { type: 'divider' },
   { type: 'link', icon: 'PF', label: 'Profile', path: '/profile/me', requiresAuth: true },
@@ -40,6 +41,7 @@ export function Sidebar({
   mobileOpen,
   isAuthenticated,
   isAdmin,
+  hasPaidEntitlement,
   onToggleCollapsed,
   onCloseMobile,
 }: SidebarProps) {
@@ -103,6 +105,11 @@ export function Sidebar({
                 >
                   {item.label}
                 </span>
+                {item.requiresPaid && !hasPaidEntitlement && !collapsed ? (
+                  <span className="ml-auto rounded bg-orange-500/20 border border-orange-400/50 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-orange-200">
+                    Locked
+                  </span>
+                ) : null}
               </Link>
             );
           })}

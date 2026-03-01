@@ -7,11 +7,12 @@ import { AuthModule } from '../auth/auth.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { WotModule } from '../wot/wot.module';
+import { NostrAdminGuard } from '../auth/nostr-role.guard';
 
 @Module({
   imports: [PrismaModule, AuthModule, PaymentsModule, WebhooksModule, WotModule],
   controllers: [SubscriptionController, SubscriptionsAgentController],
-  providers: [SubscriptionService],
+  providers: [SubscriptionService, NostrAdminGuard],
   exports: [SubscriptionService],
 })
 export class SubscriptionModule {}

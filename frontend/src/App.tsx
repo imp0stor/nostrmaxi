@@ -17,6 +17,7 @@ import { MarketplaceListingPage } from './pages/MarketplaceListingPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { NetworkAnalyticsPage } from './pages/NetworkAnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { RegistrationPage } from './pages/RegistrationPage';
 import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
 import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
@@ -31,6 +32,7 @@ import { api } from './lib/api';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { useSidebarState } from './hooks/useSidebarState';
+import { PremiumInterstitial } from './components/subscription/PremiumInterstitial';
 
 export default function App() {
   const { user, isAuthenticated, isLoading, initialize, logout } = useAuth();
@@ -137,6 +139,7 @@ export default function App() {
   }, [isAuthenticated, user, showIdentityMenu]);
 
   const sidebarWidthClass = collapsed ? 'md:pl-[60px]' : 'md:pl-[200px]';
+  const hasPaidEntitlement = Boolean(user && user.tier !== 'FREE');
 
   return (
     <div className="swordfish-shell min-h-screen flex cyber-grid bg-swordfish-bg text-swordfish-text">
@@ -145,6 +148,7 @@ export default function App() {
         mobileOpen={mobileSidebarOpen}
         isAuthenticated={isAuthenticated}
         isAdmin={isAdmin}
+        hasPaidEntitlement={hasPaidEntitlement}
         onToggleCollapsed={toggleCollapsed}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
@@ -168,6 +172,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
             <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/register" element={<RegistrationPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" replace />} />
             <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
@@ -180,8 +185,14 @@ export default function App() {
             <Route path="/marketplace" element={isAuthenticated ? <MarketplacePage /> : <Navigate to="/" replace />} />
             <Route path="/marketplace/:listingId" element={isAuthenticated ? <MarketplaceListingPage /> : <Navigate to="/" replace />} />
             <Route path="/dashboard" element={isAuthenticated ? <DashboardPage /> : <Navigate to="/" replace />} />
-            <Route path="/analytics" element={isAuthenticated ? <AnalyticsPage /> : <Navigate to="/" replace />} />
-            <Route path="/network" element={isAuthenticated ? <NetworkAnalyticsPage /> : <Navigate to="/" replace />} />
+            <Route
+              path="/analytics"
+              element={isAuthenticated ? (hasPaidEntitlement ? <AnalyticsPage /> : <PremiumInterstitial featureName="Analytics" />) : <Navigate to="/" replace />}
+            />
+            <Route
+              path="/network"
+              element={isAuthenticated ? (hasPaidEntitlement ? <NetworkAnalyticsPage /> : <PremiumInterstitial featureName="Network analytics" />) : <Navigate to="/" replace />}
+            />
             <Route path="/ecosystem" element={isAuthenticated ? <EcosystemCatalogPage /> : <Navigate to="/" replace />} />
             <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
             <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
