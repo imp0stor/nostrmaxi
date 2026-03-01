@@ -1,117 +1,122 @@
 # NostrMaxi TODO List
 
 ## Status: Active Development
-**Last Updated:** 2026-03-01 10:15 EST
+**Last Updated:** 2026-03-01 11:10 EST
 
 ---
 
-## 🔴 Critical (Blocking User Experience)
+## 🔴 Critical (Must Fix Now)
 
-- [ ] Analytics access still showing LOCKED despite LIFETIME tier
-  - User has tier=LIFETIME, isAdmin=true in DB
-  - Need user to test fresh login
-  - May be cached token issue
+### Auth & Access
+- [ ] Analytics access - LOCKED despite LIFETIME tier
+  - User: pubkey `9fdd0d57238ba01f8c04199ca3c0174fa17c19d28e9de610b9db22729e57310e`
+  - DB has: tier=LIFETIME, isAdmin=true
+  - Frontend check: `hasPaidEntitlement` not recognizing tier
+  - **Action:** Debug auth flow, ensure tier is in JWT/response
 
-- [x] Auth "Invalid npub in auth token" errors
-  - Fixed: hardened JWT identity normalization
-  - Deployed: 2026-03-01
+### Notifications
+- [ ] Notifications page shows "Invalid npub in auth token"
+  - Auth middleware still flaky
+  - **Action:** Test with registered user, fix remaining auth issues
 
----
-
-## 🟠 High Priority (User-Reported Issues)
-
-- [x] Composer UX - Blossom upload box too prominent
-  - Fixed: minimal Primal-style attachment
-  - Commit: `57a936e`
-
-- [x] Quoted notes not loading ("could not be loaded")
-  - Fixed: normalize note1/nevent1 refs, handle q tags
-  - Commit: `4674378`
-
-- [x] Missing sidebar icons
-  - Fixed: All 7 icons generated and wired up
-  - Commit: `d4669db`
-
-- [x] Simplify Mute/Block to single Mute button
-  - Fixed: Removed Block (same as Mute on Nostr)
-  - Commit: `d4669db`
-
-- [ ] Followers list fails to load sometimes
-  - Relay query unreliable for #p tag search
-  - Subagent working on retry logic
-
-- [ ] Some followers missing "Follow back" button
-  - Should show for anyone not in Following list
-  - Investigating
+### Messages/DMs
+- [ ] DM support for all 3 types:
+  - NIP-04 (kind:4) - legacy encrypted
+  - NIP-44 (kind:14 wrapped in kind:1059) - new encrypted
+  - Unencrypted (if any)
+- [ ] DM reading works
+- [ ] DM composing works with default to NIP-44
+- [ ] Encryption indicator on messages
 
 ---
 
-## 🟡 Medium Priority (Polish & UX)
+## 🟠 High Priority (User Experience)
 
-- [x] TRUE BLACK theme - purge blue tints
-  - Deployed
+### Connections Page
+- [x] Retry logic for loadFollowing (3 retries, exponential backoff)
+- [x] Retry logic for loadFollowers  
+- [x] Exclude mutuals from Following/Followers columns
+- [x] Simplify to single Mute button (remove Block)
+- [ ] Global search filter across all lists
+- [ ] Verify all lists load reliably
 
-- [x] Premium visual assets (29 icons/illustrations)
-  - Deployed
+### Feed & Content
+- [x] Composer UX - minimal Primal-style
+- [x] Quoted notes display
+- [ ] Media attachments work properly
+- [ ] Link previews render
 
-- [x] Micro-animations (zap flash, skeleton loading)
-  - Deployed
-
-- [x] DM encryption support (NIP-04/NIP-44)
-  - Deployed
-
-- [ ] Admin UI improvements
-  - Database-driven roles (implemented, needs testing)
-  - User management API (implemented)
-
-- [ ] Tagline updated to "Nostrverse + identity"
-  - Deployed
-
----
-
-## 🟢 Low Priority (Nice to Have)
-
-- [ ] Code splitting to reduce bundle size (1.4MB)
-- [ ] Add proper test script to frontend package.json
-- [ ] Performance optimization for large follow lists
-- [ ] Better error states across all pages
+### Nostr Primitives Integration
+- [ ] **nostr-profile**: Enhanced profile display/caching
+- [ ] **nostr-engagement**: Zap analytics, reaction counts
+- [ ] **nostr-wot-voting**: Trust score visualization
+- [ ] **nostr-kb**: Knowledge base articles display
+- [ ] **nostr-relay-tooling**: Relay health monitoring
 
 ---
 
-## ✅ Completed (2026-03-01)
+## 🟡 Medium Priority (Polish)
+
+### Visual/UX
+- [x] TRUE BLACK theme
+- [x] Premium icons (29 assets)
+- [x] Micro-animations
+- [x] All sidebar icons
+- [ ] Empty states with illustrations
+- [ ] Loading skeletons everywhere
+
+### Admin
+- [x] Database-driven roles
+- [x] User management API
+- [ ] Admin dashboard functional testing
+- [ ] Runtime user tier updates
+
+---
+
+## 🟢 Backlog
+
+- [ ] Code splitting (bundle is 1.4MB)
+- [ ] Frontend test script
+- [ ] Performance for large follow lists
+- [ ] Better error states
+- [ ] Relay sync health display
+
+---
+
+## ✅ Completed
 
 - [x] Ecosystem catalog redesign
 - [x] Registration + entitlement gating
 - [x] Feed card declutter
 - [x] WoT fixes
 - [x] User registration (imp0stor as LIFETIME + Admin)
-- [x] Database-driven admin roles
-- [x] Connection actions (follow/unfollow/mute/block)
-- [x] Composer UX cleanup
-- [x] Quoted notes fix
-- [x] Auth hardening
+- [x] Auth hardening (JWT identity normalization)
 - [x] TRUE BLACK theme
 - [x] Premium visual assets
 - [x] Micro-animations
-- [x] DM encryption
+- [x] DM encryption support (backend)
+- [x] Connection actions
+- [x] Composer UX
+- [x] Quoted notes fix
+- [x] Sidebar icons
+- [x] Mute/Block simplification
+- [x] Connections retry logic
 
 ---
 
-## Testing Checklist
+## Testing Credentials
 
-Before marking complete, verify:
-- [ ] Fresh login works
-- [ ] Analytics accessible for paid users
-- [ ] Connection actions work (follow/unfollow/mute/block)
-- [ ] Quoted notes render
-- [ ] Composer is minimal
-- [ ] All sidebar icons show
-- [ ] No auth errors
+**Test User (Adam/imp0stor):**
+- pubkey: `9fdd0d57238ba01f8c04199ca3c0174fa17c19d28e9de610b9db22729e57310e`
+- npub: `npub1nlws64er3wsplrqyrxw28sqhf7shcxwj36w7vy9emv3898jhxy8qspcpd0`
+- tier: LIFETIME
+- isAdmin: true
 
 ---
 
-## Notes
+## Production Info
 
-- Production: `neo@10.1.10.143:/home/neo/nostrmaxi-production`
+- Server: `neo@10.1.10.143`
+- Repo: `/home/neo/nostrmaxi-production`
 - Branch: `feat/dm-zap-ux`
-- Tests: 65 suites, 270 tests passing
+- Tests: 65 suites, 270 tests
