@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { promises as dns } from 'dns';
 import { randomBytes } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 type TxtResolver = (hostname: string) => Promise<string[][]>;
@@ -167,13 +168,13 @@ export class DomainsService {
       where: { domainId },
       update: {
         template: payload.template,
-        config: payload.config,
+        config: payload.config as Prisma.InputJsonValue | undefined,
       },
       create: {
         userId: user.id,
         domainId,
         template: payload.template || 'personal',
-        config: payload.config || {},
+        config: (payload.config || {}) as Prisma.InputJsonValue,
       },
     });
   }
@@ -210,7 +211,7 @@ export class DomainsService {
       include: { user: true },
     });
 
-    if (!record || !record.user.lightningAddress) {
+    if (!record?.user?.lightningAddress) {
       throw new NotFoundException('Lightning address not found');
     }
 

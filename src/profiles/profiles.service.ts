@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, TooManyRequestsException } from '@nestjs/common';
+import { BadRequestException, HttpException, Injectable } from '@nestjs/common';
+import { nip19 } from 'nostr-tools';
 import { PrismaService } from '../prisma/prisma.service';
 import { WotService } from '../wot/wot.service';
 import { EndorseSkillDto } from './dto/endorse-skill.dto';
@@ -19,6 +20,28 @@ export class ProfilesService {
     return skill.trim().replace(/\s+/g, ' ');
   }
 
+  async resolvePubkey(identifier: string): Promise<string> {
+    if (identifier.startsWith('npub')) {
+      try {
+        const decoded = nip19.decode(identifier);
+        if (typeof decoded.data === 'string') return decoded.data;
+      } catch {
+        // fallback
+      }
+    }
+
+    if (identifier.includes('@')) {
+      const [localPart, domain] = identifier.toLowerCase().split('@');
+      const nip05 = await this.prisma.nip05.findFirst({
+        where: { localPart, domain, isActive: true },
+        include: { user: true },
+      });
+      if (nip05?.user?.pubkey) return nip05.user.pubkey;
+    }
+
+    return identifier;
+  }
+
   async endorseSkill(endorserPubkey: string, endorseePubkey: string, dto: EndorseSkillDto) {
     if (endorserPubkey === endorseePubkey) {
       throw new BadRequestException('You cannot endorse yourself');
@@ -33,7 +56,7 @@ export class ProfilesService {
     const now = Date.now();
     const lastSeen = this.endorsementRateLimit.get(rateKey);
     if (lastSeen && now - lastSeen < ENDORSEMENT_RATE_LIMIT_MS) {
-      throw new TooManyRequestsException('Please wait before endorsing this profile again');
+      throw new HttpException('Please wait before endorsing this profile again', 429);
     }
 
     const endorsement = await this.prisma.endorsement.upsert({

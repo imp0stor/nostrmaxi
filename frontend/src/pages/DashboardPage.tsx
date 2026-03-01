@@ -14,9 +14,24 @@ export function DashboardPage() {
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const { user, isAuthenticated } = useAuth();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
 
   useEffect(() => { setSearchParams(activeTab === 'overview' ? {} : { tab: activeTab }); }, [activeTab, setSearchParams]);
-  useEffect(() => { if (activeTab === 'sessions' && isAuthenticated) api.getSessions().then(setSessions); }, [activeTab, isAuthenticated]);
+  useEffect(() => {
+    if (activeTab !== 'sessions' || !isAuthenticated) return;
+
+    setSessionsLoading(true);
+    setSessionsError(null);
+
+    api.getSessions()
+      .then(setSessions)
+      .catch(() => {
+        setSessions([]);
+        setSessionsError('Could not load active sessions right now. Please try again.');
+      })
+      .finally(() => setSessionsLoading(false));
+  }, [activeTab, isAuthenticated]);
 
   const tabs = [
     { id: 'overview' as TabId, label: 'Manage' },
@@ -97,7 +112,16 @@ export function DashboardPage() {
             summary={sessions.length === 0 ? 'No active sessions' : `${sessions.length} active sessions`}
             defaultOpen={false}
           >
-            {sessions.length === 0 ? <p className="text-gray-400">No active sessions.</p> : sessions.map((s) => (
+            {sessionsLoading ? (
+              <div className="space-y-2">
+                <div className="nm-skeleton h-12 w-full" />
+                <div className="nm-skeleton h-12 w-full" />
+              </div>
+            ) : sessionsError ? (
+              <p className="text-red-300 text-sm">{sessionsError}</p>
+            ) : sessions.length === 0 ? (
+              <p className="text-gray-400">No active sessions.</p>
+            ) : sessions.map((s) => (
               <div className="cy-panel p-3 text-sm" key={s.id}>
                 {s.userAgent || 'Unknown'} • {s.ipAddress || 'n/a'} • {new Date(s.lastUsedAt).toLocaleString()}
               </div>

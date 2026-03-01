@@ -18,18 +18,45 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  nip05s       Nip05[]
-  subscription Subscription?
-  sessions     Session[]
-  apiKeys      ApiKey[]
+  nip05s            Nip05[]
+  subscription      Subscription?
+  sessions          Session[]
+  apiKeys           ApiKey[]
   lnurlSessions     LnurlSession[]
-  marketplaceSales  MarketplaceTransaction[] @relation("MarketplaceSeller")
-  marketplaceBuys   MarketplaceTransaction[] @relation("MarketplaceBuyer")
+  profileSettings   ProfileSettings?
+  marketplaceSales   MarketplaceTransaction[] @relation("MarketplaceSeller")
+  marketplaceBuys    MarketplaceTransaction[] @relation("MarketplaceBuyer")
+  feeds              Feed[]
+  feedSubscriptions  FeedSubscription[]
+  domains            Domain[]
+  sites              Site[]
 
   lightningAddress String?
 
   @@index([pubkey])
   @@index([lightningAddress])
+}
+
+model ProfileSettings {
+  id         String   @id @default(uuid())
+  userPubkey String   @unique
+  user       User?    @relation(fields: [userPubkey], references: [pubkey], onDelete: Cascade)
+  theme      String   @default("dark")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([theme])
+}
+
+model Endorsement {
+  id             String   @id @default(uuid())
+  endorserPubkey String
+  endorseePubkey String
+  skill          String
+  createdAt      DateTime @default(now())
+
+  @@unique([endorserPubkey, endorseePubkey, skill])
+  @@index([endorseePubkey])
 }
 
 // User sessions (JWT-based)
@@ -144,18 +171,39 @@ model Nip05 {
   @@index([paymentId])
 }
 
-// Custom domains for NIP-05
+// Custom domains for NIP-05 + BYOD management
 model Domain {
-  id          String   @id @default(cuid())
-  domain      String   @unique
-  verified    Boolean  @default(false)
-  verifyToken String?  // TXT record token for verification
-  ownerPubkey String   // Hex pubkey of owner
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domain        String   @unique
+  verified      Boolean  @default(false)
+  verifyToken   String?  @unique // TXT record token for verification
+  ownerPubkey   String   // Hex pubkey of owner
+  lightningName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  site Site?
 
   @@index([ownerPubkey])
+  @@index([userId])
+}
+
+model Site {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domainId  String   @unique
+  domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  template  String   @default("personal")
+  config    Json     @default("{}")
+  views     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 // User subscriptions
@@ -460,4 +508,65 @@ model NetworkAnalytics {
   eventsPerMinute Float
 
   @@index([computedAt])
+}
+
+model Feed {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  filterConfig  Json
+  isPublic      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  subscriptions FeedSubscription[]
+
+  @@index([userId, createdAt])
+}
+
+model FeedSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedId    String
+  feed      Feed     @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, feedId])
+  @@index([feedId])
+}
+
+model Book {
+  id           String    @id @default(uuid())
+  authorPubkey String
+  title        String
+  description  String?
+  coverUrl     String?
+  status       String    @default("draft") // draft, published
+  publishedAt  DateTime?
+  nostrEventId String?
+  totalZaps    BigInt    @default(0)
+  buyerCount   Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  chapters Chapter[]
+
+  @@index([authorPubkey, createdAt])
+  @@index([status])
+}
+
+model Chapter {
+  id         String   @id @default(uuid())
+  bookId      String
+  book        Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  title       String
+  content     String   @db.Text
+  orderIndex  Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([bookId, orderIndex])
+  @@index([bookId, updatedAt])
 }

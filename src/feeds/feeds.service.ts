@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFeedDto, FeedTier } from './dto/create-feed.dto';
 import { UpdateFeedDto } from './dto/update-feed.dto';

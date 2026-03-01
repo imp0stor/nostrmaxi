@@ -14,7 +14,8 @@ import { planRelaySelection, scoreRelayHealth } from '../lib/relay-tooling';
 export function SettingsPage() {
   const { user } = useAuth();
   const { settings: muteSettings, setSettings: setMuteSettings, syncNow, syncState } = useMuteSettings(user?.pubkey);
-  const [tab, setTab] = useState<'muted-words' | 'blossom' | 'relays'>('muted-words');
+  const [tab, setTab] = useState<'muted-words' | 'blossom' | 'relays' | 'theme'>('muted-words');
+  const [theme, setTheme] = useState<'dark' | 'light' | 'purple' | 'orange' | 'custom'>('dark');
   const [blossom, setBlossom] = useState(getBlossomConfig());
   const [newServer, setNewServer] = useState<BlossomServer>({ url: '', name: '', priority: 99, requiresAuth: false });
   const [relaySyncStatus, setRelaySyncStatus] = useState<any>(null);
@@ -43,6 +44,21 @@ export function SettingsPage() {
     void loadRelayTelemetry();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!user?.pubkey) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const summary = await api.getEnhancedProfile(user.pubkey);
+        if (!cancelled && summary?.theme) setTheme(summary.theme);
+      } catch {
+        // ignore
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [user?.pubkey]);
 
   const runSync = async () => {
     const ok = await syncNow();
@@ -77,6 +93,12 @@ export function SettingsPage() {
             onClick={() => setTab('relays')}
           >
             Relay health
+          </button>
+          <button
+            className={`cy-chip text-sm ${tab === 'theme' ? 'border-orange-300 text-orange-100' : ''}`}
+            onClick={() => setTab('theme')}
+          >
+            Profile theme
           </button>
         </div>
       </header>
@@ -208,6 +230,44 @@ export function SettingsPage() {
           </div>
 
           <p className="text-xs text-emerald-300">Preferred server: {blossom.preferredServer || 'none'}</p>
+        </section>
+      ) : null}
+
+      {tab === 'theme' ? (
+        <section className="cy-card p-5 space-y-4">
+          <div>
+            <p className="cy-kicker">PROFILE THEME</p>
+            <h2 className="text-lg text-cyan-100 font-semibold">Theme preview</h2>
+            <p className="text-sm text-slate-300 mt-1">Default is true black with orange accents.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(['dark', 'light', 'purple', 'orange', 'custom'] as const).map((option) => (
+              <button
+                key={option}
+                className={`cy-chip ${theme === option ? 'border-orange-400 text-orange-100' : ''}`}
+                onClick={() => setTheme(option)}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <div className={`rounded-lg border p-4 ${theme === 'light' ? 'bg-white text-slate-900' : theme === 'purple' ? 'bg-purple-950 text-purple-100' : theme === 'orange' ? 'bg-orange-950 text-orange-100' : theme === 'custom' ? 'bg-slate-900 text-slate-100' : 'bg-black text-orange-50 border-orange-400/40'}`}>
+            Theme preview card ({theme})
+          </div>
+          <button
+            className="cy-btn"
+            onClick={async () => {
+              if (!user?.pubkey) return;
+              try {
+                await api.updateProfileTheme(user.pubkey, theme);
+                alert('Theme saved');
+              } catch (error) {
+                alert(error instanceof Error ? error.message : 'Failed to save theme');
+              }
+            }}
+          >
+            Save theme
+          </button>
         </section>
       ) : null}
 

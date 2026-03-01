@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth } from '../../hooks/useAuth';
 import { PaymentModal } from '../payments/PaymentModal';
+import { usePageMeta } from '../../hooks/usePageMeta';
 import type { TierInfo, SubscriptionTier, BillingCycle } from '../../types';
 
 const TIER_ORDER: SubscriptionTier[] = ['FREE', 'PRO', 'BUSINESS', 'LIFETIME'];
@@ -76,6 +78,14 @@ export function PricingPage() {
   const [selectedBilling, setSelectedBilling] = useState<BillingCycle>('monthly');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly');
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  usePageMeta({
+    title: 'Pricing',
+    description:
+      'Simple NIP-05 plans for individuals. Pay with Lightning monthly, annual, or lifetime and activate your verified Nostr identity in minutes.',
+    path: '/pricing',
+  });
 
   useEffect(() => {
     api.getTiers()
@@ -87,6 +97,7 @@ export function PricingPage() {
         setTiers(sorted);
       })
       .catch(() => {
+        setLoadError('We could not load live pricing from the API. Showing current fallback plan details.');
         setTiers(FALLBACK_TIERS);
       })
       .finally(() => setIsLoading(false));
@@ -132,8 +143,12 @@ export function PricingPage() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="w-8 h-8 border-4 border-nostr-purple border-t-transparent rounded-full animate-spin"></div>
+      <div className="max-w-4xl mx-auto px-4 py-12 space-y-6">
+        <div className="nm-skeleton h-10 w-64 mx-auto" />
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="nm-skeleton h-80 w-full" />
+          <div className="nm-skeleton h-80 w-full" />
+        </div>
       </div>
     );
   }
@@ -150,6 +165,14 @@ export function PricingPage() {
           one verified Nostr identity that works everywhere.
         </p>
       </div>
+
+      {loadError ? (
+        <div className="max-w-4xl mx-auto px-4 mb-6">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            {loadError}
+          </div>
+        </div>
+      ) : null}
 
       <div className="max-w-5xl mx-auto px-4 mb-10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
@@ -188,7 +211,12 @@ export function PricingPage() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto px-4">
-        {visibleTiers.map((tier) => {
+        {visibleTiers.length === 0 ? (
+          <div className="md:col-span-2 rounded-xl border border-gray-700 bg-nostr-dark p-6 text-center">
+            <p className="text-white font-semibold">No plans available for this billing cycle yet.</p>
+            <p className="text-gray-400 text-sm mt-2">Try another billing option or check back shortly.</p>
+          </div>
+        ) : visibleTiers.map((tier) => {
           const isCurrentTier = user?.tier === tier.tier;
           const isPopular = tier.tier === 'PRO' && billingCycle !== 'lifetime';
 
@@ -290,7 +318,10 @@ export function PricingPage() {
       </div>
 
       <div className="mt-16 max-w-3xl mx-auto px-4">
-        <h2 className="text-2xl font-bold text-white text-center mb-8">Frequently Asked Questions</h2>
+        <h2 className="text-2xl font-bold text-white text-center mb-3">Frequently Asked Questions</h2>
+        <p className="text-center text-sm text-gray-400 mb-8">
+          Need more detail? <Link to="/faq" className="text-orange-200 hover:text-orange-100">Read the full FAQ</Link>
+        </p>
         <div className="space-y-4">
           <div className="bg-nostr-dark rounded-lg p-4">
             <h3 className="font-semibold text-white mb-2">What is NIP-05?</h3>

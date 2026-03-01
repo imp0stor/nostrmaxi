@@ -311,6 +311,61 @@ class ApiClient {
   async getRelaySyncDebug(): Promise<any> {
     return this.request('/relay-sync/debug');
   }
+
+  async getEnhancedProfile(pubkeyOrNip05OrNpub: string): Promise<any> {
+    return this.request(`/profiles/${encodeURIComponent(pubkeyOrNip05OrNpub)}`);
+  }
+
+  async getProfileEndorsements(pubkeyOrNip05OrNpub: string): Promise<any> {
+    return this.request(`/profiles/${encodeURIComponent(pubkeyOrNip05OrNpub)}/endorsements`);
+  }
+
+  async endorseProfile(pubkey: string, skill: string, note?: string): Promise<any> {
+    return this.request(`/profiles/${encodeURIComponent(pubkey)}/endorse`, {
+      method: 'POST',
+      body: JSON.stringify({ skill, note }),
+    });
+  }
+
+  async updateProfileTheme(pubkey: string, theme: 'dark' | 'light' | 'purple' | 'orange' | 'custom'): Promise<any> {
+    return this.request(`/profiles/${encodeURIComponent(pubkey)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ theme }),
+    });
+  }
+
+  // Feeds endpoints
+  async createFeed(payload: { name: string; contentTypes: string[]; tier: 'wot' | 'genuine' | 'firehose'; wotThreshold: number; isPublic: boolean }): Promise<any> {
+    return this.request('/feeds', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  async listFeeds(): Promise<any[]> {
+    return this.request('/feeds');
+  }
+
+  async updateFeed(feedId: string, payload: Partial<{ name: string; contentTypes: string[]; tier: 'wot' | 'genuine' | 'firehose'; wotThreshold: number; isPublic: boolean }>): Promise<any> {
+    return this.request(`/feeds/${encodeURIComponent(feedId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+
+  async deleteFeed(feedId: string): Promise<void> {
+    return this.request(`/feeds/${encodeURIComponent(feedId)}`, { method: 'DELETE' });
+  }
+
+  async getTrendingFeeds(limit = 50): Promise<any[]> {
+    return this.request(`/feeds/trending?limit=${limit}`);
+  }
+
+  async listFeedSubscriptions(): Promise<any[]> {
+    return this.request('/feeds/subscriptions/mine');
+  }
+
+  async subscribeFeed(feedId: string): Promise<any> {
+    return this.request(`/feeds/${encodeURIComponent(feedId)}/subscribe`, { method: 'POST' });
+  }
+
+  async unsubscribeFeed(feedId: string): Promise<void> {
+    return this.request(`/feeds/${encodeURIComponent(feedId)}/subscribe`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiClient();

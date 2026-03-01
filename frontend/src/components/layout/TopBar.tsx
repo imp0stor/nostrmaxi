@@ -103,6 +103,12 @@ export function TopBar({
         </div>
 
         <div className="flex items-center gap-2">
+          {!isLoading && !isAuthenticated ? (
+            <>
+              <Link to="/pricing" className="cy-chip hidden sm:inline-flex">Pricing</Link>
+              <Link to="/faq" className="cy-chip hidden sm:inline-flex">FAQ</Link>
+            </>
+          ) : null}
           {isLoading ? <span className="text-swordfish-muted cy-loading px-2">…</span> : null}
           {!isLoading && isAuthenticated ? (
             <Link to="/notifications" className="cy-chip inline-flex items-center gap-1" aria-label="Notifications">

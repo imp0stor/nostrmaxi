@@ -9,6 +9,7 @@ import { Nip05Page } from './pages/Nip05Page';
 import { ReceiptPage } from './pages/ReceiptPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { FeedPage } from './pages/FeedPage';
+import { FeedsPage } from './pages/FeedsPage';
 import { DiscoverPage } from './pages/DiscoverPage';
 import { ConnectionsPage } from './pages/ConnectionsPage';
 import { OnboardingPage } from './pages/OnboardingPage';
@@ -18,6 +19,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage';
 import { NetworkAnalyticsPage } from './pages/NetworkAnalyticsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { RegistrationPage } from './pages/RegistrationPage';
+import { FaqPage } from './pages/FaqPage';
 import { EcosystemCatalogPage } from './pages/EcosystemCatalogPage';
 import { ListsPage } from './pages/ListsPage';
 import { MediaDiscoveryPage } from './pages/MediaDiscoveryPage';
@@ -26,6 +28,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { MessagesPage } from './pages/MessagesPage';
 import { AdminPage } from './pages/AdminPage';
 import { AdminMarketplacePage } from './pages/AdminMarketplacePage';
+import { DomainsPage } from './pages/DomainsPage';
 import { truncateNpub } from './lib/nostr';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
 import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
@@ -180,9 +183,11 @@ export default function App() {
             <Routes>
             <Route path="/" element={<HomePage onLogin={() => setShowLogin(true)} />} />
             <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/faq" element={<FaqPage />} />
             <Route path="/register" element={<RegistrationPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/feed" element={isAuthenticated ? <FeedPage /> : <Navigate to="/" replace />} />
+            <Route path="/feeds" element={isAuthenticated ? <FeedsPage /> : <Navigate to="/" replace />} />
             <Route path="/discover" element={isAuthenticated ? <DiscoverPage /> : <Navigate to="/" replace />} />
             <Route path="/connections" element={isAuthenticated ? <ConnectionsPage /> : <Navigate to="/" replace />} />
             <Route path="/media-discovery" element={isAuthenticated ? <MediaDiscoveryPage /> : <Navigate to="/" replace />} />
@@ -204,7 +209,9 @@ export default function App() {
             <Route path="/ecosystem" element={isAuthenticated ? <EcosystemCatalogPage /> : <Navigate to="/" replace />} />
             <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
             <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
+            <Route path="/profile-nip05/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
             <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
+            <Route path="/domains" element={isAuthenticated ? <DomainsPage /> : <Navigate to="/" replace />} />
             <Route
               path="/admin/marketplace"
               element={

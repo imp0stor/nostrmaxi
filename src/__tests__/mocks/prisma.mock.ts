@@ -12,6 +12,7 @@ export class MockPrismaService {
   private payments = new Map();
   private auditLogs: any[] = [];
   private domains = new Map();
+  private siteStore = new Map();
   private lnurlSessions = new Map();
 
   // User operations
@@ -332,18 +333,42 @@ export class MockPrismaService {
   // Domain operations
   domain = {
     findUnique: jest.fn(async ({ where }) => {
+      if (where.id) {
+        return Array.from(this.domains.values()).find((d: any) => d.id === where.id) || null;
+      }
       return this.domains.get(where.domain) || null;
     }),
-    
-    findFirst: jest.fn(async ({ where }) => {
-      return Array.from(this.domains.values()).find((d: any) => {
-        if (where.domain && d.domain !== where.domain) return false;
-        if (where.ownerPubkey && d.ownerPubkey !== where.ownerPubkey) return false;
-        if (where.verified !== undefined && d.verified !== where.verified) return false;
+
+    findMany: jest.fn(async ({ where }) => {
+      return Array.from(this.domains.values()).filter((d: any) => {
+        if (where?.userId && d.userId !== where.userId) return false;
         return true;
       });
     }),
-    
+
+    findFirst: jest.fn(async ({ where, include }) => {
+      const domain = Array.from(this.domains.values()).find((d: any) => {
+        if (where?.id && d.id !== where.id) return false;
+        if (where?.domain && d.domain !== where.domain) return false;
+        if (where?.ownerPubkey && d.ownerPubkey !== where.ownerPubkey) return false;
+        if (where?.userId && d.userId !== where.userId) return false;
+        if (where?.lightningName && d.lightningName !== where.lightningName) return false;
+        if (where?.verified !== undefined && d.verified !== where.verified) return false;
+        return true;
+      }) || null;
+
+      if (!domain) return null;
+
+      const result: any = { ...domain };
+      if (include?.site) {
+        result.site = Array.from(this.siteStore.values()).find((s: any) => s.domainId === domain.id) || null;
+      }
+      if (include?.user && domain.userId) {
+        result.user = Array.from(this.users.values()).find((u: any) => u.id === domain.userId) || null;
+      }
+      return result;
+    }),
+
     create: jest.fn(async ({ data }) => {
       const domain = {
         id: `domain_${Date.now()}`,
@@ -354,6 +379,62 @@ export class MockPrismaService {
       };
       this.domains.set(data.domain, domain);
       return domain;
+    }),
+
+    update: jest.fn(async ({ where, data }) => {
+      const domain = Array.from(this.domains.values()).find((d: any) => d.id === where.id || d.domain === where.domain);
+      if (!domain) throw new Error('Domain not found');
+      Object.assign(domain, data, { updatedAt: new Date() });
+      this.domains.set(domain.domain, domain);
+      return domain;
+    }),
+
+    delete: jest.fn(async ({ where }) => {
+      const domain = Array.from(this.domains.values()).find((d: any) => d.id === where.id);
+      if (!domain) throw new Error('Domain not found');
+      this.domains.delete(domain.domain);
+      return domain;
+    }),
+  };
+
+  site = {
+    upsert: jest.fn(async ({ where, update, create }) => {
+      const existing: any = Array.from(this.siteStore.values()).find((s: any) => s.domainId === where.domainId);
+      if (existing) {
+        Object.assign(existing, update, { updatedAt: new Date() });
+        this.siteStore.set(existing.id, existing);
+        return existing;
+      }
+
+      const site = {
+        id: `site_${Date.now()}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        views: 0,
+        ...create,
+      };
+      this.siteStore.set(site.id, site);
+      return site;
+    }),
+
+    deleteMany: jest.fn(async ({ where }) => {
+      let count = 0;
+      for (const [id, site] of this.siteStore.entries()) {
+        if (!where?.domainId || site.domainId === where.domainId) {
+          this.siteStore.delete(id);
+          count += 1;
+        }
+      }
+      return { count };
+    }),
+
+    update: jest.fn(async ({ where, data }) => {
+      const site = this.siteStore.get(where.id);
+      if (!site) throw new Error('Site not found');
+      const increment = data?.views?.increment || 0;
+      Object.assign(site, data, { views: (site.views || 0) + increment, updatedAt: new Date() });
+      this.siteStore.set(site.id, site);
+      return site;
     }),
   };
 
@@ -391,6 +472,7 @@ export class MockPrismaService {
     this.payments.clear();
     this.auditLogs = [];
     this.domains.clear();
+    this.siteStore.clear();
     this.lnurlSessions.clear();
   }
 

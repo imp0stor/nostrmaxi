@@ -31,7 +31,9 @@ interface SidebarProps {
 
 const navItems: SidebarItem[] = [
   { type: 'link', icon: '⌂', iconSrc: homeIcon, label: 'Home', path: '/' },
+  { type: 'link', icon: '?', label: 'FAQ', path: '/faq' },
   { type: 'link', icon: 'FD', iconSrc: profileIcon, label: 'Feed', path: '/feed', requiresAuth: true },
+  { type: 'link', icon: 'FS', iconSrc: profileIcon, label: 'Feeds', path: '/feeds', requiresAuth: true },
   { type: 'link', icon: 'DS', iconSrc: composeIcon, label: 'Discover', path: '/discover', requiresAuth: true },
   { type: 'link', icon: 'CN', iconSrc: connectionsIcon, label: 'Connections', path: '/connections', requiresAuth: true },
   { type: 'link', icon: 'MD', iconSrc: mediaIcon, label: 'Media', path: '/media-discovery', requiresAuth: true },
@@ -47,6 +49,7 @@ const navItems: SidebarItem[] = [
   { type: 'divider' },
   { type: 'link', icon: 'PF', iconSrc: profileIcon, label: 'Profile', path: '/profile/me', requiresAuth: true },
   { type: 'link', icon: 'ST', iconSrc: settingsIcon, label: 'Settings', path: '/settings', requiresAuth: true },
+  { type: 'link', icon: 'DM', iconSrc: settingsIcon, label: 'Domains', path: '/domains', requiresAuth: true },
   { type: 'link', icon: 'AD', iconSrc: settingsIcon, label: 'Admin Config', path: '/admin', requiresAuth: true },
   { type: 'link', icon: 'ID', iconSrc: nip05Icon, label: 'Get Your NIP-05', path: '/pricing', requiresAuth: true },
 ];

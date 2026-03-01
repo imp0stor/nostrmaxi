@@ -2,9 +2,16 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../lib/api';
+import { usePageMeta } from '../hooks/usePageMeta';
 
 export function RegistrationPage() {
   const { loginWithExtension, loginWithNsec, isLoading, error, user } = useAuth();
+
+  usePageMeta({
+    title: 'Register',
+    description: 'Create your NostrMaxi account and connect your signer to claim and manage a verified NIP-05 identity.',
+    path: '/register',
+  });
   const [nsec, setNsec] = useState('');
   const [stepError, setStepError] = useState('');
   const navigate = useNavigate();

@@ -1,4 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+
+const COMMON_SKILLS = [
+  'Bitcoin Development',
+  'Nostr Development',
+  'Podcast Production',
+  'Content Creation',
+  'Community Building',
+  'Security Research',
+  'UI/UX Design',
+  'Technical Writing',
+];
 import { Link, useParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { decodeNpub, fetchProfile, publishEvent, signEvent, truncateNpub } from '../lib/nostr';
@@ -69,12 +80,22 @@ export function ProfilePage() {
   const [kbArticles, setKbArticles] = useState<any[]>([]);
   const [primitiveWot, setPrimitiveWot] = useState<FeedWotMetric | null>(null);
   const [engagement, setEngagement] = useState<any>(null);
+  const [profileEnhancements, setProfileEnhancements] = useState<any>(null);
+  const [endorsementSummary, setEndorsementSummary] = useState<any>(null);
+  const [endorseSkill, setEndorseSkill] = useState(COMMON_SKILLS[0]);
+  const [endorseBusy, setEndorseBusy] = useState(false);
+
+  const profileIdentifier = useMemo(() => {
+    if (!npub || npub === 'me') return user?.pubkey || '';
+    return npub;
+  }, [npub, user?.pubkey]);
 
   const targetPubkey = useMemo(() => {
     if (!npub || npub === 'me') return user?.pubkey || '';
     if (npub.startsWith('npub')) return decodeNpub(npub) || npub;
+    if (npub.includes('@')) return profile?.pubkey || npub;
     return npub;
-  }, [npub, user?.pubkey]);
+  }, [npub, user?.pubkey, profile?.pubkey]);
 
   const { pinnedPost } = usePinnedPost(targetPubkey);
   const { lists: curatedLists } = usePublicLists(user?.pubkey, targetPubkey);
@@ -283,6 +304,44 @@ export function ProfilePage() {
     setBusyFollowPubkey(null);
   };
 
+  useEffect(() => {
+    if (!profileIdentifier) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [enhanced, endorsements] = await Promise.all([
+          api.getEnhancedProfile(profileIdentifier),
+          api.getProfileEndorsements(profileIdentifier),
+        ]);
+        if (cancelled) return;
+        setProfileEnhancements(enhanced);
+        setEndorsementSummary(endorsements);
+      } catch {
+        if (!cancelled) {
+          setProfileEnhancements(null);
+          setEndorsementSummary(null);
+        }
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [profileIdentifier]);
+
+  const onEndorse = async () => {
+    if (!user?.pubkey || !targetPubkey || user.pubkey === targetPubkey) return;
+    setEndorseBusy(true);
+    try {
+      await api.endorseProfile(targetPubkey, endorseSkill);
+      const endorsements = await api.getProfileEndorsements(targetPubkey);
+      setEndorsementSummary(endorsements);
+      alert(`Endorsed for ${endorseSkill}`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to endorse profile');
+    } finally {
+      setEndorseBusy(false);
+    }
+  };
+
   const onZapProfile = async () => {
     if (!user?.pubkey || !targetPubkey) return;
     const options = getDefaultZapAmountOptions();
@@ -316,8 +375,18 @@ export function ProfilePage() {
     return <div className="max-w-4xl mx-auto px-4 py-10"><div className="cy-card p-6">Sign in first.</div></div>;
   }
 
+  const themeClass = profileEnhancements?.theme === 'light'
+    ? 'bg-white/95 text-slate-900'
+    : profileEnhancements?.theme === 'purple'
+      ? 'bg-purple-950/60'
+      : profileEnhancements?.theme === 'orange'
+        ? 'bg-orange-950/40'
+        : profileEnhancements?.theme === 'custom'
+          ? 'bg-slate-900/95'
+          : 'bg-black text-orange-50';
+
   return (
-    <div className="nm-page max-w-5xl">
+    <div className={`nm-page max-w-5xl ${themeClass}`}>
       <div className="cy-card p-5">
         <p className="cy-kicker">PROFILE SURFACE</p>
         <div className="mt-2 flex items-center gap-4">
@@ -325,9 +394,22 @@ export function ProfilePage() {
           <div>
             <h1 className="cy-title">{(isValidNip05(profile?.nip05) ? profile?.nip05 : undefined) || profile?.display_name || profile?.name || truncateNpub(toNpub(targetPubkey), 6)}</h1>
             <p className="cy-mono text-xs text-cyan-400 mt-2">{truncateNpub(toNpub(targetPubkey), 12)}</p>
+            {profileEnhancements?.wot ? (
+              <span className="inline-flex mt-2 items-center rounded-md bg-orange-500/20 border border-orange-300/60 px-2 py-1 text-xs text-orange-100">
+                WoT {profileEnhancements.wot.trustScore}
+              </span>
+            ) : null}
           </div>
         </div>
         {profile?.about ? <p className="text-gray-300 mt-3">{profile.about}</p> : null}
+        {Array.isArray(profileEnhancements?.identities) && profileEnhancements.identities.length > 0 ? (
+          <p className="text-xs text-cyan-300 mt-2">NIP-05 identities: {profileEnhancements.identities.join(' • ')}</p>
+        ) : null}
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          {profile?.website ? <a className="cy-chip" href={profile.website} target="_blank" rel="noreferrer">Website</a> : null}
+          {profile?.twitter ? <a className="cy-chip" href={`https://twitter.com/${String(profile.twitter).replace('@', '')}`} target="_blank" rel="noreferrer">Twitter</a> : null}
+          {profile?.github ? <a className="cy-chip" href={`https://github.com/${String(profile.github).replace('@', '')}`} target="_blank" rel="noreferrer">GitHub</a> : null}
+        </div>
         <div className="mt-4 flex items-center gap-2 flex-wrap">
           <MetricChip label="Profile zaps" value={formatZapIndicator(profileZapTotal)} ariaLabel={`Profile zap total ${formatZapIndicator(profileZapTotal)}`} />
           {profileHints ? <MetricChip label="Verification" value={profileHints.validNip05 ? 'verified' : 'unverified'} /> : null}
@@ -345,6 +427,27 @@ export function ProfilePage() {
             </button>
           ) : null}
         </div>
+        {endorsementSummary ? (
+          <div className="mt-3 rounded-lg border border-orange-400/30 bg-black/40 p-3">
+            <p className="text-sm text-orange-100 font-semibold">Endorsements: {endorsementSummary.totalEndorsements || 0}</p>
+            <p className="text-xs text-orange-200/80 mt-1">Top skills: {(endorsementSummary.skills || []).slice(0, 3).map((s: any) => `${s.skill} (${s.count})`).join(' • ') || 'None yet'}</p>
+            {targetPubkey !== user.pubkey ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  list="common-skills"
+                  value={endorseSkill}
+                  onChange={(e) => setEndorseSkill(e.target.value)}
+                  className="bg-slate-950/70 border border-orange-500/40 rounded-lg px-2 py-1 text-xs text-white"
+                  placeholder="Choose a skill"
+                />
+                <datalist id="common-skills">
+                  {COMMON_SKILLS.map((skill) => <option key={skill} value={skill} />)}
+                </datalist>
+                <button type="button" className="cy-chip border-orange-400/60" onClick={onEndorse} disabled={endorseBusy}>{endorseBusy ? 'Endorsing…' : 'Endorse'}</button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="cy-card p-5 space-y-4">
