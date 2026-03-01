@@ -9,28 +9,49 @@ const { nostrAuthMiddleware } = require('../services/auth/nostr-auth-integration
 @Injectable()
 export class NostrJwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const req = context.switchToHttp().getRequest<Request & { user?: { npub?: string } }>();
+    const req = context.switchToHttp().getRequest<Request & { user?: { npub?: string; pubkey?: string } }>();
     const res = context.switchToHttp().getResponse<Response>();
 
     return new Promise<boolean>((resolve, reject) => {
       nostrAuthMiddleware(req as any, res as any, () => {
-        if (!req.user?.npub) {
-          return reject(new UnauthorizedException('Authenticated token missing npub'));
+        // Check if we have user data from middleware
+        if (!req.user) {
+          console.error('[GUARD] No req.user set by middleware');
+          return reject(new UnauthorizedException('Authentication required'));
         }
 
-        try {
-          const decoded = nip19.decode(req.user.npub);
-          const pubkey = typeof decoded.data === 'string' ? decoded.data : '';
-          if (!pubkey) {
-            return reject(new UnauthorizedException('Invalid npub in auth token'));
+        // Use pubkey directly if available (set by middleware from JWT)
+        let pubkey = req.user.pubkey || '';
+        let npub = req.user.npub || '';
+
+        // If we have pubkey but not npub, encode it
+        if (pubkey && !npub) {
+          try {
+            npub = nip19.npubEncode(pubkey);
+          } catch (e) {
+            console.error('[GUARD] Failed to encode npub:', e);
           }
-
-          (req as any).npub = req.user.npub;
-          (req as any).pubkey = pubkey;
-          resolve(true);
-        } catch {
-          return reject(new UnauthorizedException('Invalid npub in auth token'));
         }
+
+        // If we have npub but not pubkey, decode it
+        if (npub && !pubkey) {
+          try {
+            const decoded = nip19.decode(npub);
+            pubkey = typeof decoded.data === 'string' ? decoded.data : '';
+          } catch (e) {
+            console.error('[GUARD] Failed to decode npub:', e);
+          }
+        }
+
+        // Must have at least pubkey to proceed
+        if (!pubkey) {
+          console.error('[GUARD] No pubkey available, user:', req.user);
+          return reject(new UnauthorizedException('Invalid auth token - no pubkey'));
+        }
+
+        (req as any).npub = npub;
+        (req as any).pubkey = pubkey;
+        resolve(true);
       });
     }).catch((err) => {
       if (err?.status) throw err;
