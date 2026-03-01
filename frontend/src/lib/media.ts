@@ -58,7 +58,8 @@ function normalizeUrl(url: string): string | null {
 }
 
 function decodeRef(rawRef: string): { type: 'quote' | 'profile' | 'unknown'; ref: string; eventId?: string; pubkey?: string } {
-  const ref = rawRef.replace(/^nostr:/i, '');
+  const cleaned = rawRef.trim().replace(/^nostr:/i, '');
+  const ref = (cleaned.match(/^(note1[0-9a-z]+|nevent1[0-9a-z]+|npub1[0-9a-z]+|nprofile1[0-9a-z]+)/i)?.[1] || cleaned).toLowerCase();
   try {
     const decoded = nip19.decode(ref);
     if (decoded.type === 'note') return { type: 'quote', ref, eventId: decoded.data as string };

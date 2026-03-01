@@ -60,11 +60,12 @@ export function QuotedEventCard({
 
   if (!event && unavailable) {
     return (
-      <div className={`${spacing} rounded-lg border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-400`}>
-        <p>Quoted event could not be loaded.</p>
+      <div className={`${spacing} rounded-lg border border-slate-700/70 bg-slate-900/60 p-3 text-xs text-slate-400`}>
+        <p className="text-slate-300">Quoted note unavailable</p>
+        <p className="mt-1 text-[11px] text-slate-500">The original post may have been deleted or is not accessible from your relays.</p>
         {onRetry ? (
-          <button onClick={onRetry} className="cy-chip text-xs mt-2" type="button">
-            🔄 Retry
+          <button onClick={onRetry} className="mt-2 rounded-md border border-slate-600 px-2 py-1 text-[11px] text-slate-300 hover:border-slate-500 hover:text-slate-200" type="button">
+            Retry
           </button>
         ) : null}
       </div>

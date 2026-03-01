@@ -13,7 +13,11 @@ export class NostrJwtAuthGuard implements CanActivate {
     const res = context.switchToHttp().getResponse<Response>();
 
     return new Promise<boolean>((resolve, reject) => {
-      nostrAuthMiddleware(req as any, res as any, () => {
+      nostrAuthMiddleware(req as any, res as any, (err?: unknown) => {
+        if (err) {
+          return reject(err);
+        }
+
         // Check if we have user data from middleware
         if (!req.user) {
           console.error('[GUARD] No req.user set by middleware');

@@ -6,55 +6,85 @@ let requireAuth: (req: any, res: any, next: () => void) => void;
 let requireAdmin: (adminList?: string[]) => (req: any, res: any, next: () => void) => void;
 let requireOwner: (ownerList?: string[]) => (req: any, res: any, next: () => void) => void;
 
+const isHexPubkey = (value: unknown): value is string =>
+  typeof value === 'string' && /^[a-f0-9]{64}$/i.test(value);
+
+const isNpub = (value: unknown): value is string =>
+  typeof value === 'string' && value.startsWith('npub1');
+
+const deriveAuthIdentity = (decoded: { sub?: string; npub?: string; pubkey?: string }) => {
+  // Some historical tokens used sub/npub/pubkey inconsistently, so normalize defensively.
+  let pubkey = isHexPubkey(decoded.sub)
+    ? decoded.sub
+    : isHexPubkey(decoded.pubkey)
+      ? decoded.pubkey
+      : '';
+
+  let npub = isNpub(decoded.npub) ? decoded.npub : '';
+
+  if (!pubkey && isNpub(decoded.sub)) {
+    try {
+      const fromSub = nip19.decode(decoded.sub);
+      pubkey = typeof fromSub.data === 'string' ? fromSub.data : '';
+      npub = decoded.sub;
+    } catch {
+      // ignore invalid legacy token shape
+    }
+  }
+
+  if (!pubkey && isNpub(decoded.pubkey)) {
+    try {
+      const fromPubkey = nip19.decode(decoded.pubkey);
+      pubkey = typeof fromPubkey.data === 'string' ? fromPubkey.data : '';
+      npub = decoded.pubkey;
+    } catch {
+      // ignore invalid legacy token shape
+    }
+  }
+
+  if (pubkey && !npub) {
+    try {
+      npub = nip19.npubEncode(pubkey);
+    } catch {
+      // If npub encoding fails we still keep pubkey-based auth.
+      npub = '';
+    }
+  }
+
+  return { pubkey, npub };
+};
+
 try {
   ({ verifyNostrAuth, requireAuth, requireAdmin, requireOwner } = require('@strangesignal/nostr-auth/server'));
 } catch {
   verifyNostrAuth = (jwtSecret: string) => (req: any, _res: any, next: () => void) => {
     const authHeader = req?.headers?.authorization || '';
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
     if (token) {
       try {
-        // Try to decode as JWT first
         const decoded = jwt.verify(token, jwtSecret) as { sub?: string; npub?: string; pubkey?: string; role?: string };
-        // sub is the hex pubkey in our JWT implementation
-        let pubkey = decoded.sub || decoded.pubkey || '';
-        let npub = decoded.npub || '';
-        
-        console.log('[AUTH] JWT decoded:', { sub: decoded.sub, pubkey: decoded.pubkey, npub: decoded.npub });
-        
-        // If we have pubkey but not npub, encode it
-        if (pubkey && !npub) {
-          try {
-            npub = nip19.npubEncode(pubkey);
-            console.log('[AUTH] Encoded npub:', npub);
-          } catch (encErr) {
-            console.error('[AUTH] Failed to encode npub:', encErr);
-          }
+        const { pubkey, npub } = deriveAuthIdentity(decoded);
+
+        if (pubkey) {
+          req.user = { pubkey, npub, role: decoded.role || 'user' };
         }
-        // If we have npub but not pubkey, decode it
-        if (npub && !pubkey) {
-          try {
-            const dec = nip19.decode(npub);
-            pubkey = typeof dec.data === 'string' ? dec.data : '';
-          } catch {}
-        }
-        
-        console.log('[AUTH] Final user:', { pubkey: pubkey?.substring(0, 16), npub: npub?.substring(0, 16) });
-        req.user = { pubkey, npub, role: decoded.role || 'user' };
-      } catch (jwtErr: any) {
-        console.error('[AUTH] JWT verify failed:', jwtErr?.message);
-        // If JWT decode fails, check if token itself is an npub
-        if (token.startsWith('npub1')) {
+      } catch {
+        // If JWT decode fails, support direct npub bearer tokens for legacy callers.
+        if (isNpub(token)) {
           try {
             const dec = nip19.decode(token);
             const pubkey = typeof dec.data === 'string' ? dec.data : '';
-            req.user = { pubkey, npub: token, role: 'user' };
-          } catch {}
+            if (pubkey) {
+              req.user = { pubkey, npub: token, role: 'user' };
+            }
+          } catch {
+            // invalid direct npub token; leave req.user unset
+          }
         }
       }
-    } else {
-      console.log('[AUTH] No token in request');
     }
+
     next();
   };
 
