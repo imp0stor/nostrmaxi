@@ -1,4 +1,4 @@
-import { computeAnalyticsFromEvents } from '../src/lib/analytics';
+import { computeAnalyticsFromEvents, computeProgress } from '../src/lib/analytics';
 import type { NostrEvent } from '../src/types';
 
 function evt(partial: Partial<NostrEvent>): NostrEvent {
@@ -32,5 +32,18 @@ describe('analytics compute', () => {
     expect(result.profile.topPosts.length).toBeGreaterThan(0);
     expect(result.profile.topPosts[0].id).toBe('post-1');
     expect(result.engagement.reactionsByType[0].type).toBe('+');
+  });
+});
+
+describe('analytics progress', () => {
+  it('calculates bounded progress percentages', () => {
+    expect(computeProgress(200, 50)).toMatchObject({ totalUnits: 200, processedUnits: 50, percent: 25 });
+    expect(computeProgress(10, 999)).toMatchObject({ totalUnits: 10, processedUnits: 10, percent: 100 });
+    expect(computeProgress(0, -2)).toMatchObject({ totalUnits: 1, processedUnits: 0, percent: 0 });
+  });
+
+  it('emits status text matching computed percent', () => {
+    expect(computeProgress(4, 1).status).toBe('25%');
+    expect(computeProgress(3, 3).status).toBe('100%');
   });
 });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { SimplePool } from 'nostr-tools';
 import { useAuth } from '../hooks/useAuth';
-import { clearAnalyticsCache, loadAnalyticsDashboard, type AnalyticsDashboardData, type AnalyticsInterval } from '../lib/analytics';
+import { clearAnalyticsCache, loadAnalyticsDashboard, type AnalyticsDashboardData, type AnalyticsInterval, type AnalyticsProgressUpdate } from '../lib/analytics';
 import type { NostrEvent } from '../types';
 import { FALLBACK_RELAYS } from '../lib/relayConfig';
 import { parseZapReceipt } from '../lib/zaps';
@@ -465,6 +465,7 @@ export function AnalyticsPage() {
   const [metrics, setMetrics] = useState<UserMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [analyticsProgress, setAnalyticsProgress] = useState<AnalyticsProgressUpdate | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('30d');
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -516,6 +517,13 @@ export function AnalyticsPage() {
     const loadAnalytics = async () => {
       setLoading(true);
       setError(null);
+      setAnalyticsProgress({
+        phase: 'resolving',
+        totalUnits: 100,
+        processedUnits: 1,
+        percent: 1,
+        status: 'Preparing analytics request…',
+      });
       try {
         const response = await loadAnalyticsDashboard(
           user.pubkey,
@@ -523,6 +531,7 @@ export function AnalyticsPage() {
           { interval: toRange(timeRange) },
           refreshTick > 0,
           targetResolution.targetPubkey,
+          (update) => setAnalyticsProgress(update),
         );
         setMetrics(mapMetrics(response));
         setVisibleTopPosts(100);
@@ -613,8 +622,14 @@ export function AnalyticsPage() {
   }, [safeMetrics, postEventById]);
 
   if (!user) return null;
-  if (loading || !safeMetrics || !activeTargetPubkey) return <AnalyticsLoadingSkeleton />;
-
+  if (loading || !safeMetrics || !activeTargetPubkey) {
+    return (
+      <AnalyticsLoadingSkeleton
+        progressPercent={analyticsProgress?.percent}
+        progressStatus={analyticsProgress?.status}
+      />
+    );
+  }
 
   const selectedPost = selectedPostId ? safeMetrics.topPosts.find((post) => post.id === selectedPostId) : null;
 

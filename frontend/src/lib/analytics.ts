@@ -41,6 +41,19 @@ export interface TopZapper {
   averageSats: number;
 }
 
+export interface AnalyticsLoadProgress {
+  totalUnits: number;
+  processedUnits: number;
+  percent: number;
+  status: string;
+}
+
+export type AnalyticsPhase = 'resolving' | 'fetching' | 'aggregating' | 'enriching' | 'complete';
+
+export interface AnalyticsProgressUpdate extends AnalyticsLoadProgress {
+  phase: AnalyticsPhase;
+}
+
 export interface AnalyticsDashboardData {
   generatedAt: string;
   pubkey: string;
@@ -157,6 +170,18 @@ function chunk<T>(items: T[], size: number): T[][] {
   return result;
 }
 
+export function computeProgress(totalUnits: number, processedUnits: number): AnalyticsLoadProgress {
+  const safeTotal = Math.max(1, totalUnits);
+  const boundedProcessed = Math.min(Math.max(0, processedUnits), safeTotal);
+  const percent = Math.max(0, Math.min(100, Math.round((boundedProcessed / safeTotal) * 100)));
+  return {
+    totalUnits: safeTotal,
+    processedUnits: boundedProcessed,
+    percent,
+    status: `${percent}%`,
+  };
+}
+
 function postPreview(content: string, id: string): string {
   const normalized = content.replace(/\s+/g, ' ').trim();
   if (!normalized) return `Post ${id.slice(0, 8)}`;
@@ -197,11 +222,22 @@ async function queryEvents(pool: SimplePool, filter: any): Promise<NostrEvent[]>
   return (events as NostrEvent[]) || [];
 }
 
-async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<AnalyticsDashboardData> {
+async function loadAnalyticsRaw(
+  pubkey: string,
+  range: AnalyticsRange,
+  onProgress?: (update: AnalyticsProgressUpdate) => void,
+): Promise<AnalyticsDashboardData> {
   const pool = new SimplePool();
   try {
+    const emitProgress = (phase: AnalyticsPhase, status: string, totalUnits: number, processedUnits: number) => {
+      if (!onProgress) return;
+      const base = computeProgress(totalUnits, processedUnits);
+      onProgress({ ...base, phase, status });
+    };
+
     const { startTs, endTs } = getRangeBounds(range);
 
+    emitProgress('resolving', 'Resolving baseline profile and post graph…', 100, 2);
     const [contactEvents, followerEvents, posts] = await Promise.all([
       queryEvents(pool, { kinds: [3], authors: [pubkey], limit: 20 }),
       queryEvents(pool, { kinds: [3], '#p': [pubkey], limit: 5000 }),
@@ -215,17 +251,20 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
     const followerCount = new Set(followerEvents.map((e) => e.pubkey)).size;
 
     const sortedPosts = [...posts].sort((a, b) => b.created_at - a.created_at);
+    const postById = new Map(sortedPosts.map((post) => [post.id, post]));
     const totalPosts = sortedPosts.length;
     const rangedPosts = sortedPosts.filter((p) => p.created_at >= startTs && p.created_at <= endTs);
-
     const postIds = sortedPosts.map((p) => p.id);
 
+    const postIdChunks = chunk(postIds, 150);
     const reactionEvents: NostrEvent[] = [];
     const replyEvents: NostrEvent[] = [];
     const repostEvents: NostrEvent[] = [];
     const zapEvents: NostrEvent[] = [];
 
-    for (const ids of chunk(postIds, 150)) {
+    emitProgress('fetching', 'Fetching engagement events in chunks…', Math.max(1, postIdChunks.length), 0);
+    for (let index = 0; index < postIdChunks.length; index += 1) {
+      const ids = postIdChunks[index];
       if (ids.length === 0) continue;
       const [reactions, replies, reposts, zaps] = await Promise.all([
         queryEvents(pool, { kinds: [7], '#e': ids, limit: 3000 }),
@@ -237,6 +276,7 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       replyEvents.push(...replies);
       repostEvents.push(...reposts);
       zapEvents.push(...zaps);
+      emitProgress('fetching', `Fetching chunk ${index + 1}/${postIdChunks.length}…`, postIdChunks.length, index + 1);
     }
 
     const postMetrics = new Map<string, TopPost>();
@@ -244,6 +284,9 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
     let totalReactions = 0;
     let totalReplies = 0;
     let totalReposts = 0;
+
+    const aggregationSteps = 6;
+    emitProgress('aggregating', 'Building post metric baselines…', aggregationSteps, 0);
 
     sortedPosts.forEach((post) => {
       postMetrics.set(post.id, {
@@ -266,6 +309,7 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
         hashtagUsage.set(tag, { posts: existing.posts + 1, engagement: existing.engagement });
       });
     });
+    emitProgress('aggregating', 'Aggregating reactions…', aggregationSteps, 1);
 
     const postIdSet = new Set(postIds);
 
@@ -279,6 +323,7 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
         }
       });
     });
+    emitProgress('aggregating', 'Aggregating replies…', aggregationSteps, 2);
 
     replyEvents.forEach((evt) => {
       if (evt.pubkey === pubkey) return;
@@ -291,6 +336,7 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
         }
       });
     });
+    emitProgress('aggregating', 'Aggregating reposts…', aggregationSteps, 3);
 
     repostEvents.forEach((evt) => {
       extractEventIds(evt).forEach((id) => {
@@ -325,6 +371,7 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
         metric.zapSats += sats;
       });
     });
+    emitProgress('aggregating', 'Computing timelines and top content…', aggregationSteps, 4);
 
     const postsPerDayMap = new Map<string, number>();
     const postsPerWeekMap = new Map<string, number>();
@@ -353,9 +400,9 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       hourTotals[d.getHours()] += engagement;
     });
 
-    postMetrics.forEach((metric) => {
+    postMetrics.forEach((metric, postId) => {
       metric.score = metric.reactions + metric.replies + metric.reposts + metric.zapSats;
-      const post = sortedPosts.find((p) => p.id === metric.id);
+      const post = postById.get(postId);
       if (!post) return;
 
       const tags = [
@@ -368,6 +415,7 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
         hashtagUsage.set(tag, { posts: existing.posts, engagement: existing.engagement + metric.score });
       });
     });
+    emitProgress('aggregating', 'Aggregating complete, enriching with sent zaps and relays…', aggregationSteps, 5);
 
     const topZappers: TopZapper[] = Array.from(zapperStats.entries())
       .map(([pubkeyValue, stat]) => ({
@@ -378,18 +426,25 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       }))
       .sort((a, b) => b.totalSats - a.totalSats);
 
+    const enrichTotal = Math.max(2, FALLBACK_RELAYS.length + 1);
+    let enrichProcessed = 0;
+
     const sentZaps = await queryEvents(pool, { kinds: [9735], authors: [pubkey], since: startTs, until: endTs, limit: 3000 });
+    enrichProcessed += 1;
+    emitProgress('enriching', 'Enriching with outgoing zaps…', enrichTotal, enrichProcessed);
+
     let totalSatsSent = 0;
     for (const evt of sentZaps) {
       totalSatsSent += parseZapAmountSat(evt);
     }
 
-    const relayDistribution = await Promise.all(
-      FALLBACK_RELAYS.map(async (relay) => {
-        const relayPosts = await pool.querySync([relay], { kinds: [1], authors: [pubkey], since: startTs, until: endTs, limit: 2000 });
-        return { relay, posts: (relayPosts as NostrEvent[]).length };
-      }),
-    );
+    const relayDistribution: { relay: string; posts: number }[] = [];
+    for (const relay of FALLBACK_RELAYS) {
+      const relayPosts = await pool.querySync([relay], { kinds: [1], authors: [pubkey], since: startTs, until: endTs, limit: 2000 });
+      relayDistribution.push({ relay, posts: (relayPosts as NostrEvent[]).length });
+      enrichProcessed += 1;
+      emitProgress('enriching', `Enriching relay distribution (${enrichProcessed - 1}/${FALLBACK_RELAYS.length})…`, enrichTotal, enrichProcessed);
+    }
 
     const postsPerDay = Array.from(postsPerDayMap.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -436,6 +491,7 @@ async function loadAnalyticsRaw(pubkey: string, range: AnalyticsRange): Promise<
       .sort((a, b) => b.posts - a.posts)
       .map((entry) => ({ relay: entry.relay, posts: entry.posts }));
 
+    emitProgress('complete', 'Analytics ready.', 100, 100);
     return {
       generatedAt: new Date().toISOString(),
       pubkey,
@@ -485,6 +541,7 @@ export async function loadAnalyticsDashboard(
   range: AnalyticsRange = { interval: '30d' },
   forceRefresh = false,
   targetPubkey?: string,
+  onProgress?: (update: AnalyticsProgressUpdate) => void,
 ): Promise<AnalyticsDashboardData> {
   if (scope !== 'individual') {
     throw new Error('Only individual scope is supported for real-data analytics.');
@@ -499,14 +556,16 @@ export async function loadAnalyticsDashboard(
     const raw = storage.getItem(key);
     if (raw) {
       try {
-        return JSON.parse(raw) as AnalyticsDashboardData;
+        const cached = JSON.parse(raw) as AnalyticsDashboardData;
+        onProgress?.({ ...computeProgress(1, 1), phase: 'complete', status: 'Loaded analytics from cache.' });
+        return cached;
       } catch {
         storage.removeItem(key);
       }
     }
   }
 
-  const data = await loadAnalyticsRaw(resolvedTargetPubkey, range);
+  const data = await loadAnalyticsRaw(resolvedTargetPubkey, range, onProgress);
   if (storage) {
     storage.setItem(key, JSON.stringify(data));
   }
