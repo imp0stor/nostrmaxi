@@ -73,6 +73,41 @@
 
 ---
 
+## 🟣 NIP-05 Marketplace (New Feature)
+
+### Payment & Registration
+- [ ] Verify payment flow works
+- [ ] Reserved names restricted from purchase
+- [ ] Premium pricing tiers
+
+### Auction System
+- [ ] Auction database schema (auctions, bids)
+- [ ] Bidding API endpoints
+- [ ] Auction UX (current bid, time remaining, history)
+- [ ] Outbid notifications
+- [ ] Auction end handling
+
+### Flat Price Marketplace
+- [ ] Curated premium NIP-05s with fixed prices
+- [ ] Browse/filter premium names
+- [ ] Direct purchase flow
+
+### User Resale Marketplace
+- [ ] Users list owned NIP-05s for sale
+- [ ] Sell lease remainder OR lifetime
+- [ ] Transfer initiation system
+- [ ] 5% platform fee on sales
+- [ ] Escrow handling
+
+### Database Schema
+- [ ] Auctions table
+- [ ] Listings table  
+- [ ] Bids table
+- [ ] Transfers table
+- [ ] Reserved names table
+
+---
+
 ## 🟢 Backlog
 
 - [ ] Code splitting (bundle is 1.4MB)
