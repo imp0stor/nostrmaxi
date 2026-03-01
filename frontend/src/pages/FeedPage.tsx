@@ -27,6 +27,7 @@ import { useMuteActions } from '../hooks/useMuteActions';
 import { MediaUploader } from '../components/MediaUploader';
 import { ZapBreakdownModal } from '../components/ZapBreakdownModal';
 import { api } from '../lib/api';
+import { mapPrimitiveWotToFeedMetric, type FeedWotMetric } from '../lib/wotScore';
 import { MetricChip } from '../components/primitives/MetricChip';
 import { ContributorSheet } from '../components/primitives/ContributorSheet';
 import composeIcon from '../assets/icons/compose-custom.svg';
@@ -196,7 +197,7 @@ export function FeedPage() {
   const [interactionByEventId, setInteractionByEventId] = useState<Map<string, FeedInteractionSummary>>(new Map());
   const [interactionDetailEventId, setInteractionDetailEventId] = useState<string | null>(null);
   const [interactionProfiles, setInteractionProfiles] = useState<Map<string, any>>(new Map());
-  const [wotByPubkey, setWotByPubkey] = useState<Map<string, { trustScore: number; distanceLabel: string }>>(new Map());
+  const [wotByPubkey, setWotByPubkey] = useState<Map<string, FeedWotMetric>>(new Map());
   const { filters: contentFilters, syncNow: syncContentFilters } = useContentFilters(user?.pubkey);
   const { muteHashtag, isHashtagMuted } = useMuteActions(user?.pubkey);
   const { topicSubs, userSubs, notifPrefs } = useSubscriptions(user?.pubkey);
@@ -746,7 +747,7 @@ export function FeedPage() {
       const entries = await Promise.all(missing.map(async (pubkey) => {
         try {
           const score = await api.getPrimitiveWotScore(pubkey, user.pubkey);
-          return [pubkey, { trustScore: score.trustScore || 0, distanceLabel: score.distanceLabel || 'unknown' }] as const;
+          return [pubkey, mapPrimitiveWotToFeedMetric(score)] as const;
         } catch {
           return null;
         }
@@ -1170,6 +1171,10 @@ export function FeedPage() {
           const zapSummary = displayZapByEventId.get(item.id);
           const interactionSummary = interactionByEventId.get(item.id);
           const topZappers = zapSummary?.topZappers?.filter((entry) => entry.pubkey !== 'anon').slice(0, 4) || [];
+          const wotScore = wotByPubkey.get(item.pubkey);
+          const hasContributors = Boolean((interactionSummary?.reactions || 0) > 0 || (interactionSummary?.reposts || 0) > 0);
+          const hasZapData = Boolean((zapSummary?.count || 0) > 0);
+          const hasMetaSignals = hasZapData || hasContributors || Boolean(wotScore);
           return (
             <article key={item.id} className={`cy-card nm-card-interactive p-5 ${notifyByEventId.has(item.id) ? 'border border-orange-400/50 shadow-[0_0_16px_rgba(249,115,22,0.2)]' : ''}`}>
               <div className="flex items-center justify-between gap-3">
@@ -1229,58 +1234,67 @@ export function FeedPage() {
                 })}
               </div>
               {liveMeta ? <LiveStreamCard meta={liveMeta} /> : null}
-              <div className="mt-4 space-y-3">
-                <button
-                  type="button"
-                  className="w-full rounded-lg border border-orange-400/35 bg-orange-500/10 px-3 py-2 text-left hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
-                  onClick={() => setZapBreakdownEventId(item.id)}
-                  aria-label={`Open zap details for post ${item.id}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center -space-x-2">
-                      {topZappers.length > 0 ? topZappers.map((zapper) => (
-                        <span key={`${item.id}-${zapper.pubkey}`} className="inline-block rounded-full ring-2 ring-slate-950">
-                          <Avatar pubkey={zapper.pubkey} size={18} />
-                        </span>
-                      )) : <span className="text-[11px] text-orange-200/80">No zappers yet</span>}
-                    </div>
-                    <span className="text-xs font-semibold text-orange-100">⚡ {formatZapIndicator(zapSummary)}</span>
-                  </div>
-                </button>
+              <div className="mt-4 space-y-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  {hasZapData ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-2 rounded-full border border-orange-500/25 bg-orange-500/[0.05] px-2.5 py-1 text-xs text-orange-100 hover:border-orange-400/45 hover:bg-orange-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
+                      onClick={() => setZapBreakdownEventId(item.id)}
+                      aria-label={`Open zap details for post ${item.id}`}
+                    >
+                      <span className="flex items-center -space-x-1.5">
+                        {topZappers.length > 0 ? topZappers.map((zapper) => (
+                          <span key={`${item.id}-${zapper.pubkey}`} className="inline-block rounded-full ring-1 ring-slate-950/80">
+                            <Avatar pubkey={zapper.pubkey} size={16} />
+                          </span>
+                        )) : <span className="text-orange-200/80">⚡</span>}
+                      </span>
+                      <span className="font-medium">{formatZapIndicator(zapSummary)}</span>
+                    </button>
+                  ) : null}
 
-                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <MetricChip
                     label="Contributors"
-                    value={`${interactionSummary?.reactions || 0}❤️ / ${interactionSummary?.reposts || 0}🔁`}
+                    value={hasContributors ? `${interactionSummary?.reactions || 0}❤️ / ${interactionSummary?.reposts || 0}🔁` : '0❤️ / 0🔁'}
                     onClick={() => setInteractionDetailEventId(item.id)}
                     ariaLabel={`Open reaction and repost contributors for post ${item.id}`}
                   />
-                  {wotByPubkey.get(item.pubkey) ? (
+
+                  {wotScore ? (
                     <MetricChip
                       label="WoT"
-                      value={`${wotByPubkey.get(item.pubkey)?.trustScore}`}
-                      ariaLabel={`Web of trust score ${wotByPubkey.get(item.pubkey)?.trustScore}, ${wotByPubkey.get(item.pubkey)?.distanceLabel}`}
+                      value={wotScore.scoreLabel || 'unknown'}
+                      ariaLabel={wotScore.ariaLabel}
                     />
                   ) : null}
+
                   {interactionSummary?.relayHints?.slice(0, 2).map((relay) => (
                     <button
                       key={`${item.id}-${relay}`}
                       type="button"
-                      className="cy-chip text-[11px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
+                      className="cy-chip text-xs min-h-[32px] px-2.5 py-1 text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80"
                       onClick={() => { setRelayInput(relay); setShowRelayModal(true); }}
                       aria-label={`Inspect relay ${relay}`}
                     >
                       {relay.replace('wss://', '')}
                     </button>
                   ))}
+
+                  {!hasMetaSignals ? (
+                    <div className="inline-flex items-center gap-2 text-xs text-slate-400 px-1">
+                      <span aria-hidden="true">⚡</span>
+                      <span>No zaps or contributors yet</span>
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="flex gap-2 flex-wrap justify-end">
-                  <button className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('like', item)} disabled={busyId === `like-${item.id}`}>Like</button>
-                  <button className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('repost', item)} disabled={busyId === `repost-${item.id}`}>Repost</button>
-                  <button className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('reply', item)} disabled={busyId === `reply-${item.id}`}>Reply</button>
-                  <button className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
-                  {item.pubkey === user?.pubkey ? <button className="cy-chip focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onPin(item)}>📌 Pin to Profile</button> : null}
+                <div className="flex gap-2 flex-wrap justify-end pt-1">
+                  <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('like', item)} disabled={busyId === `like-${item.id}`}>Like</button>
+                  <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('repost', item)} disabled={busyId === `repost-${item.id}`}>Repost</button>
+                  <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onAction('reply', item)} disabled={busyId === `reply-${item.id}`}>Reply</button>
+                  <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onZap(item)} disabled={busyId === `zap-${item.id}`}>{buildZapButtonLabel(busyId === `zap-${item.id}`)}</button>
+                  {item.pubkey === user?.pubkey ? <button className="cy-chip text-xs min-h-[32px] px-2.5 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/80" onClick={() => onPin(item)}>📌 Pin to Profile</button> : null}
                   <BookmarkButton eventId={item.id} pubkey={user?.pubkey} />
                   <PostActionMenu item={item} viewerPubkey={user?.pubkey} />
                 </div>
