@@ -98,5 +98,11 @@ This document tracks NIP support status in NostrMaxi.
 2. **P1:** NIP-23, NIP-58, NIP-25
 3. **P2/P3:** NIP-57 completion, NIP-28, NIP-65, NIP-89
 
+## UX Integration Principle (Design)
+- Protocol support should be **feature-rich but intuitively simple**.
+- Base feed stays clean; advanced NIP controls/details appear via progressive disclosure (popover/modal/drawer).
+- Any contributor-backed data exposed by a NIP feature (e.g., zaps/reactions/reposts/relay metadata) must be drillable.
+
 For full sequencing, effort, and dependencies, see:
 - `../NIP-IMPLEMENTATION-ROADMAP.md`
+- `../DESIGN-GAP-REVIEW-AND-NEXT-INSPIRATION-2026-03-01.md`

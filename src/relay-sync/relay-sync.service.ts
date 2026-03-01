@@ -13,8 +13,9 @@ const { useWebSocketImplementation, SimplePool } = require('nostr-tools/pool') a
 useWebSocketImplementation(require('ws'));
 import { PriorityService } from './priority.service';
 import { RateLimiterService } from './rate-limiter.service';
-import { readdir, stat } from 'fs/promises';
+import { readdir, stat, appendFile, mkdir } from 'fs/promises';
 import { join, resolve } from 'path';
+import { existsSync } from 'fs';
 
 const DEFAULT_LOCAL_RELAY = 'ws://10.1.10.143:7777';
 // Comprehensive Nostr event kinds
@@ -150,6 +151,16 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    // Catch nostr-tools internal rejections to prevent crashes
+    process.on('unhandledRejection', (reason: unknown) => {
+      const msg = String(reason);
+      if (msg.includes('replaced:') || msg.includes('duplicate:') || msg.includes('blocked:')) {
+        // Expected relay rejections - ignore silently
+        return;
+      }
+      this.logger.warn(`Unhandled rejection: ${msg}`);
+    });
+
     await this.seedNotableAccounts();
     await this.seedRelayPool();
 
@@ -290,14 +301,40 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
       importedByKind: {},
     };
 
-    for (const user of users) {
-      await this.prisma.relaySyncState.update({
-        where: { pubkey: user.pubkey },
-        data: { syncStatus: 'syncing' },
-      });
+    // Process users in parallel for speed
+    const concurrency = this.getParallelSyncCount();
+    const chunks: typeof users[] = [];
+    for (let i = 0; i < users.length; i += concurrency) {
+      chunks.push(users.slice(i, i + concurrency));
+    }
 
-      try {
-        const result = await this.syncUser(user.pubkey);
+    for (const chunk of chunks) {
+      // Mark all in chunk as syncing
+      await Promise.all(
+        chunk.map((user) =>
+          this.prisma.relaySyncState.update({
+            where: { pubkey: user.pubkey },
+            data: { syncStatus: 'syncing' },
+          }),
+        ),
+      );
+
+      // Sync all in parallel
+      const results = await Promise.allSettled(
+        chunk.map(async (user) => {
+          const result = await this.syncUser(user.pubkey);
+          return { user, result };
+        }),
+      );
+
+      // Process results
+      for (const outcome of results) {
+        if (outcome.status === 'rejected') {
+          counters.errors += 1;
+          continue;
+        }
+
+        const { user, result } = outcome.value;
 
         counters.total += result.total;
         counters.profiles += result.byKind[0] || 0;
@@ -330,15 +367,6 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
             syncStatus: 'complete',
           },
         });
-      } catch (error) {
-        counters.errors += 1;
-
-        await this.prisma.relaySyncState.update({
-          where: { pubkey: user.pubkey },
-          data: { syncStatus: 'error' },
-        });
-
-        this.logger.warn(`Failed syncing ${user.pubkey.slice(0, 8)}: ${(error as Error).message}`);
       }
     }
 
@@ -365,9 +393,20 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
     ];
 
     const events = new Map<string, NostrEvent>();
+    const authorRelayCount = this.getAuthorRelayCount();
+    const interactionRelayCount = this.getInteractionRelayCount();
+    const authorRelays = relays.slice(0, authorRelayCount);
+    const interactionRelays = relays.slice(authorRelayCount, authorRelayCount + interactionRelayCount);
 
-    for (const filter of filters) {
-      for (const relay of relays) {
+    const relayPlan = [
+      { filter: filters[0], targets: authorRelays.length ? authorRelays : relays.slice(0, authorRelayCount) },
+      { filter: filters[1], targets: interactionRelays.length ? interactionRelays : relays.slice(0, interactionRelayCount) },
+    ];
+
+    const minUniqueToStop = this.getMinUniqueEventsForEarlyStop();
+
+    for (const { filter, targets } of relayPlan) {
+      for (const relay of targets) {
         const started = Date.now();
         try {
           await this.rateLimiter.waitForSlot(relay);
@@ -377,6 +416,10 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
 
           for (const evt of fetched) {
             events.set(evt.id, evt);
+          }
+
+          if (events.size >= minUniqueToStop && fetched.length < Math.floor(DEFAULT_QUERY_LIMIT * 0.4)) {
+            break;
           }
         } catch (error) {
           const message = String((error as Error)?.message || error || '');
@@ -420,6 +463,9 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async importEvents(events: NostrEvent[]): Promise<{ total: number; byKind: Record<number, number> }> {
+    // Audit trail: store ALL events before dedup/publish (keeps replaced events too)
+    await this.appendToAuditLog(events);
+
     const deduped = new Map(events.map((event) => [event.id, event]));
     const ordered = [...deduped.values()].sort((a, b) => a.created_at - b.created_at);
     const existing = await this.getExistingIds(ordered.map((event) => event.id));
@@ -431,14 +477,23 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
     for (let i = 0; i < pending.length; i += EVENT_PUBLISH_BATCH) {
       const chunk = pending.slice(i, i + EVENT_PUBLISH_BATCH);
 
-      for (const event of chunk) {
-        try {
-          const pubs = this.pool.publish([this.getLocalRelayUrl()], event as any);
-          await Promise.allSettled(pubs);
+      const results = await Promise.allSettled(
+        chunk.map(async (event) => {
+          try {
+            const pubs = this.pool.publish([this.getLocalRelayUrl()], event as any);
+            await Promise.allSettled(pubs);
+            return { event, success: true };
+          } catch {
+            return { event, success: false };
+          }
+        }),
+      );
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value.success) {
+          const { event } = result.value;
           byKind[event.kind] = (byKind[event.kind] || 0) + 1;
           total += 1;
-        } catch {
-          // best effort
         }
       }
     }
@@ -566,51 +621,96 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async selectRelaysForUser(pubkey: string): Promise<string[]> {
+    // PRIORITY 1: User's own relay list (kind 10002)
+    const userRelays = await this.loadUserRelayList(pubkey);
+
+    // PRIORITY 2: Discovered relays ordered by health
     const weighted = await this.prisma.discoveredRelay.findMany({
       where: { isActive: true },
       orderBy: [{ avgLatencyMs: 'asc' }, { successCount: 'desc' }, { failureCount: 'asc' }],
-      take: 120,
+      take: 60,
     });
+    const healthyPool = weighted.map((r) => r.url);
 
-    const relayPool = weighted.length ? weighted.map((relay) => relay.url) : [];
-    const all = new Set<string>([...SEED_RELAYS, ...relayPool]);
+    // PRIORITY 3: Seed relays as fallback
+    // Build final list: user relays FIRST, then healthy pool, then seeds
+    const seen = new Set<string>();
+    const result: string[] = [];
 
-    const hints = await this.loadRelayHintsForUser(pubkey);
-    for (const hint of hints) {
-      all.add(hint);
+    // Add user's preferred relays first (highest priority)
+    for (const url of userRelays) {
+      if (!seen.has(url)) {
+        seen.add(url);
+        result.push(url);
+      }
     }
 
-    const sorted = [...all];
-    if (sorted.length === 0) {
+    // Then add healthy discovered relays
+    for (const url of healthyPool) {
+      if (!seen.has(url)) {
+        seen.add(url);
+        result.push(url);
+      }
+    }
+
+    // Then add seeds as fallback
+    for (const url of SEED_RELAYS) {
+      if (!seen.has(url)) {
+        seen.add(url);
+        result.push(url);
+      }
+    }
+
+    if (result.length === 0) {
       return SEED_RELAYS;
     }
 
-    const rotated: string[] = [];
-    for (let i = 0; i < sorted.length; i++) {
-      const index = (this.relayCursor + i) % sorted.length;
-      rotated.push(sorted[index]);
-    }
-
-    this.relayCursor = (this.relayCursor + 1) % sorted.length;
-    return rotated.slice(0, 30);
+    return result.slice(0, this.getRelayFanout());
   }
 
-  private async loadRelayHintsForUser(pubkey: string): Promise<string[]> {
+  private userRelayCache = new Map<string, { urls: string[]; ts: number }>();
+
+  private async loadUserRelayList(pubkey: string): Promise<string[]> {
     if (!pubkey) return [];
 
-    const relays = await this.prisma.discoveredRelay.findMany({
-      where: {
-        isActive: true,
-        OR: [
-          { url: { contains: pubkey.slice(0, 6) } },
-          { url: { contains: 'relay' } },
-        ],
-      },
-      take: 8,
+    // Check cache (5 minute TTL)
+    const cached = this.userRelayCache.get(pubkey);
+    if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
+      return cached.urls;
+    }
+
+    // Try to fetch user's relay list from local relay first
+    try {
+      const events = (await this.pool.querySync([this.getLocalRelayUrl()], {
+        kinds: [10002],
+        authors: [pubkey],
+        limit: 1,
+      } as any)) as NostrEvent[];
+
+      if (events.length > 0) {
+        const relayList = events[0];
+        const urls = (relayList.tags || [])
+          .filter((tag) => tag[0] === 'r' && tag[1])
+          .map((tag) => this.normalizeRelayUrl(tag[1]))
+          .filter((url): url is string => Boolean(url));
+
+        this.userRelayCache.set(pubkey, { urls, ts: Date.now() });
+        return urls;
+      }
+    } catch {
+      // ignore local relay errors
+    }
+
+    // Fallback: check if we stored hints during discovery
+    const hints = await this.prisma.discoveredRelay.findMany({
+      where: { isActive: true },
+      take: 4,
       orderBy: [{ successCount: 'desc' }, { avgLatencyMs: 'asc' }],
     });
 
-    return relays.map((relay) => relay.url);
+    const fallbackUrls = hints.map((r) => r.url);
+    this.userRelayCache.set(pubkey, { urls: fallbackUrls, ts: Date.now() });
+    return fallbackUrls;
   }
 
   private async updateRelayHealth(url: string, success: boolean, latencyMs: number): Promise<void> {
@@ -677,8 +777,36 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
     return this.configService.get<string>('LOCAL_RELAY_URL') || DEFAULT_LOCAL_RELAY;
   }
 
+  private getRelayFanout(): number {
+    return Number(this.configService.get<string>('RELAY_SYNC_FANOUT') || 12);
+  }
+
+  private getAuthorRelayCount(): number {
+    return Number(this.configService.get<string>('RELAY_SYNC_AUTHOR_RELAYS') || 6);
+  }
+
+  private getInteractionRelayCount(): number {
+    return Number(this.configService.get<string>('RELAY_SYNC_INTERACTION_RELAYS') || 4);
+  }
+
+  private getMinUniqueEventsForEarlyStop(): number {
+    return Number(this.configService.get<string>('RELAY_SYNC_EARLY_STOP_MIN_UNIQUE') || 400);
+  }
+
+  private hashString(input: string): number {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+      hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+    }
+    return hash;
+  }
+
   private getBatchSize(): number {
     return Number(this.configService.get<string>('RELAY_SYNC_BATCH_SIZE') || DEFAULT_BATCH_SIZE);
+  }
+
+  private getParallelSyncCount(): number {
+    return Number(this.configService.get<string>('RELAY_SYNC_PARALLEL') || 10);
   }
 
   private getBatchSleepMs(): number {
@@ -714,5 +842,30 @@ export class RelaySyncService implements OnModuleInit, OnModuleDestroy {
 
   private async sleep(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Audit trail: Append all incoming events to JSONL log.
+   * This preserves events that strfry will replace (kind 0, 3, etc.)
+   * giving us a complete history for auditing.
+   */
+  private async appendToAuditLog(events: NostrEvent[]): Promise<void> {
+    if (events.length === 0) return;
+
+    const auditDir = this.configService.get<string>('AUDIT_LOG_DIR') || resolve(process.cwd(), 'data', 'audit');
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const auditFile = join(auditDir, `events-${today}.jsonl`);
+
+    try {
+      if (!existsSync(auditDir)) {
+        await mkdir(auditDir, { recursive: true });
+      }
+
+      const lines = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
+      await appendFile(auditFile, lines);
+    } catch (error) {
+      // Don't fail sync if audit logging fails
+      this.logger.warn(`Audit log append failed: ${(error as Error).message}`);
+    }
   }
 }

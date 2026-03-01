@@ -1,0 +1,23 @@
+{
+  "name": "compressed-nostr-relay",
+  "version": "1.0.0",
+  "description": "Nostr relay with pre-gzipped storage - compress once, serve fast",
+  "main": "compressed-relay.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node compressed-relay.js",
+    "dev": "tsx compressed-relay.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "nostr-tools": "^2.1.0",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
