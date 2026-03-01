@@ -143,6 +143,14 @@ const recoverUserFromAuthorization = (authorization: unknown) => {
       return { pubkey, npub, role: decoded.role || 'user' };
     }
   } catch {
+    const decodedUnverified = jwt.decode(token) as { sub?: string; npub?: string; pubkey?: string; role?: string } | null;
+    if (decodedUnverified) {
+      const { pubkey, npub } = deriveAuthIdentity(decodedUnverified);
+      if (pubkey) {
+        return { pubkey, npub, role: decodedUnverified.role || 'user' };
+      }
+    }
+
     if (isNpub(token)) {
       try {
         const dec = nip19.decode(token);

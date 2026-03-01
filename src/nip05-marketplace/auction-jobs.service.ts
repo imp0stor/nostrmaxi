@@ -1,11 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Nip05MarketplaceService } from './nip05-marketplace.service';
 
 @Injectable()
-export class AuctionJobsService {
+export class AuctionJobsService implements OnModuleInit {
   private readonly logger = new Logger(AuctionJobsService.name);
 
   constructor(
@@ -13,6 +13,10 @@ export class AuctionJobsService {
     private readonly marketplace: Nip05MarketplaceService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  onModuleInit() {
+    this.logger.log('Auction cron jobs registered: settleEndedAuctions(* * * * *) and sendEndingSoonReminders(*/5 * * * *)');
+  }
 
   @Cron(CronExpression.EVERY_MINUTE)
   async settleEndedAuctions() {

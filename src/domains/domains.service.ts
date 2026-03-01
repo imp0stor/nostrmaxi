@@ -6,17 +6,12 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class DomainsService {
-  private readonly txtResolver: (hostname: string) => Promise<string[][]>;
-
   constructor(
     private readonly prisma: PrismaService,
-    txtResolver?: (hostname: string) => Promise<string[][]>,
-  ) {
-    this.txtResolver = txtResolver ?? dns.resolveTxt;
-  }
+  ) {}
 
   private async resolveTxt(hostname: string): Promise<string[][]> {
-    return this.txtResolver(hostname);
+    return dns.resolveTxt(hostname);
   }
 
   private normalizeDomain(domain: string): string {
