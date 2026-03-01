@@ -13,9 +13,8 @@ import { shouldFilter } from '../lib/contentFilter';
 import { useContentFilters } from '../hooks/useContentFilters';
 import { CONTENT_TYPE_LABELS, detectContentTypes, extractLiveStreamMeta } from '../lib/contentTypes';
 import { LiveStreamCard } from '../components/LiveStreamCard';
-import { ConfigAccordion } from '../components/ConfigAccordion';
-import { FilterBar } from '../components/filters/FilterBar';
 import { useTagFilter } from '../hooks/useTagFilter';
+import { addRelay } from '../lib/discoverEntities';
 import { BookmarkButton } from '../components/bookmarks/BookmarkButton';
 import { usePinnedPost } from '../hooks/usePinnedPost';
 import { useSubscriptions } from '../hooks/useSubscriptions';
@@ -88,6 +87,19 @@ const DEFAULT_FEED_FILTERS: FeedFilterState = {
 };
 
 const DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol', 'wss://relay.primal.net'];
+const CONNECTED_RELAYS_STORAGE_KEY = 'nostrmaxi_connected_relays';
+
+function normalizeRelay(relay: string): string {
+  return relay.trim().toLowerCase().replace(/\/+$/, '');
+}
+
+function inferMediaType(url: string): 'image' | 'video' | 'audio' | 'other' {
+  const lower = url.toLowerCase();
+  if (/(\.png|\.jpe?g|\.gif|\.webp|\.avif)(\?|#|$)/.test(lower)) return 'image';
+  if (/(\.mp4|\.mov|\.webm|\.m3u8)(\?|#|$)/.test(lower)) return 'video';
+  if (/(\.mp3|\.wav|\.ogg|\.m4a)(\?|#|$)/.test(lower)) return 'audio';
+  return 'other';
+}
 
 function hexToBytes(hex: string): Uint8Array | null {
   if (!/^[a-f0-9]{64}$/i.test(hex)) return null;
@@ -132,6 +144,13 @@ export function FeedPage() {
   const [hasMore, setHasMore] = useState(false);
   const [cursor, setCursor] = useState<number | undefined>(undefined);
   const [composer, setComposer] = useState('');
+  const [composerMedia, setComposerMedia] = useState<Array<{ url: string; type: 'image' | 'video' | 'audio' | 'other' }>>([]);
+  const [showMuteModal, setShowMuteModal] = useState(false);
+  const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [showRelayModal, setShowRelayModal] = useState(false);
+  const [connectedRelays, setConnectedRelays] = useState<string[]>([]);
+  const [relaySuggestions, setRelaySuggestions] = useState<string[]>([]);
+  const [relayInput, setRelayInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<FeedDiagnostics | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -328,6 +347,49 @@ export function FeedPage() {
     if (typeof window === 'undefined') return;
     window.localStorage.setItem(FEED_FILTERS_STORAGE_KEY, JSON.stringify(feedFilters));
   }, [feedFilters]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.localStorage.getItem(CONNECTED_RELAYS_STORAGE_KEY);
+    if (!raw) {
+      setConnectedRelays(DEFAULT_RELAYS);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setConnectedRelays(parsed.filter((relay): relay is string => typeof relay === 'string').map(normalizeRelay));
+      }
+    } catch {
+      setConnectedRelays(DEFAULT_RELAYS);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showRelayModal) return;
+    let cancelled = false;
+    const loadSuggestions = async () => {
+      try {
+        const res = await fetch('/api/relays/suggestions');
+        if (!res.ok) throw new Error('suggestions unavailable');
+        const json = await res.json() as { recommended?: Array<{ url?: string }>; popular?: Array<{ url?: string }>; forReading?: Array<{ url?: string }>; forWriting?: Array<{ url?: string }> };
+        const pool = [
+          ...(json.recommended || []).map((r) => r.url || ''),
+          ...(json.popular || []).map((r) => r.url || ''),
+          ...(json.forReading || []).map((r) => r.url || ''),
+          ...(json.forWriting || []).map((r) => r.url || ''),
+          ...DEFAULT_RELAYS,
+        ].map(normalizeRelay).filter((value) => value.startsWith('wss://'));
+        if (!cancelled) setRelaySuggestions(Array.from(new Set(pool)).slice(0, 20));
+      } catch {
+        if (!cancelled) setRelaySuggestions(DEFAULT_RELAYS.map(normalizeRelay));
+      }
+    };
+    void loadSuggestions();
+    return () => {
+      cancelled = true;
+    };
+  }, [showRelayModal]);
 
   useEffect(() => {
     if (!user?.pubkey) return;
@@ -577,12 +639,16 @@ export function FeedPage() {
   }, [feed, followingSet]);
 
   const onPublish = async () => {
-    if (!user?.pubkey || !composer.trim()) return;
+    if (!user?.pubkey) return;
+    const mediaUrls = composerMedia.map((media) => media.url).filter(Boolean);
+    const payload = [composer.trim(), ...mediaUrls].filter(Boolean).join('\n').trim();
+    if (!payload) return;
     setBusyId('composer');
-    const ok = await publishKind1(composer.trim(), user.pubkey, signEvent, publishEvent);
+    const ok = await publishKind1(payload, user.pubkey, signEvent, publishEvent);
     setBusyId(null);
     if (ok) {
       setComposer('');
+      setComposerMedia([]);
       await refresh();
     }
   };
@@ -686,8 +752,44 @@ export function FeedPage() {
 
   const clearFilters = () => {
     setFeedFilters(DEFAULT_FEED_FILTERS);
+    setSelectedTags([]);
   };
 
+  const persistRelays = async (nextRelays: string[]) => {
+    if (!user?.pubkey) return;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(CONNECTED_RELAYS_STORAGE_KEY, JSON.stringify(nextRelays));
+    }
+    setConnectedRelays(nextRelays);
+
+    const unsigned = {
+      kind: 10002,
+      content: '',
+      tags: nextRelays.map((relay) => ['r', relay]),
+      pubkey: user.pubkey,
+      created_at: Math.floor(Date.now() / 1000),
+    };
+
+    try {
+      const signed = await signEvent(unsigned);
+      if (signed) await publishEvent(signed, DEFAULT_RELAYS);
+    } catch {
+      // local persistence still works when signer/publish unavailable
+    }
+  };
+
+  const onAddRelay = async (relayUrl: string) => {
+    const normalized = normalizeRelay(relayUrl);
+    if (!normalized.startsWith('wss://')) return;
+    const next = addRelay(connectedRelays, normalized);
+    await persistRelays(next);
+    setRelayInput('');
+  };
+
+  const onRemoveRelay = async (relayUrl: string) => {
+    const next = connectedRelays.filter((relay) => relay !== relayUrl);
+    await persistRelays(next.length > 0 ? next : DEFAULT_RELAYS.map(normalizeRelay));
+  };
 
   const onAddCustomFeed = async (feedDef: CustomFeedDefinition) => {
     if (!user?.pubkey) return;
@@ -745,6 +847,60 @@ export function FeedPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <section className="cy-card p-5">
+        <p className="cy-kicker mb-2">COMPOSER / KIND-1</p>
+        <label htmlFor="feed-composer" className="sr-only">Compose event</label>
+        <textarea
+          id="feed-composer"
+          name="feedComposer"
+          className="cy-input min-h-28"
+          placeholder="Broadcast signal to your network... Markdown supported."
+          value={composer}
+          onChange={(e) => setComposer(e.target.value)}
+        />
+        <div className="mt-3">
+          <MediaUploader
+            label="Attach media via Blossom"
+            signEvent={signEvent}
+            onUploaded={(result) => {
+              const type = inferMediaType(result.url);
+              setComposerMedia((prev) => [...prev, { url: result.url, type }]);
+            }}
+          />
+          {composerMedia.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-cyan-200">Attached media previews</p>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                {composerMedia.map((media, idx) => (
+                  <div key={`${media.url}-${idx}`} className="rounded border border-cyan-700/50 bg-slate-950/60 p-2">
+                    {media.type === 'image' ? <img src={media.url} alt="Composer attachment" className="h-28 w-full rounded object-cover" /> : null}
+                    {media.type === 'video' ? <video src={media.url} controls className="h-28 w-full rounded object-cover" /> : null}
+                    {media.type === 'audio' ? <audio src={media.url} controls className="w-full" /> : null}
+                    {media.type === 'other' ? <a href={media.url} className="text-xs text-cyan-300 break-all" target="_blank" rel="noreferrer">{media.url}</a> : null}
+                    <button type="button" className="mt-2 cy-btn-secondary text-xs" onClick={() => setComposerMedia((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <p className="mt-2 text-xs text-slate-400">Uploads are added to the post payload automatically — we keep raw URLs out of the composer.</p>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <button className="cy-btn" onClick={onPublish} disabled={!canPost || busyId === 'composer'}>
+            {busyId === 'composer' ? 'Publishing…' : 'Post Event'}
+          </button>
+        </div>
+      </section>
+
+      <div className="cy-card p-3 flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="cy-chip" onClick={() => setShowMuteModal(true)}>🔧 Mute</button>
+          <button type="button" className="cy-chip" onClick={() => setShowFiltersModal(true)}>🧰 Content Filters</button>
+          <button type="button" className="cy-chip" onClick={() => setShowRelayModal(true)}>📡 Relay Status</button>
+        </div>
+        <p className="text-xs text-cyan-200">{hiddenCount} posts hidden</p>
+      </div>
+
       <header className="cy-card p-5">
         <div className="flex items-center justify-between gap-4 mb-3">
           <p className="cy-kicker">SOCIAL FEED</p>
@@ -811,60 +967,7 @@ export function FeedPage() {
         discoverableFeeds={discoverableFeeds}
       />
 
-      <section className="cy-card p-5">
-        <p className="cy-kicker mb-2">COMPOSER / KIND-1</p>
-        <label htmlFor="feed-composer" className="sr-only">Compose event</label>
-        <textarea
-          id="feed-composer"
-          name="feedComposer"
-          className="cy-input min-h-28"
-          placeholder="Broadcast signal to your network..."
-          value={composer}
-          onChange={(e) => setComposer(e.target.value)}
-        />
-        <div className="mt-3">
-          <MediaUploader
-            label="Attach media via Blossom"
-            signEvent={signEvent}
-            onUploaded={(result) => setComposer((prev) => `${prev.trim()}\n${result.url}`.trim())}
-          />
-        </div>
-        <div className="mt-3 flex justify-end">
-          <button className="cy-btn" onClick={onPublish} disabled={!canPost || busyId === 'composer'}>
-            {busyId === 'composer' ? 'Publishing…' : 'Post Event'}
-          </button>
-        </div>
-      </section>
-
       <section className="space-y-4">
-        <ConfigAccordion
-          id="feed-content-filters"
-          title="Content Filters"
-          subtitle="Narrow the timeline by post type"
-          summary="Filter chips for media, replies, reposts, and link-heavy content"
-          defaultOpen={false}
-          rightSlot={<button className="cy-btn-secondary text-xs" onClick={clearFilters}>Reset</button>}
-        >
-          <div className="flex flex-wrap gap-2">
-            {(Object.keys(FEED_FILTER_LABELS) as FeedFilter[]).map((filter) => {
-              const active = feedFilters[filter];
-              return (
-                <button
-                  key={filter}
-                  className={`cy-chip text-sm ${active ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
-                  onClick={() => toggleFilter(filter)}
-                >
-                  {FEED_FILTER_LABELS[filter]}
-                </button>
-              );
-            })}
-          </div>
-        </ConfigAccordion>
-
-        <div className="cy-card p-4 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-sm text-cyan-200">{hiddenCount} posts hidden by profile mute rules</p>
-          <Link to="/settings" className="cy-btn-secondary text-xs">Manage muted words</Link>
-        </div>
 
         {notificationQueue.length > 0 ? (
           <div className="cy-card p-4 border border-emerald-400/40">
@@ -902,16 +1005,6 @@ export function FeedPage() {
             <p className="cy-muted mt-2">Try clearing filters, refreshing feed, or following more accounts from Discover.</p>
           </div>
         ) : null}
-
-        <FilterBar
-          title="Feed Tag Filter"
-          availableTags={availableTags}
-          selectedTags={selectedTags}
-          logic={logic}
-          onTagsChange={setSelectedTags}
-          onLogicChange={setLogic}
-          onApply={() => { /* live filter */ }}
-        />
 
         {tagFilteredFeed.map((item) => {
           const media = parseMediaFromFeedItem(item);
@@ -1001,6 +1094,103 @@ export function FeedPage() {
         <div ref={observerRef} className="h-4" />
         {loadingMore ? <div className="cy-card p-4 text-sm">Loading more events…</div> : null}
       </section>
+
+      {showMuteModal ? (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setShowMuteModal(false)}>
+          <div className="cy-card w-full max-w-lg p-4 space-y-4" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-cyan-100">Mute settings</h3>
+            <p className="text-sm text-cyan-200">Manage muted words and profiles in Settings.</p>
+            <div className="flex justify-between items-center gap-3">
+              <Link to="/settings" className="cy-btn">Open Settings</Link>
+              <button type="button" className="cy-chip" onClick={() => setShowMuteModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showFiltersModal ? (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setShowFiltersModal(false)}>
+          <div className="cy-card w-full max-w-2xl p-4 space-y-4 max-h-[85vh] overflow-auto" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-cyan-100">Content filters</h3>
+              <button type="button" className="cy-chip" onClick={clearFilters}>Reset all</button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(FEED_FILTER_LABELS) as FeedFilter[]).map((filter) => {
+                const active = feedFilters[filter];
+                return (
+                  <button
+                    key={filter}
+                    className={`cy-chip text-sm ${active ? 'border-cyan-300 text-cyan-100 shadow-[0_0_14px_rgba(0,212,255,0.25)]' : ''}`}
+                    onClick={() => toggleFilter(filter)}
+                  >
+                    {FEED_FILTER_LABELS[filter]}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="space-y-2 border-t border-gray-700/60 pt-3">
+              <p className="text-sm text-cyan-200">Tag filters</p>
+              <div className="flex flex-wrap gap-2">
+                {availableTags.slice(0, 80).map((tag) => {
+                  const active = selectedTags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      className={`cy-chip text-xs ${active ? 'border-cyan-300 text-cyan-100' : ''}`}
+                      onClick={() => setSelectedTags(active ? selectedTags.filter((t) => t !== tag) : [...selectedTags, tag])}
+                    >
+                      #{tag}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-slate-400">Match logic</span>
+                <button type="button" className={`cy-chip text-xs ${logic === 'or' ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setLogic('or')}>Any</button>
+                <button type="button" className={`cy-chip text-xs ${logic === 'and' ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => setLogic('and')}>All</button>
+              </div>
+            </div>
+            <div className="flex justify-end"><button type="button" className="cy-btn" onClick={() => setShowFiltersModal(false)}>Done</button></div>
+          </div>
+        </div>
+      ) : null}
+
+      {showRelayModal ? (
+        <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setShowRelayModal(false)}>
+          <div className="cy-card w-full max-w-2xl p-4 space-y-4 max-h-[85vh] overflow-auto" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-cyan-100">Relay management</h3>
+            <p className="text-xs text-slate-400">Connected relays are stored locally and published as kind:10002 when signing is available.</p>
+            <div className="flex flex-wrap gap-2">
+              {connectedRelays.map((relay) => (
+                <span key={relay} className="cy-chip text-xs">
+                  {relay.replace('wss://', '')}
+                  <button type="button" className="ml-2 text-red-300" onClick={() => void onRemoveRelay(relay)}>×</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input value={relayInput} onChange={(e) => setRelayInput(e.target.value)} placeholder="wss://your-relay.example" className="cy-input" />
+              <button type="button" className="cy-btn" onClick={() => void onAddRelay(relayInput)}>Add</button>
+            </div>
+            <div>
+              <p className="text-sm text-cyan-200 mb-2">Known relay suggestions</p>
+              <div className="flex flex-wrap gap-2">
+                {relaySuggestions.map((relay) => {
+                  const selected = connectedRelays.includes(relay);
+                  return (
+                    <button key={relay} type="button" className={`cy-chip text-xs ${selected ? 'border-cyan-300 text-cyan-100' : ''}`} onClick={() => void onAddRelay(relay)} disabled={selected}>
+                      {selected ? '✓ ' : '+ '}{relay.replace('wss://', '')}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex justify-end"><button type="button" className="cy-btn" onClick={() => setShowRelayModal(false)}>Done</button></div>
+          </div>
+        </div>
+      ) : null}
 
       {zapComposeItem ? (
         <div className="fixed inset-0 z-50 bg-black/70 p-4 flex items-center justify-center" onClick={() => setZapComposeItem(null)}>

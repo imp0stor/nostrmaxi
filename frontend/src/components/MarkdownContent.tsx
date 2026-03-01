@@ -21,6 +21,7 @@ export const MarkdownContent = memo(function MarkdownContent({ text, className =
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSanitize]}
+        urlTransform={(url) => (/^(https?:|mailto:)/i.test(url) ? url : '')}
         components={{
           h1: ({ children }) => <h1 className="text-xl font-semibold text-slate-100 mt-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-lg font-semibold text-slate-100 mt-2">{children}</h2>,
@@ -30,7 +31,7 @@ export const MarkdownContent = memo(function MarkdownContent({ text, className =
           ol: ({ children }) => <ol className="list-decimal pl-5 space-y-1">{children}</ol>,
           li: ({ children }) => <li className="text-gray-100">{children}</li>,
           blockquote: ({ children }) => <blockquote className="border-l-2 border-cyan-500/60 bg-cyan-950/20 px-3 py-2 text-slate-300 italic">{children}</blockquote>,
-          a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">{children}</a>,
+          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="text-cyan-300 underline underline-offset-2 hover:text-cyan-200">{children}</a>,
           code: ({ children }) => <code className="rounded bg-slate-800/90 px-1.5 py-0.5 text-xs text-cyan-200">{children}</code>,
           pre: ({ children }) => <pre className="overflow-x-auto rounded-md bg-slate-950/80 p-3 text-xs text-cyan-100">{children}</pre>,
           hr: () => <hr className="border-slate-700/80" />,
