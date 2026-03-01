@@ -152,6 +152,10 @@ class ApiClient {
     return this.request('/auth/me');
   }
 
+  async getAdminCheck(): Promise<{ isAdmin: boolean }> {
+    return this.request('/admin/check');
+  }
+
   async logout(): Promise<void> {
     await this.request('/auth/logout', { method: 'POST' });
     this.setToken(null);

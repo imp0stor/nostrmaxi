@@ -8,6 +8,7 @@ interface SidebarProps {
   collapsed: boolean;
   mobileOpen: boolean;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   onToggleCollapsed: () => void;
   onCloseMobile: () => void;
 }
@@ -38,6 +39,7 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   isAuthenticated,
+  isAdmin,
   onToggleCollapsed,
   onCloseMobile,
 }: SidebarProps) {
@@ -74,6 +76,7 @@ export function Sidebar({
             }
 
             if (item.requiresAuth && !isAuthenticated) return null;
+            if (item.path === '/admin' && !isAdmin) return null;
 
             const isActive =
               location.pathname === item.path ||

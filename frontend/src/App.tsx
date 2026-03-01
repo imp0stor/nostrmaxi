@@ -27,6 +27,7 @@ import { AdminPage } from './pages/AdminPage';
 import { truncateNpub } from './lib/nostr';
 import { IDENTITY_REFRESH_EVENT } from './lib/identityRefresh';
 import { resolvePrimaryIdentityDetailed } from './lib/identityResolver';
+import { api } from './lib/api';
 import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { useSidebarState } from './hooks/useSidebarState';
@@ -37,6 +38,8 @@ export default function App() {
   const [showIdentityMenu, setShowIdentityMenu] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [primaryIdentity, setPrimaryIdentity] = useState<string>('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { collapsed, toggleCollapsed } = useSidebarState();
@@ -58,6 +61,39 @@ export default function App() {
       navigate('/feed', { replace: true });
     }
   }, [isAuthenticated, user, location.pathname, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAdminStatus = async () => {
+      if (!isAuthenticated) {
+        setIsAdmin(false);
+        setIsAdminLoading(false);
+        return;
+      }
+
+      setIsAdminLoading(true);
+      try {
+        const result = await api.getAdminCheck();
+        if (!cancelled) {
+          setIsAdmin(Boolean(result?.isAdmin));
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAdmin(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsAdminLoading(false);
+        }
+      }
+    };
+
+    void loadAdminStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +144,7 @@ export default function App() {
         collapsed={collapsed}
         mobileOpen={mobileSidebarOpen}
         isAuthenticated={isAuthenticated}
+        isAdmin={isAdmin}
         onToggleCollapsed={toggleCollapsed}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
@@ -149,7 +186,20 @@ export default function App() {
             <Route path="/nip05" element={isAuthenticated ? <Nip05Page /> : <Navigate to="/" replace />} />
             <Route path="/profile/:npub" element={isAuthenticated ? <ProfilePage /> : <Navigate to="/" replace />} />
             <Route path="/settings" element={isAuthenticated ? <SettingsPage /> : <Navigate to="/" replace />} />
-            <Route path="/admin" element={isAuthenticated ? <AdminPage /> : <Navigate to="/" replace />} />
+            <Route
+              path="/admin/*"
+              element={
+                !isAuthenticated ? (
+                  <Navigate to="/" replace />
+                ) : isAdminLoading ? (
+                  <div className="max-w-3xl mx-auto px-4 py-8"><div className="cy-card p-6">Checking admin access…</div></div>
+                ) : isAdmin ? (
+                  <AdminPage />
+                ) : (
+                  <Navigate to="/feed" replace />
+                )
+              }
+            />
             <Route path="/receipt/:paymentId" element={<ReceiptPage />} />
           </Routes>
         </main>

@@ -14,11 +14,12 @@ import { EngagementChart } from '../components/analytics/EngagementChart';
 import { PostingActivityChart } from '../components/analytics/PostingActivityChart';
 import { BestHoursChart } from '../components/analytics/BestHoursChart';
 import { BestDaysChart } from '../components/analytics/BestDaysChart';
-import { TopPostCard } from '../components/analytics/TopPostCard';
 import { HashtagTable } from '../components/analytics/HashtagTable';
 import { AnalyticsLoadingSkeleton } from '../components/analytics/AnalyticsLoadingSkeleton';
 import { Avatar } from '../components/Avatar';
 import { PostModal } from '../components/PostModal';
+import { InlineContent } from '../components/InlineContent';
+import { parseMediaFromFeedItem } from '../lib/media';
 
 interface TimelineDataPoint {
   date: string;
@@ -37,6 +38,11 @@ interface TopPost {
   score: number;
 }
 
+interface AnalyticsPost extends TopPost {
+  createdAt?: number;
+  event?: NostrEvent;
+}
+
 interface HashtagStat {
   tag: string;
   count: number;
@@ -49,7 +55,14 @@ interface UserMetrics {
   totalPosts: number;
   totalZaps: number;
   totalZapAmount: number;
+  totalZapAmountSent: number;
+  totalZapsSent: number;
   averageZapAmount: number;
+  engagementRate: number;
+  growthPostsPct: number;
+  growthEngagementPct: number;
+  totalReactions: number;
+  totalReposts: number;
   timeline: TimelineDataPoint[];
   bestHours: { hour: number; engagement: number }[];
   bestDays: { day: string; engagement: number }[];
@@ -57,6 +70,7 @@ interface UserMetrics {
   topHashtags: HashtagStat[];
   topZappers: { pubkey: string; sats: number; count: number }[];
   recentPosts: { id: string; preview: string; createdAt: number }[];
+  relayDistribution: { relay: string; posts: number }[];
   noHistoricalDataMessage?: string;
 }
 
@@ -176,7 +190,16 @@ function mapMetrics(data: AnalyticsDashboardData): UserMetrics {
     totalPosts: data.totalPosts,
     totalZaps: data.zapStats.totalZaps,
     totalZapAmount: data.zapStats.totalSats,
+    totalZapAmountSent: data.zapStats.totalSatsSent,
+    totalZapsSent: data.zapStats.totalZapsSent,
     averageZapAmount: data.zapStats.averageZapAmount,
+    engagementRate: data.totalPosts > 0
+      ? Number((((data.engagementTotals.reactions + data.engagementTotals.reposts + data.engagementTotals.zaps) / data.totalPosts)).toFixed(2))
+      : 0,
+    growthPostsPct: data.growth.postsDeltaPct,
+    growthEngagementPct: data.growth.engagementDeltaPct,
+    totalReactions: data.engagementTotals.reactions,
+    totalReposts: data.engagementTotals.reposts,
     timeline,
     bestHours: data.bestPostingTimes.hours,
     bestDays: data.bestPostingTimes.days,
@@ -184,6 +207,7 @@ function mapMetrics(data: AnalyticsDashboardData): UserMetrics {
     topHashtags,
     topZappers: data.zapStats.topZappers.map((z) => ({ pubkey: z.pubkey, sats: z.totalSats, count: z.zapCount })),
     recentPosts: data.recentPosts,
+    relayDistribution: data.relayDistribution,
     noHistoricalDataMessage: data.noHistoricalDataMessage,
   };
 }
@@ -442,9 +466,13 @@ export function AnalyticsPage() {
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('30d');
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
-  const [selectedPost, setSelectedPost] = useState<TopPost | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null);
   const [selectedZapperPubkey, setSelectedZapperPubkey] = useState<string | null>(null);
   const [selectedHashtag, setSelectedHashtag] = useState<string | null>(null);
+  const [postEventById, setPostEventById] = useState<Map<string, NostrEvent>>(new Map());
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [zapperProfiles, setZapperProfiles] = useState<Map<string, any>>(new Map());
+  const [zappersLoading, setZappersLoading] = useState(false);
 
   useEffect(() => {
     if (!user?.pubkey) return;
@@ -466,10 +494,73 @@ export function AnalyticsPage() {
     void loadAnalytics();
   }, [user?.pubkey, timeRange, refreshTick]);
 
+  useEffect(() => {
+    if (!metrics) return;
+    const ids = Array.from(new Set([...metrics.topPosts.map((p) => p.id), ...metrics.recentPosts.map((p) => p.id)]));
+    if (ids.length === 0) return;
+
+    const loadPosts = async () => {
+      setPostsLoading(true);
+      try {
+        const pool = new SimplePool();
+        const events = await pool.querySync(FALLBACK_RELAYS, { kinds: [1], ids, limit: ids.length }) as NostrEvent[];
+        setPostEventById(new Map(events.map((evt) => [evt.id, evt])));
+      } catch (err) {
+        console.error('Failed to load analytics posts', err);
+      } finally {
+        setPostsLoading(false);
+      }
+    };
+
+    void loadPosts();
+  }, [metrics]);
+
+  useEffect(() => {
+    if (!metrics?.topZappers.length) return;
+    const pubkeys = metrics.topZappers.slice(0, 10).map((z) => z.pubkey);
+    const loadProfiles = async () => {
+      setZappersLoading(true);
+      try {
+        const profiles = await fetchProfilesBatchCached(pubkeys);
+        setZapperProfiles(profiles);
+      } catch (err) {
+        console.error('Failed to load zapper profiles', err);
+      } finally {
+        setZappersLoading(false);
+      }
+    };
+
+    void loadProfiles();
+  }, [metrics]);
+
   const safeMetrics = useMemo<UserMetrics | null>(() => metrics, [metrics]);
 
   if (!user) return null;
   if (loading || !safeMetrics) return <AnalyticsLoadingSkeleton />;
+
+  const topPostsDetailed: AnalyticsPost[] = safeMetrics.topPosts.map((post) => ({
+    ...post,
+    createdAt: postEventById.get(post.id)?.created_at,
+    event: postEventById.get(post.id),
+  }));
+
+  const recentPostsDetailed: AnalyticsPost[] = safeMetrics.recentPosts.map((post) => {
+    const match = safeMetrics.topPosts.find((top) => top.id === post.id);
+    return {
+      id: post.id,
+      content: post.preview,
+      reactions: match?.reactions ?? 0,
+      replies: match?.replies ?? 0,
+      reposts: match?.reposts ?? 0,
+      zaps: match?.zaps ?? 0,
+      zapAmount: match?.zapAmount ?? 0,
+      score: match?.score ?? 0,
+      createdAt: post.createdAt,
+      event: postEventById.get(post.id),
+    };
+  });
+
+  const selectedPost = selectedPostId ? safeMetrics.topPosts.find((post) => post.id === selectedPostId) : null;
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
@@ -511,11 +602,13 @@ export function AnalyticsPage() {
         </div>
       )}
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <MetricCard label="Followers" value={formatNumber(safeMetrics.followerCount)} icon="👥" />
         <MetricCard label="Following" value={formatNumber(safeMetrics.followingCount)} icon="➡️" />
         <MetricCard label="Posts" value={formatNumber(safeMetrics.totalPosts)} icon="📝" />
-        <MetricCard label="Total Zaps" value={`${formatSats(safeMetrics.totalZapAmount)} sats`} icon="⚡" />
+        <MetricCard label="Engagement / Post" value={safeMetrics.engagementRate.toFixed(2)} icon="📈" />
+        <MetricCard label="Zap In" value={`${formatSats(safeMetrics.totalZapAmount)} sats`} icon="⚡" />
+        <MetricCard label="Zap Out" value={`${formatSats(safeMetrics.totalZapAmountSent)} sats`} icon="⚡" />
       </section>
 
       {safeMetrics.noHistoricalDataMessage && (
@@ -537,37 +630,90 @@ export function AnalyticsPage() {
         </div>
       </section>
 
-      <section className="cy-card p-5">
-        <h2 className="text-lg font-semibold text-white mb-4">🏆 Top Posts (Real Engagement)</h2>
+      <section className="cy-card nm-surface p-5">
+        <h2 className="text-lg font-semibold text-white mb-4">📊 Growth & Distribution</h2>
+        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+          <div className="cy-card p-3"><p className="text-xs text-gray-400">Total reactions</p><p className="text-lg text-white font-semibold">{formatNumber(safeMetrics.totalReactions)}</p></div>
+          <div className="cy-card p-3"><p className="text-xs text-gray-400">Total reposts</p><p className="text-lg text-white font-semibold">{formatNumber(safeMetrics.totalReposts)}</p></div>
+          <div className="cy-card p-3"><p className="text-xs text-gray-400">Post growth (recent vs prior)</p><p className={`text-lg font-semibold ${safeMetrics.growthPostsPct >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{safeMetrics.growthPostsPct}%</p></div>
+          <div className="cy-card p-3"><p className="text-xs text-gray-400">Engagement growth</p><p className={`text-lg font-semibold ${safeMetrics.growthEngagementPct >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{safeMetrics.growthEngagementPct}%</p></div>
+        </div>
+        <div>
+          <p className="text-sm text-gray-300 mb-2">Relay distribution</p>
+          <div className="space-y-2">
+            {safeMetrics.relayDistribution.slice(0, 8).map((relay) => (
+              <div key={relay.relay} className="flex items-center gap-3 text-sm">
+                <span className="w-48 max-w-[55%] truncate text-gray-400">{relay.relay.replace('wss://', '')}</span>
+                <div className="flex-1 h-2 rounded bg-gray-800 overflow-hidden"><div className="h-2 bg-orange-400/80" style={{ width: `${Math.max(4, (relay.posts / Math.max(1, safeMetrics.relayDistribution[0]?.posts || 1)) * 100)}%` }} /></div>
+                <span className="text-gray-300 w-10 text-right">{relay.posts}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="cy-card nm-surface p-5">
+        <h2 className="text-lg font-semibold text-white mb-4">🏆 Top Posts (Top 10)</h2>
+        {postsLoading ? <p className="text-sm text-cyan-300 mb-3">Loading full post details…</p> : null}
         {safeMetrics.topPosts.length === 0 ? (
           <p className="text-gray-400">📭 No posts found yet. Publish a post to start tracking engagement.</p>
         ) : (
-          <div className="space-y-3">
-            {safeMetrics.topPosts.slice(0, 5).map((post, i) => (
-              <TopPostCard key={post.id} rank={i + 1} post={post} onClick={() => setSelectedPost(post)} />
+          <div className="space-y-3 max-h-[42rem] overflow-y-auto pr-1">
+            {topPostsDetailed.slice(0, 10).map((post, i) => (
+              <article key={post.id} className="cy-card border border-orange-500/25 p-4">
+                <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+                  <span className="font-semibold text-orange-200">#{i + 1}</span>
+                  <span>{new Date((post.createdAt || Math.floor(Date.now() / 1000)) * 1000).toLocaleString()}</span>
+                </div>
+                {post.event ? (
+                  <InlineContent tokens={parseMediaFromFeedItem(post.event).tokens} quotedEvents={new Map()} quotedProfiles={new Map()} />
+                ) : (
+                  <p className="text-gray-200 whitespace-pre-wrap break-words">{post.content}</p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className="cy-chip">❤️ {post.reactions}</span>
+                  <span className="cy-chip">💬 {post.replies}</span>
+                  <span className="cy-chip">🔁 {post.reposts}</span>
+                  <span className="cy-chip">⚡ {post.zaps} ({formatSats(post.zapAmount)} sats)</span>
+                  <button type="button" onClick={() => setSelectedPostId(post.id)} className="cy-chip border-orange-400/60 text-orange-200">Open thread</button>
+                </div>
+              </article>
             ))}
           </div>
         )}
       </section>
 
-      <section className="cy-card p-5">
-        <h2 className="text-lg font-semibold text-white mb-4">⚡ Zap Stats</h2>
-        <p className="text-gray-300 mb-3">Average zap amount: {formatSats(safeMetrics.averageZapAmount)} sats</p>
+      <section className="cy-card nm-surface p-5">
+        <h2 className="text-lg font-semibold text-white mb-4">⚡ Top Zappers</h2>
+        <p className="text-gray-300 mb-3">Avg in-zap: {formatSats(safeMetrics.averageZapAmount)} sats · Sent: {formatSats(safeMetrics.totalZapAmountSent)} sats ({safeMetrics.totalZapsSent} zaps)</p>
+        {zappersLoading ? <p className="text-sm text-cyan-300 mb-3">Loading zapper profiles…</p> : null}
         {safeMetrics.topZappers.length === 0 ? (
           <p className="text-gray-400">⚡ No zaps yet.</p>
         ) : (
-          <div className="space-y-2">
-            {safeMetrics.topZappers.slice(0, 5).map((z) => (
-              <button
-                key={z.pubkey}
-                type="button"
-                onClick={() => setSelectedZapperPubkey(z.pubkey)}
-                className="w-full flex justify-between text-sm text-gray-300 hover:bg-gray-800/40 active:bg-gray-800/70 rounded px-2 py-1 border border-transparent hover:border-cyan-500/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
-              >
-                <span className="font-mono">{z.pubkey.slice(0, 12)}…</span>
-                <span>{formatSats(z.sats)} sats ({z.count} zaps)</span>
-              </button>
-            ))}
+          <div className="grid sm:grid-cols-2 gap-3">
+            {safeMetrics.topZappers.slice(0, 10).map((z) => {
+              const profile = zapperProfiles.get(z.pubkey);
+              return (
+                <button
+                  key={z.pubkey}
+                  type="button"
+                  onClick={() => setSelectedZapperPubkey(z.pubkey)}
+                  className="text-left rounded-lg border border-orange-500/25 bg-gray-900/40 p-3 hover:bg-gray-900/70 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar pubkey={z.pubkey} size={38} clickable={false} />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{profileDisplayName(z.pubkey, profile)}</p>
+                      <p className="text-xs text-gray-400 truncate">{profile?.nip05 || truncateNpub(encodeNpub(z.pubkey), 12)}</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-gray-300 flex items-center justify-between">
+                    <span>Received: {formatSats(z.sats)} sats</span>
+                    <span>{z.count} zaps</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </section>
@@ -581,17 +727,21 @@ export function AnalyticsPage() {
         )}
       </section>
 
-      <section className="cy-card p-5">
+      <section className="cy-card nm-surface p-5">
         <h2 className="text-lg font-semibold text-white mb-4">Recent Posts</h2>
-        {safeMetrics.recentPosts.length === 0 ? (
+        {postsLoading ? <p className="text-sm text-cyan-300 mb-3">Loading recent posts…</p> : null}
+        {recentPostsDetailed.length === 0 ? (
           <p className="text-gray-400">📭 No recent posts found.</p>
         ) : (
-          <div className="space-y-2">
-            {safeMetrics.recentPosts.slice(0, 8).map((post) => (
-              <div key={post.id} className="p-3 rounded border border-gray-700/60 bg-gray-800/50 shadow-sm">
-                <p className="text-gray-200 line-clamp-2">{post.preview}</p>
-                <p className="text-xs text-gray-500 mt-1">{new Date(post.createdAt * 1000).toLocaleString()}</p>
-              </div>
+          <div className="space-y-3">
+            {recentPostsDetailed.slice(0, 8).map((post) => (
+              <article key={post.id} className="p-3 rounded border border-gray-700/60 bg-gray-800/50 shadow-sm">
+                {post.event ? <InlineContent tokens={parseMediaFromFeedItem(post.event).tokens} quotedEvents={new Map()} quotedProfiles={new Map()} /> : <p className="text-gray-200">{post.content}</p>}
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="text-xs text-gray-500">{new Date((post.createdAt || Math.floor(Date.now() / 1000)) * 1000).toLocaleString()}</p>
+                  <button type="button" className="cy-chip text-xs" onClick={() => setSelectedPostId(post.id)}>Open</button>
+                </div>
+              </article>
             ))}
           </div>
         )}
@@ -599,8 +749,8 @@ export function AnalyticsPage() {
 
       <PostModal
         eventId={selectedPost?.id ?? null}
-        isOpen={Boolean(selectedPost)}
-        onClose={() => setSelectedPost(null)}
+        isOpen={Boolean(selectedPostId)}
+        onClose={() => setSelectedPostId(null)}
         initialMetrics={selectedPost ? {
           reactions: selectedPost.reactions,
           reposts: selectedPost.reposts,

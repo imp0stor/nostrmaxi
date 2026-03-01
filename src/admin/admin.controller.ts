@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@ne
 import type { Prisma } from '@prisma/client';
 import { AdminService } from './admin.service';
 import { NostrJwtAuthGuard } from '../auth/nostr-jwt-auth.guard';
-import { NostrAdminGuard } from '../auth/nostr-role.guard';
+import { AdminGuard } from './admin.guard';
 import { ConfigService } from '../config/config.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RelayDiscoveryService } from '../relay-discovery/relay-discovery.service';
@@ -18,7 +18,7 @@ interface ConfigMutationDto {
 
 @ApiTags('admin')
 @Controller('api/v1/admin')
-@UseGuards(NostrJwtAuthGuard, NostrAdminGuard)
+@UseGuards(NostrJwtAuthGuard, AdminGuard)
 export class AdminController {
   constructor(
     private adminService: AdminService,
