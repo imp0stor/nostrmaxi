@@ -23,6 +23,7 @@ function dmItem(partial: Partial<DirectMessageItem>): DirectMessageItem {
     createdAt: partial.createdAt || 1,
     ciphertext: partial.ciphertext || 'enc',
     plaintext: Object.prototype.hasOwnProperty.call(partial, 'plaintext') ? (partial.plaintext as string | null) : 'hello',
+    encryption: partial.encryption || 'nip04',
     decryptionError: partial.decryptionError,
     outgoing: partial.outgoing ?? true,
   };

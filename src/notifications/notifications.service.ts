@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+
+export const NOTIFICATIONS_DATA_PATH = 'NOTIFICATIONS_DATA_PATH';
 
 export interface NotificationItem {
   id: string;
@@ -22,8 +24,8 @@ export class NotificationsService {
   private readonly dataPath: string;
   private cache: NotificationsStore | null = null;
 
-  constructor(dataPath = resolve(process.cwd(), 'data/notifications.json')) {
-    this.dataPath = dataPath;
+  constructor(@Optional() @Inject(NOTIFICATIONS_DATA_PATH) dataPath?: string) {
+    this.dataPath = dataPath || resolve(process.cwd(), 'data/notifications.json');
   }
 
   async list(pubkey: string, limit = 50): Promise<NotificationItem[]> {
