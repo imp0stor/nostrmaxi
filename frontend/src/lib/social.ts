@@ -117,16 +117,35 @@ async function queryFollowersFromRelays(
   };
 }
 
+const FOLLOWING_MAX_RETRIES = 3;
+const FOLLOWING_INITIAL_BACKOFF_MS = 500;
+
 export async function loadFollowing(pubkey: string, relays: string[] = DEFAULT_RELAYS): Promise<string[]> {
-  const pool = new SimplePool();
-  try {
-    const contacts = await pool.querySync(relays, { kinds: [3], authors: [pubkey], limit: 20 });
-    if (contacts.length === 0) return [];
-    const latest = contacts.sort((a, b) => b.created_at - a.created_at)[0];
-    return unique(latest.tags.filter((t) => t[0] === 'p' && t[1]).map((t) => t[1]));
-  } finally {
-    pool.close(relays);
+  let backoffMs = FOLLOWING_INITIAL_BACKOFF_MS;
+  
+  for (let attempt = 0; attempt < FOLLOWING_MAX_RETRIES; attempt++) {
+    const pool = new SimplePool();
+    try {
+      const contacts = await pool.querySync(relays, { kinds: [3], authors: [pubkey], limit: 20 });
+      if (contacts.length > 0) {
+        const latest = contacts.sort((a, b) => b.created_at - a.created_at)[0];
+        return unique(latest.tags.filter((t) => t[0] === 'p' && t[1]).map((t) => t[1]));
+      }
+    } catch (err) {
+      console.warn(`[loadFollowing] attempt ${attempt + 1} failed:`, err);
+    } finally {
+      pool.close(relays);
+    }
+    
+    // Wait before retry (except on last attempt)
+    if (attempt < FOLLOWING_MAX_RETRIES - 1) {
+      await delay(backoffMs);
+      backoffMs *= 2;
+    }
   }
+  
+  // All retries failed
+  return [];
 }
 
 export interface RelayStatus {

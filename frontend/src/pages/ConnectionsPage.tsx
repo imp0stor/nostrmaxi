@@ -65,6 +65,22 @@ function buildCard(pubkey: string, profiles: Map<string, NostrProfile | null>): 
   };
 }
 
+function matchesConnection(pubkey: string, profiles: Map<string, NostrProfile | null>, query: string): boolean {
+  const profile = profiles.get(pubkey);
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const encodedNpub = encodeNpub(pubkey);
+  const candidates = [
+    profile?.display_name,
+    profile?.name,
+    profile?.nip05,
+    encodedNpub,
+  ];
+
+  return candidates.some((value) => value?.toLowerCase().includes(q));
+}
+
 async function publishPubkeyListUpdate(kind: 10000 | 10001, ownerPubkey: string, nextPubkeys: string[]) {
   const unsigned = {
     kind,
@@ -149,6 +165,18 @@ export function ConnectionsPage() {
     profiles: new Map(),
   });
   const [busyByPubkey, setBusyByPubkey] = useState<Record<string, BusyAction | undefined>>({});
+  const [searchInput, setSearchInput] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearchTerm(searchInput.trim().toLowerCase());
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [searchInput]);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,12 +250,33 @@ export function ConnectionsPage() {
     };
   }, [user?.pubkey]);
 
-  const followingCards = useMemo(() => state.following.map((pk) => buildCard(pk, state.profiles)), [state.following, state.profiles]);
-  const mutualCards = useMemo(() => state.mutuals.map((pk) => buildCard(pk, state.profiles)), [state.mutuals, state.profiles]);
-  const followerCards = useMemo(() => state.followers.map((pk) => buildCard(pk, state.profiles)), [state.followers, state.profiles]);
-  const followingSet = useMemo(() => new Set(state.following.map(normalizePubkey)), [state.following]);
+  const isFilterActive = searchTerm.length > 0;
+
+  const filteredFollowing = useMemo(
+    () => state.following.filter((pk) => matchesConnection(pk, state.profiles, searchTerm)),
+    [state.following, state.profiles, searchTerm],
+  );
+  const filteredMutuals = useMemo(
+    () => state.mutuals.filter((pk) => matchesConnection(pk, state.profiles, searchTerm)),
+    [state.mutuals, state.profiles, searchTerm],
+  );
+  const filteredFollowers = useMemo(
+    () => state.followers.filter((pk) => matchesConnection(pk, state.profiles, searchTerm)),
+    [state.followers, state.profiles, searchTerm],
+  );
+
   const mutedBlockedPubkeys = useMemo(() => unique([...state.muted, ...state.blocked]), [state.muted, state.blocked]);
-  const mutedBlockedCards = useMemo(() => mutedBlockedPubkeys.map((pk) => buildCard(pk, state.profiles)), [mutedBlockedPubkeys, state.profiles]);
+  const filteredMutedBlocked = useMemo(
+    () => mutedBlockedPubkeys.filter((pk) => matchesConnection(pk, state.profiles, searchTerm)),
+    [mutedBlockedPubkeys, state.profiles, searchTerm],
+  );
+
+  const followingCards = useMemo(() => filteredFollowing.map((pk) => buildCard(pk, state.profiles)), [filteredFollowing, state.profiles]);
+  const mutualCards = useMemo(() => filteredMutuals.map((pk) => buildCard(pk, state.profiles)), [filteredMutuals, state.profiles]);
+  const followerCards = useMemo(() => filteredFollowers.map((pk) => buildCard(pk, state.profiles)), [filteredFollowers, state.profiles]);
+  const mutedBlockedCards = useMemo(() => filteredMutedBlocked.map((pk) => buildCard(pk, state.profiles)), [filteredMutedBlocked, state.profiles]);
+
+  const followingSet = useMemo(() => new Set(state.following.map(normalizePubkey)), [state.following]);
 
   const setBusy = (pubkey: string, action?: BusyAction) => {
     setBusyByPubkey((prev) => ({ ...prev, [pubkey]: action }));
@@ -332,12 +381,35 @@ export function ConnectionsPage() {
         {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
       </section>
 
+      <section className="cy-card nm-surface p-4 md:p-5">
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            className="cy-input w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/80"
+            placeholder="Search connections..."
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            aria-label="Search connections"
+          />
+          {searchInput ? (
+            <button
+              type="button"
+              className="cy-chip shrink-0"
+              onClick={() => setSearchInput('')}
+              aria-label="Clear search"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <ConnectionColumn
           title="Following"
           cards={followingCards}
           loading={loading}
-          emptyLabel="You are not following anyone yet."
+          emptyLabel={isFilterActive ? 'No matches.' : 'You are not following anyone yet.'}
           renderActions={(card) => (
             <button
               type="button"
@@ -353,7 +425,7 @@ export function ConnectionsPage() {
           title="Mutuals"
           cards={mutualCards}
           loading={loading}
-          emptyLabel="No mutual follows yet."
+          emptyLabel={isFilterActive ? 'No matches.' : 'No mutual follows yet.'}
           renderActions={(card) => (
             <>
               <button
@@ -379,7 +451,7 @@ export function ConnectionsPage() {
           title="Followers"
           cards={followerCards}
           loading={loading}
-          emptyLabel="No followers found yet."
+          emptyLabel={isFilterActive ? 'No matches.' : 'No followers found yet.'}
           renderActions={(card) => {
             const alreadyFollowing = followingSet.has(normalizePubkey(card.pubkey));
             return (
@@ -412,7 +484,7 @@ export function ConnectionsPage() {
           title="Muted"
           cards={mutedBlockedCards}
           loading={loading}
-          emptyLabel="No muted users in your list."
+          emptyLabel={isFilterActive ? 'No matches.' : 'No muted users in your list.'}
           renderActions={(card) => (
             <button
               type="button"
