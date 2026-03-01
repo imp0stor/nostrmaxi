@@ -308,7 +308,7 @@ export function ProfilePage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="nm-page max-w-5xl">
       <div className="cy-card p-5">
         <p className="cy-kicker">PROFILE SURFACE</p>
         <div className="mt-2 flex items-center gap-4">

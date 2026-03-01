@@ -15,7 +15,7 @@ export function NotificationsPage() {
   const { notifications, unreadCount, isLoading, error, markRead, markAllRead, refresh } = useNotifications(isAuthenticated);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-5">
+    <div className="nm-page max-w-4xl">
       <section className="cy-card p-5 space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>

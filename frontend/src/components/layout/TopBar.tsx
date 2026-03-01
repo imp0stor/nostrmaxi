@@ -80,8 +80,8 @@ export function TopBar({
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-swordfish-muted/35 bg-swordfish-bg/70 backdrop-blur-xl">
-      <div className="h-16 px-4 flex items-center justify-between gap-3">
+    <header className="sticky top-0 z-20 border-b border-swordfish-muted/35 bg-swordfish-bg/78 backdrop-blur-xl">
+      <div className="h-16 px-4 flex items-center justify-between gap-3 max-w-[1400px] mx-auto">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -92,8 +92,8 @@ export function TopBar({
           >
             ☰
           </button>
-          <Link to="/" className="flex items-center gap-2 text-swordfish-accent font-bold tracking-[0.14em] text-sm sm:text-base">
-            <span>⚡</span>
+          <Link to="/" className="flex items-center gap-2 text-swordfish-accent font-bold tracking-[0.14em] text-sm sm:text-base nm-kbd-focus rounded-md px-1.5 py-1">
+            <span className="cy-mono">&gt;_</span>
             <span>NostrMaxi</span>
           </Link>
         </div>

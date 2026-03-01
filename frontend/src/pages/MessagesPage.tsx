@@ -127,7 +127,7 @@ export function MessagesPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-4">
+    <div className="nm-page max-w-6xl py-6">
       <section className="cy-card p-4">
         <h1 className="text-2xl font-semibold text-cyan-100">💬 Direct Messages</h1>
         <p className="cy-muted mt-1">NIP-04 private messaging shell with safe fallbacks.</p>

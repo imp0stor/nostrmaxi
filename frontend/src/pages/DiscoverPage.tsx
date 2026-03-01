@@ -413,11 +413,11 @@ export function DiscoverPage() {
   if (!isAuthenticated || !user) return <div className="max-w-3xl mx-auto px-4 py-8"><div className="cy-card p-6">Login required for discovery.</div></div>;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+    <div className="nm-page max-w-6xl">
       <header className="cy-card p-5">
         <p className="cy-kicker">DISCOVER</p>
         <h1 className="cy-title">Curated Nostr Accounts</h1>
-        <p className="cy-muted mt-2">Suggested creators and operators based on reputation, activity, and graph overlap.</p>
+        <p className="nm-subtitle mt-2">Suggested creators and operators based on reputation, activity, and graph overlap.</p>
       </header>
 
       <ConfigAccordion

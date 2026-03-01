@@ -1002,7 +1002,7 @@ export function FeedPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="nm-page max-w-5xl">
       <section className="cy-card nm-surface p-6">
         <p className="cy-kicker mb-2">COMPOSER / KIND-1</p>
         <label htmlFor="feed-composer" className="sr-only">Compose event</label>
@@ -1171,7 +1171,7 @@ export function FeedPage() {
           const interactionSummary = interactionByEventId.get(item.id);
           const topZappers = zapSummary?.topZappers?.filter((entry) => entry.pubkey !== 'anon').slice(0, 4) || [];
           return (
-            <article key={item.id} className={`cy-card p-5 ${notifyByEventId.has(item.id) ? 'border border-orange-400/50 shadow-[0_0_16px_rgba(249,115,22,0.2)]' : ''}`}>
+            <article key={item.id} className={`cy-card nm-card-interactive p-5 ${notifyByEventId.has(item.id) ? 'border border-orange-400/50 shadow-[0_0_16px_rgba(249,115,22,0.2)]' : ''}`}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <Avatar pubkey={item.pubkey} size={44} />
