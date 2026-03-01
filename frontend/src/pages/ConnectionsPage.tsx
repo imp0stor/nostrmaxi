@@ -310,7 +310,7 @@ export function ConnectionsPage() {
     <div className="mx-auto max-w-[1640px] p-4 md:p-6 space-y-4">
       <section className="cy-card nm-surface p-5">
         <h1 className="text-2xl md:text-3xl text-orange-100 font-semibold tracking-[0.06em] uppercase flex items-center gap-2"><img src={connectionsIcon} alt="" aria-hidden className="nm-icon" />Connections</h1>
-        <p className="cy-muted mt-2">Follow graph snapshot from kind:3 contact lists and kind:10000/10001 list events.</p>
+        <p className="cy-muted mt-2">Follow graph snapshot from kind:3 contact lists and kind:10000 mute list.</p>
         {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
       </section>
 
@@ -376,54 +376,34 @@ export function ConnectionsPage() {
                     {busyByPubkey[card.pubkey] === 'follow' ? 'Updating…' : '➕ Follow back'}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className="nm-pill text-xs"
-                  onClick={() => void onToggleList(10000, card.pubkey, true)}
-                  disabled={Boolean(busyByPubkey[card.pubkey]) || state.muted.includes(card.pubkey)}
-                >
-                  {busyByPubkey[card.pubkey] === 'mute' ? 'Updating…' : (state.muted.includes(card.pubkey) ? 'Muted' : '🔇 Mute')}
-                </button>
-                <button
-                  type="button"
-                  className="nm-pill text-xs border-red-400/40 text-red-200"
-                  onClick={() => void onToggleList(10001, card.pubkey, true)}
-                  disabled={Boolean(busyByPubkey[card.pubkey]) || state.blocked.includes(card.pubkey)}
-                >
-                  {busyByPubkey[card.pubkey] === 'block' ? 'Updating…' : (state.blocked.includes(card.pubkey) ? 'Blocked' : '⛔ Block')}
-                </button>
+                {!state.muted.includes(card.pubkey) && (
+                  <button
+                    type="button"
+                    className="nm-pill text-xs"
+                    onClick={() => void onToggleList(10000, card.pubkey, true)}
+                    disabled={Boolean(busyByPubkey[card.pubkey])}
+                  >
+                    {busyByPubkey[card.pubkey] === 'mute' ? 'Updating…' : '🔇 Mute'}
+                  </button>
+                )}
               </>
             );
           }}
         />
         <ConnectionColumn
-          title="Muted / Blocked"
+          title="Muted"
           cards={mutedBlockedCards}
           loading={loading}
-          emptyLabel="No muted or blocked users in your lists."
+          emptyLabel="No muted users in your list."
           renderActions={(card) => (
-            <>
-              {state.muted.includes(card.pubkey) ? (
-                <button
-                  type="button"
-                  className="nm-pill text-xs"
-                  onClick={() => void onToggleList(10000, card.pubkey, false)}
-                  disabled={Boolean(busyByPubkey[card.pubkey])}
-                >
-                  {busyByPubkey[card.pubkey] === 'unmute' ? 'Updating…' : '🔈 Unmute'}
-                </button>
-              ) : null}
-              {state.blocked.includes(card.pubkey) ? (
-                <button
-                  type="button"
-                  className="nm-pill text-xs border-red-400/40 text-red-200"
-                  onClick={() => void onToggleList(10001, card.pubkey, false)}
-                  disabled={Boolean(busyByPubkey[card.pubkey])}
-                >
-                  {busyByPubkey[card.pubkey] === 'unblock' ? 'Updating…' : '✅ Unblock'}
-                </button>
-              ) : null}
-            </>
+            <button
+              type="button"
+              className="nm-pill text-xs"
+              onClick={() => void onToggleList(10000, card.pubkey, false)}
+              disabled={Boolean(busyByPubkey[card.pubkey])}
+            >
+              {busyByPubkey[card.pubkey] === 'unmute' ? 'Updating…' : '🔈 Unmute'}
+            </button>
           )}
         />
       </div>

@@ -7,6 +7,13 @@ import messagesIcon from '../../assets/icons/messages.png';
 import notificationsIcon from '../../assets/icons/notifications.png';
 import profileIcon from '../../assets/icons/profile.png';
 import settingsIcon from '../../assets/icons/settings.png';
+import homeIcon from '../../assets/icons/home.png';
+import mediaIcon from '../../assets/icons/media.png';
+import listsIcon from '../../assets/icons/lists.png';
+import marketplaceIcon from '../../assets/icons/marketplace.png';
+import manageIcon from '../../assets/icons/manage.png';
+import ecosystemIcon from '../../assets/icons/ecosystem.png';
+import nip05Icon from '../../assets/icons/nip05.png';
 
 type SidebarItem =
   | { type: 'divider' }
@@ -23,25 +30,25 @@ interface SidebarProps {
 }
 
 const navItems: SidebarItem[] = [
-  { type: 'link', icon: '⌂', label: 'Home', path: '/' },
+  { type: 'link', icon: '⌂', iconSrc: homeIcon, label: 'Home', path: '/' },
   { type: 'link', icon: 'FD', iconSrc: profileIcon, label: 'Feed', path: '/feed', requiresAuth: true },
   { type: 'link', icon: 'DS', iconSrc: composeIcon, label: 'Discover', path: '/discover', requiresAuth: true },
   { type: 'link', icon: 'CN', iconSrc: connectionsIcon, label: 'Connections', path: '/connections', requiresAuth: true },
-  { type: 'link', icon: 'MD', label: 'Media', path: '/media-discovery', requiresAuth: true },
-  { type: 'link', icon: 'LS', label: 'Lists', path: '/lists', requiresAuth: true },
+  { type: 'link', icon: 'MD', iconSrc: mediaIcon, label: 'Media', path: '/media-discovery', requiresAuth: true },
+  { type: 'link', icon: 'LS', iconSrc: listsIcon, label: 'Lists', path: '/lists', requiresAuth: true },
   { type: 'link', icon: 'NT', iconSrc: notificationsIcon, label: 'Notifications', path: '/notifications', requiresAuth: true },
   { type: 'link', icon: 'BM', iconSrc: bookmarksIcon, label: 'Bookmarks', path: '/bookmarks', requiresAuth: true },
   { type: 'link', icon: 'DM', iconSrc: messagesIcon, label: 'Messages', path: '/messages', requiresAuth: true },
   { type: 'divider' },
-  { type: 'link', icon: 'MP', label: 'Marketplace', path: '/marketplace', requiresAuth: true },
-  { type: 'link', icon: 'MG', label: 'Manage', path: '/dashboard', requiresAuth: true },
+  { type: 'link', icon: 'MP', iconSrc: marketplaceIcon, label: 'Marketplace', path: '/marketplace', requiresAuth: true },
+  { type: 'link', icon: 'MG', iconSrc: manageIcon, label: 'Manage', path: '/dashboard', requiresAuth: true },
   { type: 'link', icon: 'AN', iconSrc: analyticsIcon, label: 'Analytics', path: '/analytics', requiresAuth: true, requiresPaid: true },
-  { type: 'link', icon: 'EC', label: 'Ecosystem', path: '/ecosystem', requiresAuth: true },
+  { type: 'link', icon: 'EC', iconSrc: ecosystemIcon, label: 'Ecosystem', path: '/ecosystem', requiresAuth: true },
   { type: 'divider' },
   { type: 'link', icon: 'PF', iconSrc: profileIcon, label: 'Profile', path: '/profile/me', requiresAuth: true },
   { type: 'link', icon: 'ST', iconSrc: settingsIcon, label: 'Settings', path: '/settings', requiresAuth: true },
   { type: 'link', icon: 'AD', iconSrc: settingsIcon, label: 'Admin Config', path: '/admin', requiresAuth: true },
-  { type: 'link', icon: 'ID', label: 'Get Your NIP-05', path: '/pricing', requiresAuth: true },
+  { type: 'link', icon: 'ID', iconSrc: nip05Icon, label: 'Get Your NIP-05', path: '/pricing', requiresAuth: true },
 ];
 
 export function Sidebar({
