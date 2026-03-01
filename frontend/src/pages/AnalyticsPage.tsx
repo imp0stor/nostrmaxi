@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { SimplePool } from 'nostr-tools';
 import { useAuth } from '../hooks/useAuth';
 import { clearAnalyticsCache, loadAnalyticsDashboard, type AnalyticsDashboardData, type AnalyticsInterval } from '../lib/analytics';
@@ -8,6 +8,7 @@ import { FALLBACK_RELAYS } from '../lib/relayConfig';
 import { parseZapReceipt } from '../lib/zaps';
 import { fetchProfilesBatchCached, profileDisplayName } from '../lib/profileCache';
 import { encodeNpub, truncateNpub } from '../lib/nostr';
+import { getDefaultAnalyticsTarget, resolveAnalyticsTargetIdentifier, type AnalyticsTargetResolution } from '../lib/analyticsTarget';
 import { TimeRangePicker, type TimeRangeValue } from '../components/analytics/TimeRangePicker';
 import { MetricCard } from '../components/analytics/MetricCard';
 import { EngagementChart } from '../components/analytics/EngagementChart';
@@ -460,6 +461,7 @@ function HashtagPostsModal({ hashtag, authorPubkey, onClose }: { hashtag: string
 
 export function AnalyticsPage() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [metrics, setMetrics] = useState<UserMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -473,16 +475,58 @@ export function AnalyticsPage() {
   const [postsLoading, setPostsLoading] = useState(false);
   const [zapperProfiles, setZapperProfiles] = useState<Map<string, any>>(new Map());
   const [zappersLoading, setZappersLoading] = useState(false);
+  const [targetInput, setTargetInput] = useState('');
+  const [targetResolution, setTargetResolution] = useState<AnalyticsTargetResolution | null>(null);
+  const [targetResolveError, setTargetResolveError] = useState<string | null>(null);
+  const [visibleTopPosts, setVisibleTopPosts] = useState(100);
+  const [visibleRecentPosts, setVisibleRecentPosts] = useState(100);
 
   useEffect(() => {
     if (!user?.pubkey) return;
+
+    const targetFromQuery = searchParams.get('target')?.trim();
+    const defaultTarget = getDefaultAnalyticsTarget(user.pubkey);
+
+    const resolveTarget = async () => {
+      if (!targetFromQuery) {
+        setTargetInput('');
+        setTargetResolution(defaultTarget);
+        setTargetResolveError(null);
+        return;
+      }
+
+      setTargetInput(targetFromQuery);
+      const resolved = await resolveAnalyticsTargetIdentifier(targetFromQuery);
+      if (!resolved.resolution) {
+        setTargetResolution(defaultTarget);
+        setTargetResolveError(resolved.error || 'Could not resolve target.');
+        return;
+      }
+
+      setTargetResolution(resolved.resolution);
+      setTargetResolveError(null);
+    };
+
+    void resolveTarget();
+  }, [user?.pubkey, searchParams]);
+
+  useEffect(() => {
+    if (!user?.pubkey || !targetResolution?.targetPubkey) return;
 
     const loadAnalytics = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await loadAnalyticsDashboard(user.pubkey, 'individual', { interval: toRange(timeRange) }, refreshTick > 0);
+        const response = await loadAnalyticsDashboard(
+          user.pubkey,
+          'individual',
+          { interval: toRange(timeRange) },
+          refreshTick > 0,
+          targetResolution.targetPubkey,
+        );
         setMetrics(mapMetrics(response));
+        setVisibleTopPosts(100);
+        setVisibleRecentPosts(100);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load analytics');
       } finally {
@@ -492,7 +536,7 @@ export function AnalyticsPage() {
     };
 
     void loadAnalytics();
-  }, [user?.pubkey, timeRange, refreshTick]);
+  }, [user?.pubkey, targetResolution?.targetPubkey, timeRange, refreshTick]);
 
   useEffect(() => {
     if (!metrics) return;
@@ -534,31 +578,43 @@ export function AnalyticsPage() {
   }, [metrics]);
 
   const safeMetrics = useMemo<UserMetrics | null>(() => metrics, [metrics]);
+  const activeTargetPubkey = targetResolution?.targetPubkey || user?.pubkey || '';
+  const activeTargetNpub = useMemo(() => (activeTargetPubkey ? encodeNpub(activeTargetPubkey) : ''), [activeTargetPubkey]);
+  const isUsingDefaultTarget = Boolean(user?.pubkey && activeTargetPubkey && user.pubkey.toLowerCase() === activeTargetPubkey.toLowerCase());
+  const sortedTopPostsDetailed = useMemo(() => {
+    if (!safeMetrics) return [] as AnalyticsPost[];
+    return safeMetrics.topPosts
+      .map((post) => ({
+        ...post,
+        createdAt: postEventById.get(post.id)?.created_at,
+        event: postEventById.get(post.id),
+      }))
+      .sort((a, b) => (b.score - a.score) || ((b.createdAt || 0) - (a.createdAt || 0)));
+  }, [safeMetrics, postEventById]);
+  const sortedRecentPostsDetailed = useMemo(() => {
+    if (!safeMetrics) return [] as AnalyticsPost[];
+    return safeMetrics.recentPosts
+      .map((post) => {
+        const match = safeMetrics.topPosts.find((top) => top.id === post.id);
+        return {
+          id: post.id,
+          content: post.preview,
+          reactions: match?.reactions ?? 0,
+          replies: match?.replies ?? 0,
+          reposts: match?.reposts ?? 0,
+          zaps: match?.zaps ?? 0,
+          zapAmount: match?.zapAmount ?? 0,
+          score: match?.score ?? 0,
+          createdAt: post.createdAt,
+          event: postEventById.get(post.id),
+        };
+      })
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [safeMetrics, postEventById]);
 
   if (!user) return null;
-  if (loading || !safeMetrics) return <AnalyticsLoadingSkeleton />;
+  if (loading || !safeMetrics || !activeTargetPubkey) return <AnalyticsLoadingSkeleton />;
 
-  const topPostsDetailed: AnalyticsPost[] = safeMetrics.topPosts.map((post) => ({
-    ...post,
-    createdAt: postEventById.get(post.id)?.created_at,
-    event: postEventById.get(post.id),
-  }));
-
-  const recentPostsDetailed: AnalyticsPost[] = safeMetrics.recentPosts.map((post) => {
-    const match = safeMetrics.topPosts.find((top) => top.id === post.id);
-    return {
-      id: post.id,
-      content: post.preview,
-      reactions: match?.reactions ?? 0,
-      replies: match?.replies ?? 0,
-      reposts: match?.reposts ?? 0,
-      zaps: match?.zaps ?? 0,
-      zapAmount: match?.zapAmount ?? 0,
-      score: match?.score ?? 0,
-      createdAt: post.createdAt,
-      event: postEventById.get(post.id),
-    };
-  });
 
   const selectedPost = selectedPostId ? safeMetrics.topPosts.find((post) => post.id === selectedPostId) : null;
 
@@ -568,6 +624,14 @@ export function AnalyticsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Analytics</h1>
           <p className="text-gray-400">Real on-chain Nostr analytics (no synthetic metrics)</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="px-2 py-1 rounded-full bg-orange-500/20 text-orange-200 border border-orange-400/40">
+              {isUsingDefaultTarget ? 'Target: You' : 'Target: Public profile'}
+            </span>
+            <span className="px-2 py-1 rounded-full bg-gray-800 text-gray-200 border border-gray-700 max-w-full truncate">
+              {activeTargetNpub ? truncateNpub(activeTargetNpub, 10) : truncateNpub(activeTargetPubkey, 10)}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <TimeRangePicker value={timeRange} onChange={(range) => setTimeRange(range)} />
@@ -585,6 +649,42 @@ export function AnalyticsPage() {
           </button>
         </div>
       </header>
+
+      <section className="cy-card p-4 space-y-3">
+        <form
+          className="flex flex-col sm:flex-row gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const next = targetInput.trim();
+            const params = new URLSearchParams(searchParams);
+            if (!next) params.delete('target');
+            else params.set('target', next);
+            setSearchParams(params, { replace: false });
+          }}
+        >
+          <input
+            value={targetInput}
+            onChange={(e) => setTargetInput(e.target.value)}
+            placeholder="Enter npub, hex pubkey, or nip05 (e.g. jack@domain.com)"
+            className="flex-1 px-3 py-2 rounded-md bg-gray-900 border border-gray-700 text-gray-100 placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+          />
+          <button type="submit" className="px-3 py-2 rounded-md bg-cyan-700 hover:bg-cyan-600 text-white text-sm">Apply target</button>
+          <button
+            type="button"
+            className="px-3 py-2 rounded-md bg-gray-700 hover:bg-gray-600 text-white text-sm"
+            onClick={() => {
+              setTargetInput('');
+              const params = new URLSearchParams(searchParams);
+              params.delete('target');
+              setSearchParams(params, { replace: false });
+            }}
+          >
+            Reset to me
+          </button>
+        </form>
+        <p className="text-xs text-gray-400">Try npub / hex / nip05 like jack@domain.com. Public analytics are viewable for any resolved pubkey.</p>
+        {targetResolveError ? <p className="text-sm text-amber-300">{targetResolveError} Showing your analytics as fallback.</p> : null}
+      </section>
 
       {error && (
         <div className="cy-card p-4 text-red-300 flex flex-wrap items-center justify-between gap-3">
@@ -653,13 +753,13 @@ export function AnalyticsPage() {
       </section>
 
       <section className="cy-card nm-surface p-5">
-        <h2 className="text-lg font-semibold text-white mb-4">🏆 Top Posts (Top 10)</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">🏆 Top Posts (drill-down enabled)</h2>
         {postsLoading ? <p className="text-sm text-cyan-300 mb-3">Loading full post details…</p> : null}
         {safeMetrics.topPosts.length === 0 ? (
           <p className="text-gray-400">📭 No posts found yet. Publish a post to start tracking engagement.</p>
         ) : (
           <div className="space-y-3 max-h-[42rem] overflow-y-auto pr-1">
-            {topPostsDetailed.slice(0, 10).map((post, i) => (
+            {sortedTopPostsDetailed.slice(0, visibleTopPosts).map((post, i) => (
               <article key={post.id} className="cy-card border border-orange-500/25 p-4">
                 <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
                   <span className="font-semibold text-orange-200">#{i + 1}</span>
@@ -679,6 +779,15 @@ export function AnalyticsPage() {
                 </div>
               </article>
             ))}
+            {visibleTopPosts < sortedTopPostsDetailed.length ? (
+              <button
+                type="button"
+                className="w-full py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm"
+                onClick={() => setVisibleTopPosts((v) => Math.min(v + 100, sortedTopPostsDetailed.length))}
+              >
+                Load more top posts ({sortedTopPostsDetailed.length - visibleTopPosts} remaining)
+              </button>
+            ) : null}
           </div>
         )}
       </section>
@@ -730,11 +839,11 @@ export function AnalyticsPage() {
       <section className="cy-card nm-surface p-5">
         <h2 className="text-lg font-semibold text-white mb-4">Recent Posts</h2>
         {postsLoading ? <p className="text-sm text-cyan-300 mb-3">Loading recent posts…</p> : null}
-        {recentPostsDetailed.length === 0 ? (
+        {sortedRecentPostsDetailed.length === 0 ? (
           <p className="text-gray-400">📭 No recent posts found.</p>
         ) : (
           <div className="space-y-3 max-h-[36rem] overflow-y-auto pr-1">
-            {recentPostsDetailed.map((post) => (
+            {sortedRecentPostsDetailed.slice(0, visibleRecentPosts).map((post) => (
               <article key={post.id} className="p-3 rounded border border-gray-700/60 bg-gray-800/50 shadow-sm">
                 {post.event ? <InlineContent tokens={parseMediaFromFeedItem(post.event).tokens} quotedEvents={new Map()} quotedProfiles={new Map()} /> : <p className="text-gray-200">{post.content}</p>}
                 <div className="mt-2 flex items-center justify-between gap-2">
@@ -743,6 +852,15 @@ export function AnalyticsPage() {
                 </div>
               </article>
             ))}
+            {visibleRecentPosts < sortedRecentPostsDetailed.length ? (
+              <button
+                type="button"
+                className="w-full py-2 rounded-md bg-gray-800 hover:bg-gray-700 text-gray-200 text-sm"
+                onClick={() => setVisibleRecentPosts((v) => Math.min(v + 100, sortedRecentPostsDetailed.length))}
+              >
+                Load more recent posts ({sortedRecentPostsDetailed.length - visibleRecentPosts} remaining)
+              </button>
+            ) : null}
           </div>
         )}
       </section>
@@ -762,13 +880,13 @@ export function AnalyticsPage() {
 
       <ZapperDetailModal
         pubkey={selectedZapperPubkey}
-        viewerPubkey={user.pubkey}
+        viewerPubkey={activeTargetPubkey}
         onClose={() => setSelectedZapperPubkey(null)}
       />
 
       <HashtagPostsModal
         hashtag={selectedHashtag}
-        authorPubkey={user.pubkey}
+        authorPubkey={activeTargetPubkey}
         onClose={() => setSelectedHashtag(null)}
       />
     </div>

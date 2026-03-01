@@ -123,8 +123,8 @@ export function clearAnalyticsCache(): void {
   storage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
 }
 
-function cacheKey(pubkey: string, range: AnalyticsRange): string {
-  return `${CACHE_PREFIX}.${pubkey}.${range.interval}.${range.startTs || ''}.${range.endTs || ''}`;
+function cacheKey(ownerPubkey: string, targetPubkey: string, range: AnalyticsRange): string {
+  return `${CACHE_PREFIX}.${ownerPubkey}.${targetPubkey}.${range.interval}.${range.startTs || ''}.${range.endTs || ''}`;
 }
 
 function getRangeBounds(range: AnalyticsRange): { startTs: number; endTs: number } {
@@ -484,6 +484,7 @@ export async function loadAnalyticsDashboard(
   scope: AnalyticsScope = 'individual',
   range: AnalyticsRange = { interval: '30d' },
   forceRefresh = false,
+  targetPubkey?: string,
 ): Promise<AnalyticsDashboardData> {
   if (scope !== 'individual') {
     throw new Error('Only individual scope is supported for real-data analytics.');
@@ -492,7 +493,8 @@ export async function loadAnalyticsDashboard(
   ensureCacheVersion();
 
   const storage = localStorageSafe();
-  const key = cacheKey(pubkey, range);
+  const resolvedTargetPubkey = (targetPubkey || pubkey).toLowerCase();
+  const key = cacheKey(pubkey, resolvedTargetPubkey, range);
   if (!forceRefresh && storage) {
     const raw = storage.getItem(key);
     if (raw) {
@@ -504,7 +506,7 @@ export async function loadAnalyticsDashboard(
     }
   }
 
-  const data = await loadAnalyticsRaw(pubkey, range);
+  const data = await loadAnalyticsRaw(resolvedTargetPubkey, range);
   if (storage) {
     storage.setItem(key, JSON.stringify(data));
   }
